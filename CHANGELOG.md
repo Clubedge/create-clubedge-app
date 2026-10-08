@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.1
+
+- Keep CLI spinners out of Git and pnpm subprocess output so terminal progress remains readable.
+
 ## 0.1.0
 
 - Initial CLI release: scaffold the Clubedge Starter reference repository into a new project directory.

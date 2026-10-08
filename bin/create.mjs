@@ -212,20 +212,18 @@ async function createProject(options) {
   }
 
   if (options.git) {
-    const gitSpinner = spinner();
-    gitSpinner.start("Initializing Git");
+    console.log("\nInitializing Git...");
     await initializeGit(projectDirectory);
-    gitSpinner.stop("Git repository initialized on main");
+    console.log("Git repository initialized on main");
   }
 
   if (options.install) {
-    const installSpinner = spinner();
-    installSpinner.start("Installing dependencies with pnpm");
+    console.log("\nInstalling dependencies with pnpm...\n");
     try {
       await run("pnpm", ["install"], projectDirectory);
-      installSpinner.stop("Dependencies installed");
+      console.log("\nDependencies installed");
     } catch (error) {
-      installSpinner.stop("Project created; dependency installation did not complete");
+      console.error("\nProject created; dependency installation did not complete.");
       console.error(error instanceof Error ? error.message : error);
       console.error("Install pnpm with Corepack, then run `pnpm install` in the new project.");
     }

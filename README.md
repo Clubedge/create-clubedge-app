@@ -17,13 +17,13 @@ The CLI downloads the starter repository, names the generated project, creates `
 ## Usage
 
 ```sh
-pnpm dlx create-clubedge-app my-app
+pnpm dlx @clubedge/create-clubedge-app my-app
 ```
 
 Or run it with npm:
 
 ```sh
-npx create-clubedge-app my-app
+npx @clubedge/create-clubedge-app my-app
 ```
 
 After scaffolding:
@@ -38,13 +38,13 @@ The generated project includes `.env.local`; fill in `DATABASE_URL` to start the
 When no destination is provided, the CLI asks where to create the project:
 
 ```sh
-pnpm dlx create-clubedge-app
+pnpm dlx @clubedge/create-clubedge-app
 ```
 
 ## Options
 
 ```text
-Usage: pnpm dlx create-clubedge-app [project-directory] [options]
+Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 --ref <branch-or-tag>  Select a branch or tag from the starter repository (default: main)
 --no-install           Skip pnpm install
@@ -56,8 +56,8 @@ Usage: pnpm dlx create-clubedge-app [project-directory] [options]
 Examples:
 
 ```sh
-pnpm dlx create-clubedge-app my-app --ref v1.0.0
-pnpm dlx create-clubedge-app my-app --no-install
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v1.0.0
+pnpm dlx @clubedge/create-clubedge-app my-app --no-install
 ```
 
 The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default `main` ref follows the current reference implementation; use a tag to scaffold a specific starter revision.

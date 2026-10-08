@@ -20,7 +20,7 @@ create-clubedge-app ${packageVersion}
 Create a Next.js project from the Clubedge Starter reference repository.
 
 Usage:
-  pnpm dlx create-clubedge-app [project-directory] [options]
+  pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 Options:
   --ref <branch-or-tag>  Starter branch or tag to scaffold (default: ${defaultRef})
@@ -30,9 +30,9 @@ Options:
   -v, --version          Show the CLI version
 
 Examples:
-  pnpm dlx create-clubedge-app my-app
-  pnpm dlx create-clubedge-app my-app --ref v1.0.0
-  pnpm dlx create-clubedge-app my-app --no-install
+  pnpm dlx @clubedge/create-clubedge-app my-app
+  pnpm dlx @clubedge/create-clubedge-app my-app --ref v1.0.0
+  pnpm dlx @clubedge/create-clubedge-app my-app --no-install
 `);
 }
 

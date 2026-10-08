@@ -1,0 +1,44 @@
+{
+  "name": "create-clubedge-app",
+  "version": "0.1.0",
+  "description": "Create a Next.js application from the Clubedge Starter reference implementation.",
+  "type": "module",
+  "packageManager": "pnpm@10.9.0",
+  "bin": {
+    "create-clubedge-app": "./bin/create.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yassine-ahmed/create-clubedge-app.git"
+  },
+  "homepage": "https://github.com/yassine-ahmed/create-clubedge-app#readme",
+  "bugs": {
+    "url": "https://github.com/yassine-ahmed/create-clubedge-app/issues"
+  },
+  "keywords": [
+    "create-clubedge-app",
+    "clubedge",
+    "nextjs",
+    "starter",
+    "scaffolding"
+  ],
+  "scripts": {
+    "start": "node ./bin/create.mjs",
+    "check": "node --check ./bin/create.mjs"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1",
+    "giget": "^2.0.0"
+  }
+}

@@ -1,6 +1,6 @@
 # Contributing
 
-Contributions to `create-clubedge-app` are welcome. The CLI scaffolds the [Clubedge Starter](https://github.com/yassine-ahmed/clubedge-starter); keep it aligned with that reference implementation and avoid maintaining a duplicate project template in this repository.
+Contributions to `create-clubedge-app` are welcome. The CLI scaffolds the [Clubedge Starter](https://github.com/Clubedge/clubedge-starter); keep it aligned with that reference implementation and avoid maintaining a duplicate project template in this repository.
 
 ## Development
 
@@ -20,7 +20,7 @@ use a tested, versioned Starter release by default; do not change the default
 to `main`. For example:
 
 ```text
-create-clubedge-app v0.1.5 -> clubedge-starter v0.1.0
+create-clubedge-app v0.1.6 -> clubedge-starter v0.1.0
 ```
 
 Use `--ref main` only for explicit compatibility experiments. A change to the
@@ -33,8 +33,8 @@ Generated projects must retain the provenance metadata written by the CLI:
 ```json
 {
   "clubedge": {
-    "cliVersion": "0.1.5",
-    "starterRepository": "yassine-ahmed/clubedge-starter",
+    "cliVersion": "0.1.6",
+    "starterRepository": "Clubedge/clubedge-starter",
     "starterRef": "v0.1.0",
     "starterCommit": "4334121e4ce46a331d7c542c6025fdfe2b8c0657"
   }

@@ -1,9 +1,9 @@
 # create-clubedge-app
 
-[![CI](https://github.com/yassine-ahmed/create-clubedge-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yassine-ahmed/create-clubedge-app/actions/workflows/ci.yml)
+[![CI](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-Create a Next.js application from the [Clubedge Starter](https://github.com/yassine-ahmed/clubedge-starter) reference implementation.
+Create a Next.js application from the [Clubedge Starter](https://github.com/Clubedge/clubedge-starter) reference implementation.
 
 The CLI downloads a tested Starter release, names the generated project, creates `apps/web/.env.local` from the example, initializes Git, and installs dependencies. The Starter remains the source of truth for the generated architecture.
 
@@ -12,7 +12,7 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.1.5
+create-clubedge-app v0.1.6
         |
         v
 Clubedge Starter v0.1.0
@@ -23,7 +23,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.1.5` | `clubedge-starter@v0.1.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.1.6` | `clubedge-starter@v0.1.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 

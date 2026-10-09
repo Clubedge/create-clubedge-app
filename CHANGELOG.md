@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.6
+
+- Move the CLI and Starter repository references to the `Clubedge` GitHub organization.
+- Update package metadata, documentation, tests, and generated provenance for the organization repositories.
+
 ## 0.1.5
 
 - Verify the default Starter tag resolves to its expected commit and record that commit in generated metadata.

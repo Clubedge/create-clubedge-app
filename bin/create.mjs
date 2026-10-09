@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-const starterRepository = "yassine-ahmed/clubedge-starter";
+const starterRepository = "Clubedge/clubedge-starter";
 const defaultStarterRef = "v0.1.0";
 const defaultStarterCommit = "4334121e4ce46a331d7c542c6025fdfe2b8c0657";
 const packageVersion = JSON.parse(

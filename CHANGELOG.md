@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.5
+
+- Verify the default Starter tag resolves to its expected commit and record that commit in generated metadata.
+- Add a post-publish smoke-test workflow for the published npm package.
+
 ## 0.1.4
 
 - Pin the default Starter reference to the tested release tag `v0.1.0`.

@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - name: Confirm package version matches tag
+        shell: bash
+        run: test "$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME#v}"
+      - name: Publish package
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  published-package-smoke:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Wait for npm package availability
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            if npm view "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Published package did not become available on npm."
+          exit 1
+      - name: Generate from the published package
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/generated-app"
+          pnpm dlx --yes "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" \
+            "$RUNNER_TEMP/generated-app" --no-git --no-install
+      - name: Verify published package provenance
+        working-directory: ${{ runner.temp }}/generated-app
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const manifest = JSON.parse(await readFile("package.json", "utf8"));
+          const expectedVersion = process.env.GITHUB_REF_NAME.slice(1);
+          if (manifest.clubedge?.cliVersion !== expectedVersion) {
+            throw new Error(`Expected CLI ${expectedVersion}, got ${manifest.clubedge?.cliVersion}`);
+          }
+          if (manifest.clubedge?.starterRef !== "v0.1.0") {
+            throw new Error(`Expected Starter v0.1.0, got ${manifest.clubedge?.starterRef}`);
+          }
+          if (manifest.clubedge?.starterCommit !== "4334121e4ce46a331d7c542c6025fdfe2b8c0657") {
+            throw new Error(`Unexpected Starter commit: ${manifest.clubedge?.starterCommit}`);
+          }
+          NODE
+      - name: Verify generated application
+        working-directory: ${{ runner.temp }}/generated-app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build

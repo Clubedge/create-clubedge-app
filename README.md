@@ -12,19 +12,25 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.1.4
+create-clubedge-app v0.1.5
         |
         v
 Clubedge Starter v0.1.0
+commit 4334121e4ce46a331d7c542c6025fdfe2b8c0657
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.1.4` | `clubedge-starter@v0.1.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.1.5` | `clubedge-starter@v0.1.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
+
+The `v0.1.0` tag is expected to resolve to commit
+`4334121e4ce46a331d7c542c6025fdfe2b8c0657`. The CLI verifies this before
+scaffolding with the default reference and fails rather than silently using a
+moved tag.
 
 When the Starter changes, its maintainers first publish a new versioned release, such as `v0.2.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
@@ -83,7 +89,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --no-install
 
 The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default is the tested `v0.1.0` Starter release, so the same CLI version produces the same Starter revision. Use `--ref` to explicitly select a tag, branch, or commit.
 
-The default is the tested Starter release tag `v0.1.0`. Every generated project records its CLI version, Starter repository, and exact Starter ref in `package.json` and `README.md`.
+The default is the tested Starter release tag `v0.1.0`. Every generated project records its CLI version, Starter repository, exact Starter ref, and resolved Starter commit in `package.json` and `README.md`.
 
 Use `--ref` only when you intentionally want a different Starter revision:
 

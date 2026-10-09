@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 
 const starterRepository = "yassine-ahmed/clubedge-starter";
 const defaultStarterRef = "v0.1.0";
+const defaultStarterCommit = "4334121e4ce46a331d7c542c6025fdfe2b8c0657";
 const packageVersion = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 ).version;
@@ -20,6 +21,7 @@ create-clubedge-app ${packageVersion}
 
 Create a Next.js project from the Clubedge Starter reference repository.
 This CLI release uses Starter ${defaultStarterRef} by default.
+Expected Starter commit: ${defaultStarterCommit}
 
 Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
@@ -125,6 +127,57 @@ async function run(command, args, cwd) {
   });
 }
 
+async function runCapture(command, args, cwd) {
+  return await new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, args, {
+      cwd,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", rejectPromise);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolvePromise(stdout.trim());
+        return;
+      }
+      rejectPromise(
+        new Error(
+          `${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}${
+            stderr.trim() ? `: ${stderr.trim()}` : "."
+          }`,
+        ),
+      );
+    });
+  });
+}
+
+async function verifyDefaultStarterReference(starterRef) {
+  if (starterRef !== defaultStarterRef) {
+    return;
+  }
+
+  const remote = `https://github.com/${starterRepository}.git`;
+  const resolvedReference = await runCapture("git", [
+    "ls-remote",
+    remote,
+    `refs/tags/${starterRef}^{}`,
+  ]);
+  const resolvedCommit = resolvedReference.split(/\s+/)[0];
+  if (resolvedCommit !== defaultStarterCommit) {
+    throw new Error(
+      `Starter tag ${starterRef} resolved to ${resolvedCommit || "no commit"}, expected ${defaultStarterCommit}.`,
+    );
+  }
+}
+
 async function ensureTargetIsSafe(directory) {
   await mkdir(dirname(directory), { recursive: true });
 
@@ -141,7 +194,12 @@ async function ensureTargetIsSafe(directory) {
   }
 }
 
-async function customizeProject(directory, packageName, starterRef = defaultStarterRef) {
+async function customizeProject(
+  directory,
+  packageName,
+  starterRef = defaultStarterRef,
+  starterCommit = starterRef === defaultStarterRef ? defaultStarterCommit : undefined,
+) {
   const rootManifestPath = join(directory, "package.json");
   const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8"));
   rootManifest.name = packageName;
@@ -149,6 +207,7 @@ async function customizeProject(directory, packageName, starterRef = defaultStar
     cliVersion: packageVersion,
     starterRepository,
     starterRef,
+    ...(starterCommit ? { starterCommit } : {}),
   };
 
   for (const scriptName of ["docker:build", "docker:start"]) {
@@ -164,11 +223,12 @@ async function customizeProject(directory, packageName, starterRef = defaultStar
   const readmePath = join(directory, "README.md");
   const readme = await readFile(readmePath, "utf8");
   const displayName = displayNameFromPackageName(packageName);
+  const starterCommitLine = starterCommit ? `\n- Starter commit: \`${starterCommit}\`` : "";
   const customizedReadme = readme
     .replace(/^# Clubedge Starter$/m, `# ${displayName}`)
     .replace(
       /^# (.+)$/m,
-      `$&\n\n## Generated from\n\n- Starter repository: \`${starterRepository}\`\n- Starter ref: \`${starterRef}\`\n- CLI version: \`${packageVersion}\``,
+      `$&\n\n## Generated from\n\n- Starter repository: \`${starterRepository}\`\n- Starter ref: \`${starterRef}\`${starterCommitLine}\n- CLI version: \`${packageVersion}\``,
     );
   await writeFile(readmePath, customizedReadme);
 
@@ -242,6 +302,7 @@ async function createProject(options) {
   await ensureTargetIsSafe(projectDirectory);
 
   const projectName = packageNameFromDirectory(projectDirectory);
+  await verifyDefaultStarterReference(options.ref);
   const source = `gh:${starterRepository}#${options.ref}`;
   const downloadSpinner = spinner();
   downloadSpinner.start(`Downloading Clubedge Starter (${options.ref})`);

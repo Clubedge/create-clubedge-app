@@ -33,7 +33,7 @@ cd my-app
 pnpm dev
 ```
 
-The generated project includes `.env.local`; fill in `DATABASE_URL` to start the app and configure Supabase Auth or other providers as needed. See its `SETUP.md` for database, Redis, storage, and Docker setup.
+The generated project includes `.env.local`; fill in `DATABASE_URL` to start the app and configure Supabase Auth or other providers as needed. The root route is a project-named landing page, and the reference dashboard is available at `/dashboard`. See its `SETUP.md` for database, Redis, storage, and Docker setup.
 
 When no destination is provided, the CLI asks where to create the project:
 

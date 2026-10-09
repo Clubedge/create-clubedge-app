@@ -1,6 +1,6 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Create a Next.js application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
@@ -35,7 +35,8 @@
   ],
   "scripts": {
     "start": "node ./bin/create.mjs",
-    "check": "node --check ./bin/create.mjs"
+    "check": "node --check ./bin/create.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",

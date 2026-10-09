@@ -6,6 +6,7 @@ import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 const starterRepository = "yassine-ahmed/clubedge-starter";
 const defaultRef = "main";
@@ -160,8 +161,35 @@ async function customizeProject(directory, packageName) {
   const layout = await readFile(layoutPath, "utf8");
   const customizedLayout = layout
     .replaceAll('"Clubedge Starter"', JSON.stringify(displayName))
-    .replace("A production-minded foundation for Clubedge applications.", `A web application built with Clubedge Starter.`);
+    .replace(`%s \u00b7 Clubedge Starter`, `%s \u00b7 ${displayName}`)
+    .replace(
+      "A production-minded foundation for Clubedge applications.",
+      `${displayName} application foundation.`,
+    );
   await writeFile(layoutPath, customizedLayout);
+
+  const appFiles = [
+    join(directory, "apps", "web", "src", "app", "page.tsx"),
+    join(directory, "apps", "web", "src", "app", "app-sidebar.tsx"),
+    join(directory, "apps", "web", "src", "app", "dashboard", "page.tsx"),
+    join(directory, "apps", "web", "src", "app", "login", "page.tsx"),
+  ];
+  for (const appFile of appFiles) {
+    let source;
+    try {
+      source = await readFile(appFile, "utf8");
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    const customizedSource = source
+      .replaceAll("Clubedge Starter", displayName)
+      .replaceAll('>Clubedge<', `>${displayName}<`)
+      .replaceAll("Starter workspace", "Application workspace");
+    await writeFile(appFile, customizedSource);
+  }
 
   const exampleEnvironment = join(directory, ".env.example");
   const localEnvironment = join(directory, "apps", "web", ".env.local");
@@ -255,4 +283,8 @@ async function main() {
   }
 }
 
-await main();
+export { customizeProject, displayNameFromPackageName, packageNameFromDirectory };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  await main();
+}

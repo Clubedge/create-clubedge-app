@@ -66,9 +66,14 @@ jobs:
               --pack-destination "$RUNNER_TEMP" >/dev/null 2>&1; then
               package_tarball="$RUNNER_TEMP/clubedge-create-clubedge-app-${GITHUB_REF_NAME#v}.tgz"
               if [ -f "$package_tarball" ]; then
-                npx --yes --package "$package_tarball" create-clubedge-app \
-                  "$RUNNER_TEMP/generated-app" --no-git --no-install
-                exit 0
+                  package_dir="$RUNNER_TEMP/published-cli"
+                  rm -rf "$package_dir"
+                  mkdir -p "$package_dir" "$RUNNER_TEMP/generated-app"
+                  tar -xzf "$package_tarball" -C "$package_dir"
+                  node "$package_dir/package/bin/create.mjs" \
+                    "$RUNNER_TEMP/generated-app" --no-git --no-install
+                  test -f "$RUNNER_TEMP/generated-app/package.json"
+                  exit 0
               fi
             fi
             sleep 10

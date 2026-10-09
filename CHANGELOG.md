@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.11
+
+- Generate the published-package smoke-test project by extracting and invoking the exact npm tarball.
+- Fail the generation step if the generated project manifest is missing.
+
 ## 0.1.10
 
 - Make the published-package smoke test resilient to npm registry propagation delays by retrying the exact package tarball.

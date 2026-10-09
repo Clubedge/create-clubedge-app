@@ -70,6 +70,7 @@ jobs:
                   rm -rf "$package_dir"
                   mkdir -p "$package_dir" "$RUNNER_TEMP/generated-app"
                   tar -xzf "$package_tarball" -C "$package_dir"
+                  npm install --prefix "$package_dir/package" --omit=dev --ignore-scripts
                   node "$package_dir/package/bin/create.mjs" \
                     "$RUNNER_TEMP/generated-app" --no-git --no-install
                   test -f "$RUNNER_TEMP/generated-app/package.json"

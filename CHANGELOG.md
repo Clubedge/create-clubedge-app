@@ -7,6 +7,7 @@ All notable changes to `create-clubedge-app` are documented here.
 - Pin the default Starter reference to the tested release tag `v0.1.0`.
 - Record the CLI version and Starter reference in generated project metadata and documentation.
 - Add scheduled compatibility verification for the latest Starter `main` branch.
+- Document the CLI-to-Starter version relationship and release workflow.
 
 ## 0.1.3
 

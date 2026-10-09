@@ -19,6 +19,7 @@ function showHelp() {
 create-clubedge-app ${packageVersion}
 
 Create a Next.js project from the Clubedge Starter reference repository.
+This CLI release uses Starter ${defaultStarterRef} by default.
 
 Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
@@ -34,6 +35,9 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app
   pnpm dlx @clubedge/create-clubedge-app my-app --ref <starter-tag-or-commit>
   pnpm dlx @clubedge/create-clubedge-app my-app --no-install
+
+Release model:
+  CLI ${packageVersion} -> Starter ${defaultStarterRef}
 `);
 }
 

@@ -5,7 +5,28 @@
 
 Create a Next.js application from the [Clubedge Starter](https://github.com/yassine-ahmed/clubedge-starter) reference implementation.
 
-The CLI downloads the starter repository, names the generated project, creates `apps/web/.env.local` from the example, initializes Git, and installs dependencies. The starter remains the source of truth for the generated architecture.
+The CLI downloads a tested Starter release, names the generated project, creates `apps/web/.env.local` from the example, initializes Git, and installs dependencies. The Starter remains the source of truth for the generated architecture.
+
+## Version relationship
+
+Each CLI release is tested against one specific Starter release:
+
+```text
+create-clubedge-app v0.1.4
+        |
+        v
+Clubedge Starter v0.1.0
+```
+
+The current relationship is:
+
+| CLI release | Default Starter release | Meaning |
+| --- | --- | --- |
+| `create-clubedge-app@0.1.4` | `clubedge-starter@v0.1.0` | The CLI's required, tested default |
+
+This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
+
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.2.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 ## Requirements
 
@@ -64,9 +85,23 @@ The target directory must be empty or not exist. The CLI will not delete or over
 
 The default is the tested Starter release tag `v0.1.0`. Every generated project records its CLI version, Starter repository, and exact Starter ref in `package.json` and `README.md`.
 
+Use `--ref` only when you intentionally want a different Starter revision:
+
+```sh
+# Reproduce the supported default
+pnpm dlx @clubedge/create-clubedge-app my-app
+
+# Try an unreleased Starter change
+pnpm dlx @clubedge/create-clubedge-app my-app --ref main
+
+# Reproduce a specific Starter release or commit
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.1.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
+```
+
 ## How it works
 
-This first CLI release scaffolds the complete reference starter. It does not yet offer selectable SaaS, dashboard, or minimal feature presets; those should be added once each preset has a distinct, maintained template. This keeps CLI output aligned with the reference repo instead of creating a second, drifting copy of its source.
+This CLI scaffolds the complete reference Starter. It does not yet offer selectable SaaS, dashboard, or minimal feature presets; those should be added once each preset has a distinct, maintained template. This keeps CLI output aligned with the Starter repository instead of creating a second, drifting copy of its source.
 
 ## Development
 
@@ -79,6 +114,25 @@ pnpm test
 ```
 
 CI scaffolds a clean project from the pinned Starter release, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. A scheduled, non-blocking compatibility job also checks Starter `main`.
+
+## Release workflow
+
+### Starter maintainers
+
+1. Make and validate changes in `clubedge-starter`.
+2. Run lint, typecheck, unit tests, browser tests, and production build.
+3. Update the Starter package versions.
+4. Commit `main`, create a release tag such as `v0.2.0`, and publish the Starter release.
+
+### CLI maintainers
+
+1. Change `defaultStarterRef` in [`bin/create.mjs`](bin/create.mjs) to the new tested Starter tag.
+2. Update the version relationship table and changelog.
+3. Generate a clean project from that exact tag.
+4. Run install, lint, typecheck, unit tests, browser tests, production build, and runtime smoke checks.
+5. Publish a new CLI version only after the generated-project verification passes.
+
+The required CI job always tests the pinned default. The scheduled compatibility job tests Starter `main` early, but unreleased Starter changes must not change the stable CLI default.
 
 ## Contributing
 

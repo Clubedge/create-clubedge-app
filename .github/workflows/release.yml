@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -20,8 +21,9 @@ jobs:
           version: 10.9.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0
-          registry-url: https://registry.npmjs.org
+          node-version: 22.14.0
+      - name: Install npm Trusted Publishing client
+        run: npm install --global npm@11.5.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
@@ -29,9 +31,7 @@ jobs:
         shell: bash
         run: test "$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME#v}"
       - name: Publish package
-        run: pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
 
   published-package-smoke:
     needs: publish
@@ -44,7 +44,7 @@ jobs:
           version: 10.9.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0
+          node-version: 22.14.0
       - name: Wait for npm package availability
         shell: bash
         run: |
@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/generated-app"
-          pnpm dlx --yes "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" \
+          pnpm dlx "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" \
             "$RUNNER_TEMP/generated-app" --no-git --no-install
       - name: Verify published package provenance
         working-directory: ${{ runner.temp }}/generated-app

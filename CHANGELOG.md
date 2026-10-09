@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.9
+
+- Use npm Trusted Publishing with GitHub Actions OIDC for releases.
+- Use an npm CLI version supported by Trusted Publishing and remove the token-based publish dependency.
+
 ## 0.1.8
 
 - Correct the pinned Starter commit to the commit actually resolved by the immutable `v0.1.1` tag.

@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.3
+
+- Keep generated project-name customization aligned with the dashboard's route-local sidebar.
+- Verify a fresh CLI-generated starter through install, typecheck, unit tests, production build, and HTTP smoke checks in CI.
+
 ## 0.1.2
 
 - Customize the landing page, sidebar, dashboard, sign-in page, and metadata with the generated project name.

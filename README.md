@@ -73,7 +73,10 @@ corepack enable
 pnpm install
 node ./bin/create.mjs --help
 pnpm check
+pnpm test
 ```
+
+CI also scaffolds a clean project from the current starter, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon.
 
 ## Contributing
 

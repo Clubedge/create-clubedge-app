@@ -170,7 +170,7 @@ async function customizeProject(directory, packageName) {
 
   const appFiles = [
     join(directory, "apps", "web", "src", "app", "page.tsx"),
-    join(directory, "apps", "web", "src", "app", "app-sidebar.tsx"),
+    join(directory, "apps", "web", "src", "app", "dashboard", "_components", "app-sidebar.tsx"),
     join(directory, "apps", "web", "src", "app", "dashboard", "page.tsx"),
     join(directory, "apps", "web", "src", "app", "login", "page.tsx"),
   ];

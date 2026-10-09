@@ -33,7 +33,7 @@ describe("customizeProject", () => {
     temporaryDirectories.push(directory);
 
     const appDirectory = join(directory, "apps", "web", "src", "app");
-    await mkdir(join(appDirectory, "dashboard"), { recursive: true });
+    await mkdir(join(appDirectory, "dashboard", "_components"), { recursive: true });
     await mkdir(join(directory, "apps", "web"), { recursive: true });
     await writeFile(
       join(directory, "package.json"),
@@ -45,7 +45,10 @@ describe("customizeProject", () => {
       'title: { default: "Clubedge Starter", template: "%s · Clubedge Starter" }, description: "A production-minded foundation for Clubedge applications."',
     );
     await writeFile(join(appDirectory, "page.tsx"), "<span>Clubedge Starter</span><span>Clubedge</span>");
-    await writeFile(join(appDirectory, "app-sidebar.tsx"), 'aria-label="Clubedge Starter home">Clubedge</span>');
+    await writeFile(
+      join(appDirectory, "dashboard", "_components", "app-sidebar.tsx"),
+      'aria-label="Clubedge Starter home">Clubedge</span>',
+    );
     await writeFile(join(appDirectory, "dashboard", "page.tsx"), "<span>Clubedge Starter</span>");
     await mkdir(join(appDirectory, "login"), { recursive: true });
     await writeFile(join(appDirectory, "login", "page.tsx"), "<span>Clubedge Starter</span>");
@@ -57,7 +60,10 @@ describe("customizeProject", () => {
     const readme = await readFile(join(directory, "README.md"), "utf8");
     const layout = await readFile(join(appDirectory, "layout.tsx"), "utf8");
     const landingPage = await readFile(join(appDirectory, "page.tsx"), "utf8");
-    const sidebar = await readFile(join(appDirectory, "app-sidebar.tsx"), "utf8");
+    const sidebar = await readFile(
+      join(appDirectory, "dashboard", "_components", "app-sidebar.tsx"),
+      "utf8",
+    );
     const dashboard = await readFile(join(appDirectory, "dashboard", "page.tsx"), "utf8");
     const login = await readFile(join(appDirectory, "login", "page.tsx"), "utf8");
     const localEnvironment = await readFile(join(directory, "apps", "web", ".env.local"), "utf8");

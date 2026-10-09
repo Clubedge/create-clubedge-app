@@ -23,3 +23,46 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
+
+  generated-project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Generate a project from the current starter
+        run: node bin/create.mjs "$RUNNER_TEMP/generated-app" --no-git --no-install
+      - name: Install generated project dependencies
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm install --frozen-lockfile
+      - name: Lint generated project
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm lint
+      - name: Typecheck generated project
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm typecheck
+      - name: Test generated project
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm test
+      - name: Install Playwright browser
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run generated project browser checks
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm test:e2e
+      - name: Build generated project
+        working-directory: ${{ runner.temp }}/generated-app
+        run: pnpm build
+      - name: Start app and verify routes
+        working-directory: ${{ runner.temp }}/generated-app
+        run: |
+          set -euo pipefail
+          pnpm start > "$RUNNER_TEMP/clubedge-next.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          APP_BASE_URL="http://127.0.0.1:3000" node "$GITHUB_WORKSPACE/scripts/smoke-generated-app.mjs"

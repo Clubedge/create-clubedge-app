@@ -2,6 +2,8 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.13
+
 ## 0.1.12
 
 - Install the published CLI's production dependencies before invoking it in the npm smoke test.

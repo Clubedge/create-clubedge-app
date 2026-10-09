@@ -71,13 +71,13 @@ describe("customizeProject", () => {
     assert.equal(manifest.name, "my-product");
     assert.equal(manifest.scripts["docker:build"], "docker build -t my-product .");
     assert.deepEqual(manifest.clubedge, {
-      cliVersion: "0.1.12",
+      cliVersion: "0.1.13",
       starterRepository: "Clubedge/clubedge-starter",
       starterRef: "v9.2.0",
     });
     assert.match(readme, /^# My Product$/m);
     assert.match(readme, /Starter ref: `v9\.2\.0`/);
-    assert.match(readme, /CLI version: `0\.1\.12`/);
+    assert.match(readme, /CLI version: `0\.1\.13`/);
     assert.match(layout, /default: "My Product"/);
     assert.match(layout, /%s · My Product/);
     assert.match(layout, /My Product application foundation/);

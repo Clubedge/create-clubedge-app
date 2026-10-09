@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.10
+
+- Make the published-package smoke test resilient to npm registry propagation delays by retrying the exact package tarball.
+
 ## 0.1.9
 
 - Use npm Trusted Publishing with GitHub Actions OIDC for releases.

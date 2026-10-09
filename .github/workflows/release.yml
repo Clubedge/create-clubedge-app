@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           for attempt in {1..30}; do
-            if npm view "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then
+            if npm view "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" version 2>/dev/null | grep -Fx "${GITHUB_REF_NAME#v}"; then
               exit 0
             fi
             sleep 10
@@ -60,8 +60,21 @@ jobs:
         shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/generated-app"
-          pnpm dlx "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" \
-            "$RUNNER_TEMP/generated-app" --no-git --no-install
+          for attempt in {1..30}; do
+            rm -f "$RUNNER_TEMP/clubedge-create-clubedge-app.tgz"
+            if npm pack "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" \
+              --pack-destination "$RUNNER_TEMP" >/dev/null 2>&1; then
+              package_tarball="$RUNNER_TEMP/clubedge-create-clubedge-app-${GITHUB_REF_NAME#v}.tgz"
+              if [ -f "$package_tarball" ]; then
+                npx --yes --package "$package_tarball" create-clubedge-app \
+                  "$RUNNER_TEMP/generated-app" --no-git --no-install
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "Published package tarball did not become available on npm."
+          exit 1
       - name: Verify published package provenance
         working-directory: ${{ runner.temp }}/generated-app
         shell: bash

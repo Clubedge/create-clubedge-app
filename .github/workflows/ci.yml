@@ -38,6 +38,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.12.0
+      - name: Install CLI dependencies
+        run: pnpm install --frozen-lockfile
       - name: Generate a project from the pinned Starter release
         run: node bin/create.mjs "$RUNNER_TEMP/generated-app" --no-git --no-install
       - name: Install generated project dependencies
@@ -83,6 +85,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.12.0
+      - name: Install CLI dependencies
+        run: pnpm install --frozen-lockfile
       - name: Generate a project from Starter main
         run: node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --no-git --no-install
       - name: Install generated project dependencies

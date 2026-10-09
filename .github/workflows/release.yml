@@ -73,10 +73,10 @@ jobs:
           if (manifest.clubedge?.cliVersion !== expectedVersion) {
             throw new Error(`Expected CLI ${expectedVersion}, got ${manifest.clubedge?.cliVersion}`);
           }
-          if (manifest.clubedge?.starterRef !== "v0.1.0") {
-            throw new Error(`Expected Starter v0.1.0, got ${manifest.clubedge?.starterRef}`);
+          if (manifest.clubedge?.starterRef !== "v0.1.1") {
+            throw new Error(`Expected Starter v0.1.1, got ${manifest.clubedge?.starterRef}`);
           }
-          if (manifest.clubedge?.starterCommit !== "4334121e4ce46a331d7c542c6025fdfe2b8c0657") {
+          if (manifest.clubedge?.starterCommit !== "4db0270791642b09e1120415a5b179d7e19bda61") {
             throw new Error(`Unexpected Starter commit: ${manifest.clubedge?.starterCommit}`);
           }
           NODE

@@ -9,8 +9,8 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const starterRepository = "Clubedge/clubedge-starter";
-const defaultStarterRef = "v0.1.0";
-const defaultStarterCommit = "4334121e4ce46a331d7c542c6025fdfe2b8c0657";
+const defaultStarterRef = "v0.1.1";
+const defaultStarterCommit = "4db0270791642b09e1120415a5b179d7e19bda61";
 const packageVersion = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 ).version;

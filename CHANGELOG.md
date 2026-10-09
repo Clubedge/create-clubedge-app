@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.7
+
+- Pin the default Starter reference to the tested `v0.1.1` release, including the corrected browser contract.
+
 ## 0.1.6
 
 - Move the CLI and Starter repository references to the `Clubedge` GitHub organization.

@@ -46,7 +46,7 @@ pnpm dlx @clubedge/create-clubedge-app
 ```text
 Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
---ref <branch-or-tag>  Select a branch or tag from the starter repository (default: main)
+--ref <ref>            Select a starter tag, branch, or commit (default: v0.1.0)
 --no-install           Skip pnpm install
 --no-git               Skip Git initialization
 -h, --help             Show help
@@ -56,11 +56,13 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 Examples:
 
 ```sh
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v1.0.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref <starter-tag-or-commit>
 pnpm dlx @clubedge/create-clubedge-app my-app --no-install
 ```
 
-The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default `main` ref follows the current reference implementation; use a tag to scaffold a specific starter revision.
+The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default is the tested `v0.1.0` Starter release, so the same CLI version produces the same Starter revision. Use `--ref` to explicitly select a tag, branch, or commit.
+
+The default is the tested Starter release tag `v0.1.0`. Every generated project records its CLI version, Starter repository, and exact Starter ref in `package.json` and `README.md`.
 
 ## How it works
 
@@ -76,7 +78,7 @@ pnpm check
 pnpm test
 ```
 
-CI also scaffolds a clean project from the current starter, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon.
+CI scaffolds a clean project from the pinned Starter release, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. A scheduled, non-blocking compatibility job also checks Starter `main`.
 
 ## Contributing
 

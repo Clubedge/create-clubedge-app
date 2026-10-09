@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are made against the latest code on `main`. The CLI does not currently publish versioned releases or promise a support window for old versions.
+Security fixes are made against the latest code on `main`. Each CLI release pins a tested Starter reference; generated projects record that reference so security advisories can identify affected Starter revisions. The CLI does not currently promise a support window for old versions.
 
 ## Reporting a vulnerability
 

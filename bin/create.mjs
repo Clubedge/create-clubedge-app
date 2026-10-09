@@ -9,7 +9,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const starterRepository = "yassine-ahmed/clubedge-starter";
-const defaultRef = "main";
+const defaultStarterRef = "v0.1.0";
 const packageVersion = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 ).version;
@@ -24,7 +24,7 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 Options:
-  --ref <branch-or-tag>  Starter branch or tag to scaffold (default: ${defaultRef})
+  --ref <ref>            Starter tag, branch, or commit to scaffold (default: ${defaultStarterRef})
   --no-install           Skip dependency installation
   --no-git               Skip Git repository initialization
   -h, --help             Show this help
@@ -32,13 +32,13 @@ Options:
 
 Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app
-  pnpm dlx @clubedge/create-clubedge-app my-app --ref v1.0.0
+  pnpm dlx @clubedge/create-clubedge-app my-app --ref <starter-tag-or-commit>
   pnpm dlx @clubedge/create-clubedge-app my-app --no-install
 `);
 }
 
 function parseArguments(args) {
-  const options = { install: true, git: true, ref: defaultRef, projectDirectory: undefined };
+  const options = { install: true, git: true, ref: defaultStarterRef, projectDirectory: undefined };
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -137,10 +137,15 @@ async function ensureTargetIsSafe(directory) {
   }
 }
 
-async function customizeProject(directory, packageName) {
+async function customizeProject(directory, packageName, starterRef = defaultStarterRef) {
   const rootManifestPath = join(directory, "package.json");
   const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8"));
   rootManifest.name = packageName;
+  rootManifest.clubedge = {
+    cliVersion: packageVersion,
+    starterRepository,
+    starterRef,
+  };
 
   for (const scriptName of ["docker:build", "docker:start"]) {
     if (rootManifest.scripts?.[scriptName]) {
@@ -155,7 +160,13 @@ async function customizeProject(directory, packageName) {
   const readmePath = join(directory, "README.md");
   const readme = await readFile(readmePath, "utf8");
   const displayName = displayNameFromPackageName(packageName);
-  await writeFile(readmePath, readme.replace(/^# Clubedge Starter$/m, `# ${displayName}`));
+  const customizedReadme = readme
+    .replace(/^# Clubedge Starter$/m, `# ${displayName}`)
+    .replace(
+      /^# (.+)$/m,
+      `$&\n\n## Generated from\n\n- Starter repository: \`${starterRepository}\`\n- Starter ref: \`${starterRef}\`\n- CLI version: \`${packageVersion}\``,
+    );
+  await writeFile(readmePath, customizedReadme);
 
   const layoutPath = join(directory, "apps", "web", "src", "app", "layout.tsx");
   const layout = await readFile(layoutPath, "utf8");
@@ -232,7 +243,7 @@ async function createProject(options) {
   downloadSpinner.start(`Downloading Clubedge Starter (${options.ref})`);
   try {
     await downloadTemplate(source, { dir: projectDirectory, force: true });
-    await customizeProject(projectDirectory, projectName);
+    await customizeProject(projectDirectory, projectName, options.ref);
     downloadSpinner.stop("Starter files downloaded and configured");
   } catch (error) {
     downloadSpinner.stop("Project scaffold failed");

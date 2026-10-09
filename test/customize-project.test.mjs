@@ -54,7 +54,7 @@ describe("customizeProject", () => {
     await writeFile(join(appDirectory, "login", "page.tsx"), "<span>Clubedge Starter</span>");
     await writeFile(join(directory, ".env.example"), "DATABASE_URL=\n");
 
-    await customizeProject(directory, "my-product");
+    await customizeProject(directory, "my-product", "v9.2.0");
 
     const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
     const readme = await readFile(join(directory, "README.md"), "utf8");
@@ -70,7 +70,14 @@ describe("customizeProject", () => {
 
     assert.equal(manifest.name, "my-product");
     assert.equal(manifest.scripts["docker:build"], "docker build -t my-product .");
+    assert.deepEqual(manifest.clubedge, {
+      cliVersion: "0.1.4",
+      starterRepository: "yassine-ahmed/clubedge-starter",
+      starterRef: "v9.2.0",
+    });
     assert.match(readme, /^# My Product$/m);
+    assert.match(readme, /Starter ref: `v9\.2\.0`/);
+    assert.match(readme, /CLI version: `0\.1\.4`/);
     assert.match(layout, /default: "My Product"/);
     assert.match(layout, /%s · My Product/);
     assert.match(layout, /My Product application foundation/);

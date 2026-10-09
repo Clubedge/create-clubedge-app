@@ -76,7 +76,7 @@ jobs:
           if (manifest.clubedge?.starterRef !== "v0.1.1") {
             throw new Error(`Expected Starter v0.1.1, got ${manifest.clubedge?.starterRef}`);
           }
-          if (manifest.clubedge?.starterCommit !== "4db0270791642b09e1120415a5b179d7e19bda61") {
+          if (manifest.clubedge?.starterCommit !== "0be0c18d41f01cd011c576fb65c25711081b8ad4") {
             throw new Error(`Unexpected Starter commit: ${manifest.clubedge?.starterCommit}`);
           }
           NODE

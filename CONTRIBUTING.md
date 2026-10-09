@@ -20,7 +20,7 @@ use a tested, versioned Starter release by default; do not change the default
 to `main`. For example:
 
 ```text
-create-clubedge-app v0.1.7 -> clubedge-starter v0.1.1
+create-clubedge-app v0.1.8 -> clubedge-starter v0.1.1
 ```
 
 Use `--ref main` only for explicit compatibility experiments. A change to the
@@ -33,10 +33,10 @@ Generated projects must retain the provenance metadata written by the CLI:
 ```json
 {
   "clubedge": {
-    "cliVersion": "0.1.7",
+    "cliVersion": "0.1.8",
     "starterRepository": "Clubedge/clubedge-starter",
     "starterRef": "v0.1.1",
-    "starterCommit": "4db0270791642b09e1120415a5b179d7e19bda61"
+    "starterCommit": "0be0c18d41f01cd011c576fb65c25711081b8ad4"
   }
 }
 ```

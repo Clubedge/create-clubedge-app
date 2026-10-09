@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.1.8
+
+- Correct the pinned Starter commit to the commit actually resolved by the immutable `v0.1.1` tag.
+
 ## 0.1.7
 
 - Pin the default Starter reference to the tested `v0.1.1` release, including the corrected browser contract.

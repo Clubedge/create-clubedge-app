@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 
 const starterRepository = "Clubedge/clubedge-starter";
 const defaultStarterRef = "v0.1.1";
-const defaultStarterCommit = "4db0270791642b09e1120415a5b179d7e19bda61";
+const defaultStarterCommit = "0be0c18d41f01cd011c576fb65c25711081b8ad4";
 const packageVersion = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 ).version;

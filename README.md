@@ -12,23 +12,23 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.1.7
+create-clubedge-app v0.1.8
         |
         v
 Clubedge Starter v0.1.1
-commit 4db0270791642b09e1120415a5b179d7e19bda61
+commit 0be0c18d41f01cd011c576fb65c25711081b8ad4
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.1.7` | `clubedge-starter@v0.1.1` | The CLI's required, tested default |
+| `create-clubedge-app@0.1.8` | `clubedge-starter@v0.1.1` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
 The `v0.1.1` tag is expected to resolve to commit
-`4db0270791642b09e1120415a5b179d7e19bda61`. The CLI verifies this before
+`0be0c18d41f01cd011c576fb65c25711081b8ad4`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 

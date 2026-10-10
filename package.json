@@ -1,6 +1,6 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Create a Next.js application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
@@ -16,6 +16,11 @@
   ],
   "engines": {
     "node": ">=22.12.0"
+  },
+  "clubedge": {
+    "starterRepository": "Clubedge/clubedge-starter",
+    "starterRef": "v0.2.0",
+    "starterCommit": "db15901da90d8d8a190d158c895dfe76c172b415"
   },
   "license": "Apache-2.0",
   "repository": {

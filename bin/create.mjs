@@ -8,14 +8,17 @@ import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-const starterRepository = "Clubedge/clubedge-starter";
-const defaultStarterRef = "v0.2.0";
-const defaultStarterCommit = "db15901da90d8d8a190d158c895dfe76c172b415";
+// package.json is the single source for the version and the tested Starter pin. It is
+// published with the package, so the npm registry exposes exactly what each release scaffolds.
+const packageManifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const packageVersion = packageManifest.version;
+const {
+  starterRepository,
+  starterRef: defaultStarterRef,
+  starterCommit: defaultStarterCommit,
+} = packageManifest.clubedge;
 const siteUrl = "https://clubedge.live";
 const cliUrl = "https://starter.clubedge.live";
-const packageVersion = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
-).version;
 
 /* ------------------------------------------------------------------ */
 /* Branding: big block-letter banner                                   */

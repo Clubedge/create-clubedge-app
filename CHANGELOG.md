@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.2.1
+
+- Publish the default Starter pin in the `clubedge` field of `package.json`. The CLI and release workflow read it from there, and the npm registry exposes it so the website always shows the Starter each CLI version scaffolds.
+- Optionally trigger a website rebuild after a release when the `SITE_DEPLOY_HOOK` secret is configured.
+
 ## 0.2.0
 
 - Default to Starter `v0.2.0`, which adds project identity in `site.json`, dashboard protection, rate-limited sign-in and sign-up, and lazy environment validation.

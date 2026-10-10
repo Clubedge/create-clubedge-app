@@ -2,6 +2,16 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.3.0
+
+- Rewrite the CLI in TypeScript, organized into argument parsing, planning, execution, and steps.
+- Bundle the pinned Starter release into the package. The default scaffold no longer downloads from GitHub or requires Git.
+- Read the Starter's `clubedge.template.json` manifest and refuse Starters with a newer template schema.
+- Add `--dry-run`, `--yes`, and `--template-dir`.
+- Remove everything written when scaffolding fails, instead of leaving a partial project.
+- Check the Node.js version before starting, and fall back to `corepack pnpm` when `pnpm` is not on the path.
+- Never copy local environment files, dependencies, or build output from a template directory, even when it sits inside another Git repository.
+
 ## 0.2.1
 
 - Publish the default Starter pin in the `clubedge` field of `package.json`. The CLI and release workflow read it from there, and the npm registry exposes it so the website always shows the Starter each CLI version scaffolds.

@@ -26,6 +26,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm build
 
   generated-project:
     runs-on: ubuntu-latest
@@ -40,8 +41,21 @@ jobs:
           node-version: 22.12.0
       - name: Install CLI dependencies
         run: pnpm install --frozen-lockfile
-      - name: Generate a project from the pinned Starter release
-        run: node bin/create.mjs "$RUNNER_TEMP/generated-app" --no-git --no-install
+      - name: Build the CLI and bundle the pinned Starter release
+        run: |
+          pnpm build
+          pnpm bundle-template
+      - name: Generate a project from the packed CLI, exactly as it would be published
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm pack --pack-destination "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/packed-cli"
+          tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
+          npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
+          node "$RUNNER_TEMP/packed-cli/package/bin/create.mjs"             "$RUNNER_TEMP/generated-app" --no-git --no-install --yes
+          # npm strips .gitignore from tarballs; the CLI must restore it.
+          test -f "$RUNNER_TEMP/generated-app/.gitignore"
       - name: Install generated project dependencies
         working-directory: ${{ runner.temp }}/generated-app
         run: pnpm install --frozen-lockfile
@@ -88,7 +102,9 @@ jobs:
       - name: Install CLI dependencies
         run: pnpm install --frozen-lockfile
       - name: Generate a project from Starter main
-        run: node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --no-git --no-install
+        run: |
+          pnpm build
+          node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --no-git --no-install --yes
       - name: Install generated project dependencies
         working-directory: ${{ runner.temp }}/generated-app
         run: pnpm install --frozen-lockfile

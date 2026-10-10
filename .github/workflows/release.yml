@@ -27,6 +27,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm build
+      - name: Bundle the pinned Starter release
+        run: pnpm bundle-template
       - name: Confirm package version matches tag
         shell: bash
         run: test "$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME#v}"
@@ -72,8 +75,10 @@ jobs:
                   tar -xzf "$package_tarball" -C "$package_dir"
                   npm install --prefix "$package_dir/package" --omit=dev --ignore-scripts
                   node "$package_dir/package/bin/create.mjs" \
-                    "$RUNNER_TEMP/generated-app" --no-git --no-install
+                    "$RUNNER_TEMP/generated-app" --no-git --no-install --yes
                   test -f "$RUNNER_TEMP/generated-app/package.json"
+                  # npm strips .gitignore from tarballs; the CLI must restore it.
+                  test -f "$RUNNER_TEMP/generated-app/.gitignore"
                   exit 0
               fi
             fi

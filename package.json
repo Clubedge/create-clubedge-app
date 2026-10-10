@@ -1,6 +1,6 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Create an application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
@@ -22,8 +22,8 @@
   },
   "clubedge": {
     "starterRepository": "Clubedge/clubedge-starter",
-    "starterRef": "v0.2.0",
-    "starterCommit": "db15901da90d8d8a190d158c895dfe76c172b415"
+    "starterRef": "v0.3.0",
+    "starterCommit": "60f1691920c91a5cf83e480a3ce98c3ddefdef55"
   },
   "license": "Apache-2.0",
   "repository": {

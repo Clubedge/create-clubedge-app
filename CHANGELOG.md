@@ -4,6 +4,7 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.3.0
 
+- Default to Starter `v0.3.0`, which adds the `clubedge.template.json` template manifest.
 - Rewrite the CLI in TypeScript, organized into argument parsing, planning, execution, and steps.
 - Bundle the pinned Starter release into the package. The default scaffold no longer downloads from GitHub or requires Git.
 - Read the Starter's `clubedge.template.json` manifest and refuse Starters with a newer template schema.

@@ -4,3 +4,8 @@ coverage/
 .env.*
 !.env.example
 *.tgz
+
+# Build output and the bundled Starter are generated at release time.
+dist/
+template/
+template.lock.json

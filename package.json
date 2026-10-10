@@ -1,7 +1,7 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.2.1",
-  "description": "Create a Next.js application from the Clubedge Starter reference implementation.",
+  "version": "0.3.0",
+  "description": "Create an application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
   "bin": {
@@ -9,6 +9,9 @@
   },
   "files": [
     "bin/",
+    "dist/",
+    "template/",
+    "template.lock.json",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -19,8 +22,8 @@
   },
   "clubedge": {
     "starterRepository": "Clubedge/clubedge-starter",
-    "starterRef": "v0.2.0",
-    "starterCommit": "db15901da90d8d8a190d158c895dfe76c172b415"
+    "starterRef": "v0.3.0",
+    "starterCommit": "60f1691920c91a5cf83e480a3ce98c3ddefdef55"
   },
   "license": "Apache-2.0",
   "repository": {
@@ -39,12 +42,20 @@
     "scaffolding"
   ],
   "scripts": {
-    "start": "node ./bin/create.mjs",
-    "check": "node --check ./bin/create.mjs",
-    "test": "node --test"
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "bundle-template": "node scripts/bundle-template.mjs",
+    "start": "pnpm build && node ./bin/create.mjs",
+    "prepack": "pnpm build"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
     "giget": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
   }
 }

@@ -12,34 +12,34 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.2.1
+create-clubedge-app v0.3.0
         |
         v
-Clubedge Starter v0.2.0
-commit db15901da90d8d8a190d158c895dfe76c172b415
+Clubedge Starter v0.3.0
+commit 60f1691920c91a5cf83e480a3ce98c3ddefdef55
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.2.1` | `clubedge-starter@v0.2.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.3.0` | `clubedge-starter@v0.3.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.2.0` tag is expected to resolve to commit
-`db15901da90d8d8a190d158c895dfe76c172b415`. The CLI verifies this before
+The `v0.3.0` tag is expected to resolve to commit
+`60f1691920c91a5cf83e480a3ce98c3ddefdef55`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.2.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.3.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 ## Requirements
 
 - Node.js 22.12 or newer.
-- pnpm 10.9.0 or newer (the generated starter uses Corepack and pnpm).
+- pnpm 10.9.0 or newer. The generated project is a pnpm workspace, so dependencies are installed with pnpm even when you start the CLI with `npx`; the CLI falls back to `corepack pnpm` when `pnpm` is not on your path.
 - Git, when using the default Git initialization.
-- Internet access to download the starter from GitHub and install dependencies.
+- Internet access to install dependencies. The default Starter release ships inside the CLI package, so GitHub is only contacted for `--ref`.
 
 ## Usage
 
@@ -73,53 +73,68 @@ pnpm dlx @clubedge/create-clubedge-app
 ```text
 Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
---ref <ref>            Select a starter tag, branch, or commit (default: v0.2.0)
---no-install           Skip pnpm install
---no-git               Skip Git initialization
--h, --help             Show help
--v, --version          Show the CLI version
+--ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
+--template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
+--dry-run               Show what would be created without writing anything
+-y, --yes               Accept defaults and never prompt (default directory: my-app)
+--no-install            Skip dependency installation
+--no-git                Skip Git initialization
+-h, --help              Show help
+-v, --version           Show the CLI version
 ```
 
-Examples:
+The target directory must be empty or not exist. The CLI never deletes or overwrites existing files, and if scaffolding fails it removes whatever it wrote, so a failed run leaves nothing behind.
+
+Every generated project records its CLI version, Starter repository, Starter ref, and Starter commit in `package.json` and `README.md`.
 
 ```sh
-pnpm dlx @clubedge/create-clubedge-app my-app --ref <starter-tag-or-commit>
-pnpm dlx @clubedge/create-clubedge-app my-app --no-install
-```
+# Preview the files and edits without writing anything
+pnpm dlx @clubedge/create-clubedge-app my-app --dry-run
 
-The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default is the tested `v0.2.0` Starter release, so the same CLI version produces the same Starter revision. Use `--ref` to explicitly select a tag, branch, or commit.
-
-The default is the tested Starter release tag `v0.2.0`. Every generated project records its CLI version, Starter repository, exact Starter ref, and resolved Starter commit in `package.json` and `README.md`.
-
-Use `--ref` only when you intentionally want a different Starter revision:
-
-```sh
-# Reproduce the supported default
-pnpm dlx @clubedge/create-clubedge-app my-app
+# Non-interactive, for scripts and CI
+pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git
 
 # Try an unreleased Starter change
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.2.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.3.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
+
+# Test local Starter changes before releasing them
+pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 ```
 
 ## How it works
 
-This CLI scaffolds the complete reference Starter. It does not yet offer selectable SaaS, dashboard, or minimal feature presets; those should be added once each preset has a distinct, maintained template. This keeps CLI output aligned with the Starter repository instead of creating a second, drifting copy of its source.
+Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.
+
+The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
+
+The CLI first builds a plan (the files to copy and the edits to make), which `--dry-run` prints, and then applies it. The source is organized the same way:
+
+```text
+src/
+  cli/      argument parsing and terminal output
+  core/     manifest, template sources, customizations, planning, and execution
+  steps/    Git initialization and dependency installation
+  utils/    file listing and copying, processes, and naming
+```
 
 ## Development
 
 ```sh
 corepack enable
 pnpm install
-node ./bin/create.mjs --help
-pnpm check
-pnpm test
+pnpm check            # type-check sources and tests
+pnpm test             # unit and scaffolding tests
+pnpm build            # compile src/ to dist/
+node ./bin/create.mjs my-app --template-dir ../clubedge-starter --dry-run
 ```
 
-CI scaffolds a clean project from the pinned Starter release, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. A scheduled, non-blocking compatibility job also checks Starter `main`.
+Without a bundled template, a local build downloads the pinned Starter release from GitHub and verifies its commit. Run `pnpm bundle-template` to bundle it, or `pnpm bundle-template --from ../clubedge-starter` to bundle a local checkout.
+
+CI packs the CLI with `npm pack`, scaffolds a clean project from the packed tarball, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. A scheduled, non-blocking compatibility job also checks Starter `main`.
 
 ## Release workflow
 
@@ -128,11 +143,11 @@ CI scaffolds a clean project from the pinned Starter release, installs its depen
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.2.0`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.3.0`, and publish the Starter release.
 
 ### CLI maintainers
 
-1. Change `defaultStarterRef` in [`bin/create.mjs`](bin/create.mjs) to the new tested Starter tag.
+1. Set `clubedge.starterRef` and `clubedge.starterCommit` in [`package.json`](package.json) to the new tested Starter tag, and bump `version`.
 2. Update the version relationship table and changelog.
 3. Generate a clean project from that exact tag.
 4. Run install, lint, typecheck, unit tests, browser tests, production build, and runtime smoke checks.

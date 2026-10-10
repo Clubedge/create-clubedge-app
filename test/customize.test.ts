@@ -183,6 +183,11 @@ describe("applyConditionals", () => {
     expect(applyConditionals(source, selection)).toBe("start\nstorage();\n<p>Both</p>\nend");
   });
 
+  it("always drops Starter-repository-only sections", () => {
+    const source = "a\n<!-- clubedge:if starter-repository -->\nMaintainers only.\n<!-- clubedge:end -->\nb";
+    expect(applyConditionals(source, selection)).toBe("a\nb");
+  });
+
   it("returns sources without markers unchanged", () => {
     expect(applyConditionals("a\n\n\nb", selection)).toBe("a\n\n\nb");
   });

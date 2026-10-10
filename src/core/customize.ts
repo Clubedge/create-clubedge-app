@@ -198,6 +198,8 @@ export class ConditionalError extends Error {
 const MARKER = /^\s*(?:\/\/|#|<!--|\{?\/\*)\s*clubedge:(if|end)\b\s*(.*?)\s*(?:-->|\*\/\}?)?\s*$/;
 
 function evaluateCondition(expression: string, selection: Selection, location: string): boolean {
+  // Maintainer-only sections of the Starter repository never reach a generated project.
+  if (expression.trim() === "starter-repository") return false;
   return expression.split("&&").every((part) => {
     const match = /^\s*([a-z][a-z0-9-]*)\s*(!?=)\s*([a-z0-9|-]+)\s*$/.exec(part);
     if (!match) throw new ConditionalError(`${location}: cannot read the condition "${expression}".`);

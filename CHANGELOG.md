@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- Write the project name to `apps/web/src/config/site.json` when the Starter provides it, instead of replacing strings in source files. Starter `v0.1.x` refs keep the previous behavior.
+
 ## 0.1.13
 
 ## 0.1.12

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  customizeAppManifest,
   customizeLegacySource,
+  customizeLockfile,
   customizeReadme,
   customizeRootManifest,
   customizeSiteConfig,
   type Provenance,
 } from "../src/core/customize.js";
-import { siteConfig } from "./helpers.js";
+import { lockfile, siteConfig } from "./helpers.js";
 
 const identity = { packageName: "my-product", displayName: "My Product" };
 const provenance: Provenance = {
@@ -85,5 +87,72 @@ describe("customizeLegacySource", () => {
     expect(result).toContain("My Product application foundation.");
     expect(result).toContain("<span>My Product</span><span>Application workspace</span>");
     expect(result).not.toMatch(/Clubedge Starter|>Clubedge</);
+  });
+});
+
+describe("customizeLockfile", () => {
+  it("drops the apps that were left out and renames the selected one", () => {
+    const result = customizeLockfile(lockfile, {
+      remove: ["apps/web"],
+      rename: { from: "apps/start", to: "apps/web" },
+    });
+
+    expect(result).toBe(`lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      turbo:
+        specifier: ^2.5.0
+        version: 2.5.0
+
+  apps/web:
+    dependencies:
+      '@tanstack/react-start':
+        specifier: 1.168.61
+        version: 1.168.61
+
+  packages/core: {}
+
+packages:
+
+  next@16.1.0:
+    resolution: {integrity: sha512-x}
+`);
+  });
+
+  it("only touches importers, never package entries", () => {
+    const result = customizeLockfile(lockfile, { remove: ["apps/start", "next@16.1.0"] });
+    expect(result).not.toContain("apps/start:");
+    expect(result).toContain("  apps/web:\n");
+    expect(result).toContain("  next@16.1.0:\n");
+  });
+});
+
+describe("customizeAppManifest", () => {
+  it("renames the app package and keeps everything else", () => {
+    const result = JSON.parse(
+      customizeAppManifest(JSON.stringify({ name: "@clubedge/start", private: true }), "@clubedge/web"),
+    );
+    expect(result).toEqual({ name: "@clubedge/web", private: true });
+  });
+});
+
+describe("framework provenance", () => {
+  const withFramework: Provenance = { ...provenance, framework: "tanstack-start", frameworkName: "TanStack Start" };
+
+  it("records the framework id in package.json", () => {
+    const result = JSON.parse(
+      customizeRootManifest(JSON.stringify({ name: "x" }), identity, withFramework, "clubedge-starter"),
+    );
+    expect(result.clubedge.framework).toBe("tanstack-start");
+    expect(result.clubedge.frameworkName).toBeUndefined();
+  });
+
+  it("names the framework in the README", () => {
+    expect(customizeReadme("# Clubedge Starter\n", identity, withFramework)).toContain(
+      "- Framework: TanStack Start\n",
+    );
   });
 });

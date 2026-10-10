@@ -5,17 +5,30 @@ import {
   parseTemplateManifest,
   readTemplateManifest,
 } from "../src/core/manifest.js";
-import { createPlan, describePlan } from "../src/core/plan.js";
-import { manifest, temporaryDirectory, writeFiles } from "./helpers.js";
+import { createPlan, describePlan, FrameworkError } from "../src/core/plan.js";
+import { frameworksManifest, manifest, temporaryDirectory, writeFiles } from "./helpers.js";
+
+/** Schema 1 Starters are read as a single Next.js framework in the app directory. */
+const parsedSchema1 = {
+  ...manifest,
+  defaultFramework: "next",
+  frameworks: {
+    next: { name: "Next.js", app: "apps/web", envExample: ".env.example", dockerfile: "Dockerfile" },
+  },
+};
 
 describe("parseTemplateManifest", () => {
-  it("accepts a valid manifest", () => {
-    expect(parseTemplateManifest(JSON.stringify(manifest))).toEqual(manifest);
+  it("reads a schema 1 manifest as a single Next.js framework", () => {
+    expect(parseTemplateManifest(JSON.stringify(manifest))).toEqual(parsedSchema1);
+  });
+
+  it("reads a schema 2 manifest with several frameworks", () => {
+    expect(parseTemplateManifest(JSON.stringify(frameworksManifest))).toEqual(frameworksManifest);
   });
 
   it("asks for a newer CLI when the schema is newer than it supports", () => {
-    expect(() => parseTemplateManifest(JSON.stringify({ ...manifest, schemaVersion: 2 }))).toThrow(
-      /template schema 2.*@latest/,
+    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 3 }))).toThrow(
+      /template schema 3.*@latest/,
     );
   });
 
@@ -26,6 +39,20 @@ describe("parseTemplateManifest", () => {
     ["a missing app", JSON.stringify({ ...manifest, app: "" })],
     ["a malformed env", JSON.stringify({ ...manifest, env: "x" })],
     ["a malformed exclude", JSON.stringify({ ...manifest, exclude: "x" })],
+    ["schema 2 without frameworks", JSON.stringify({ ...frameworksManifest, frameworks: {} })],
+    ["schema 2 without appPackage", JSON.stringify({ ...frameworksManifest, appPackage: undefined })],
+    ["an unknown default framework", JSON.stringify({ ...frameworksManifest, defaultFramework: "remix" })],
+    [
+      "an invalid framework id",
+      JSON.stringify({ ...frameworksManifest, frameworks: { "Next JS": frameworksManifest.frameworks.next } }),
+    ],
+    [
+      "an incomplete framework",
+      JSON.stringify({
+        ...frameworksManifest,
+        frameworks: { ...frameworksManifest.frameworks, next: { name: "Next.js", app: "apps/web" } },
+      }),
+    ],
   ])("rejects %s", (_label, source) => {
     expect(() => parseTemplateManifest(source)).toThrow(ManifestError);
   });
@@ -37,7 +64,7 @@ describe("parseTemplateManifest", () => {
   it("reads the manifest from a template root", async () => {
     const root = await temporaryDirectory();
     await writeFiles(root, { "clubedge.template.json": JSON.stringify(manifest) });
-    expect(await readTemplateManifest(root)).toEqual(manifest);
+    expect(await readTemplateManifest(root)).toEqual(parsedSchema1);
   });
 });
 
@@ -82,6 +109,7 @@ describe("createPlan", () => {
       "apps/web/src/config/site.json",
     ]);
     expect(plan.envFile).toEqual({ from: ".env.example", to: "apps/web/.env.local" });
+    // A single-framework Starter records no framework choice.
     expect(plan.provenance).toEqual({
       cliVersion: "9.9.9",
       starterRepository: "Clubedge/clubedge-starter",
@@ -128,5 +156,93 @@ describe("createPlan", () => {
       "Initialize a Git repository on main",
       "Skip dependency installation",
     ]);
+  });
+});
+
+describe("createPlan with several frameworks", () => {
+  const source = {
+    repository: "Clubedge/clubedge-starter",
+    ref: "v0.4.0",
+    files: files(
+      "package.json",
+      "pnpm-lock.yaml",
+      ".env.example",
+      "Dockerfile",
+      "apps/web/package.json",
+      "apps/web/src/config/site.json",
+      "apps/web/src/app/page.tsx",
+      "apps/start/package.json",
+      "apps/start/.env.example",
+      "apps/start/.env.local",
+      "apps/start/Dockerfile",
+      "apps/start/src/config/site.json",
+      "apps/start/src/routes/index.tsx",
+      "packages/core/src/index.ts",
+    ),
+  };
+  const input = { ...basePlanInput, manifest: parseTemplateManifest(JSON.stringify(frameworksManifest)), source };
+
+  it("keeps the default framework in place and leaves the others out", () => {
+    const plan = createPlan(input);
+
+    expect(plan.framework).toEqual({ id: "next", name: "Next.js" });
+    expect(plan.files.map(({ to }) => to)).toEqual([
+      "package.json",
+      "pnpm-lock.yaml",
+      ".env.example",
+      "Dockerfile",
+      "apps/web/package.json",
+      "apps/web/src/config/site.json",
+      "apps/web/src/app/page.tsx",
+      "packages/core/src/index.ts",
+    ]);
+    expect(plan.edits.map(({ path }) => path)).toEqual([
+      "package.json",
+      "pnpm-lock.yaml",
+      "apps/web/src/config/site.json",
+    ]);
+    expect(plan.provenance).toMatchObject({ framework: "next", frameworkName: "Next.js" });
+  });
+
+  it("moves the selected framework's app, env example, and Dockerfile into place", () => {
+    const plan = createPlan({ ...input, framework: "tanstack-start" });
+
+    expect(plan.framework).toEqual({ id: "tanstack-start", name: "TanStack Start" });
+    expect(plan.files).toEqual([
+      { from: "package.json", to: "package.json" },
+      { from: "pnpm-lock.yaml", to: "pnpm-lock.yaml" },
+      { from: "apps/start/package.json", to: "apps/web/package.json" },
+      { from: "apps/start/.env.example", to: ".env.example" },
+      { from: "apps/start/Dockerfile", to: "Dockerfile" },
+      { from: "apps/start/src/config/site.json", to: "apps/web/src/config/site.json" },
+      { from: "apps/start/src/routes/index.tsx", to: "apps/web/src/routes/index.tsx" },
+      { from: "packages/core/src/index.ts", to: "packages/core/src/index.ts" },
+    ]);
+    expect(plan.envFile).toEqual({ from: ".env.example", to: "apps/web/.env.local" });
+    expect(describePlan(plan)).toEqual([
+      "Create /projects/my-product",
+      "Use TanStack Start",
+      "Copy 8 files from Clubedge/clubedge-starter@v0.4.0",
+      'Edit package.json: Name the package "my-product" and record its origin',
+      'Edit apps/web/package.json: Name the TanStack Start app "@clubedge/web"',
+      "Edit pnpm-lock.yaml: Keep only the TanStack Start app in the lockfile",
+      'Edit apps/web/src/config/site.json: Set the project name to "My Product"',
+      "Create apps/web/.env.local from .env.example",
+      "Initialize a Git repository on main",
+      "Skip dependency installation",
+    ]);
+  });
+
+  it("names the available frameworks when the requested one is unknown", () => {
+    expect(() => createPlan({ ...input, framework: "remix" })).toThrow(FrameworkError);
+    expect(() => createPlan({ ...input, framework: "remix" })).toThrow(
+      'Unknown framework "remix". This Starter offers: next, tanstack-start.',
+    );
+  });
+
+  it("offers only next for schema 1 Starters", () => {
+    expect(() => createPlan({ ...basePlanInput, source, framework: "tanstack-start" })).toThrow(
+      "This Starter offers: next.",
+    );
   });
 });

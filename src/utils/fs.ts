@@ -40,6 +40,9 @@ function mapBasename(path: string, map: (name: string) => string | undefined): s
 const ignoredDirectories = new Set([
   ".git",
   ".next",
+  ".nitro",
+  ".output",
+  ".tanstack",
   ".turbo",
   ".pnpm-store",
   "node_modules",

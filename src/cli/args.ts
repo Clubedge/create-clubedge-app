@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 
 export interface CliArgs {
   projectDirectory?: string;
+  framework?: string;
   ref?: string;
   templateDir?: string;
   install: boolean;
@@ -25,6 +26,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
       allowNegative: true,
       strict: true,
       options: {
+        framework: { type: "string" },
         ref: { type: "string" },
         "template-dir": { type: "string" },
         install: { type: "boolean", default: true },
@@ -42,6 +44,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
 
   const { values, positionals } = parsed;
   if (positionals.length > 1) throw new UsageError("Only one project directory can be provided.");
+  if (values.framework !== undefined && !values.framework.trim()) {
+    throw new UsageError("--framework requires a framework id, such as next or tanstack-start.");
+  }
   if (values.ref !== undefined && !values.ref.trim()) {
     throw new UsageError("--ref requires a tag, branch, or commit.");
   }
@@ -51,6 +56,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
 
   return {
     projectDirectory: positionals[0],
+    framework: values.framework?.trim(),
     ref: values.ref,
     templateDir: values["template-dir"],
     install: values.install,

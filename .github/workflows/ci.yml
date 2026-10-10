@@ -31,6 +31,10 @@ jobs:
   generated-project:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [next, tanstack-start]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -53,7 +57,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/packed-cli"
           tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
           npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
-          node "$RUNNER_TEMP/packed-cli/package/bin/create.mjs"             "$RUNNER_TEMP/generated-app" --no-git --no-install --yes
+          node "$RUNNER_TEMP/packed-cli/package/bin/create.mjs"             "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} --no-git --no-install --yes
           # npm strips .gitignore from tarballs; the CLI must restore it.
           test -f "$RUNNER_TEMP/generated-app/.gitignore"
       - name: Install generated project dependencies
@@ -91,6 +95,10 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [next, tanstack-start]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -104,7 +112,7 @@ jobs:
       - name: Generate a project from Starter main
         run: |
           pnpm build
-          node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --no-git --no-install --yes
+          node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --framework ${{ matrix.framework }} --no-git --no-install --yes
       - name: Install generated project dependencies
         working-directory: ${{ runner.temp }}/generated-app
         run: pnpm install --frozen-lockfile

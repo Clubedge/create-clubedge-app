@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.4.0
+
+- Default to Starter `v0.4.0`, which adds the TanStack Start app and template schema 2.
+- Add `--framework next|tanstack-start`, and ask which framework to use when the Starter offers several. Next.js stays the default.
+- Read template schema 2, which describes each framework's app, environment example, and Dockerfile. The selected app is moved to `apps/web`, the others are left out, and `pnpm-lock.yaml` is kept in step so frozen installs work.
+- Record the chosen framework in the generated `package.json` and `README.md`.
+- Test generated projects for both frameworks in CI and in the release smoke test.
+
 ## 0.3.0
 
 - Default to Starter `v0.3.0`, which adds the `clubedge.template.json` template manifest.

@@ -1,11 +1,11 @@
-import { cancel, intro, isCancel, log, outro, spinner, text } from "@clack/prompts";
+import { cancel, intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
 import { relative, resolve } from "node:path";
 import process from "node:process";
 import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
 import { dim, helpText, showBanner } from "./cli/ui.js";
 import { assertTargetIsUsable, executePlan } from "./core/execute.js";
-import { readTemplateManifest } from "./core/manifest.js";
-import { createPlan, describePlan } from "./core/plan.js";
+import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
+import { createPlan, describePlan, selectFramework } from "./core/plan.js";
 import { resolveTemplateSource } from "./core/source.js";
 import { cliUrl, cliVersion, siteUrl } from "./package-info.js";
 import { initializeGit } from "./steps/git.js";
@@ -36,6 +36,31 @@ async function askProjectDirectory(): Promise<string> {
   return value;
 }
 
+/**
+ * The framework from --framework, a prompt when the Starter offers several, or the default.
+ * Returns null when the prompt is cancelled.
+ */
+async function chooseFramework(
+  manifest: TemplateManifest,
+  requested: string | undefined,
+  interactive: boolean,
+): Promise<string | null> {
+  if (requested) return selectFramework(manifest, requested).id;
+  const ids = Object.keys(manifest.frameworks);
+  if (!interactive || ids.length < 2) return manifest.defaultFramework;
+
+  const value = await select({
+    message: "Which framework should the app use?",
+    initialValue: manifest.defaultFramework,
+    options: ids.map((id) => ({
+      value: id,
+      label: manifest.frameworks[id]!.name,
+      ...(id === manifest.defaultFramework ? { hint: "default" } : {}),
+    })),
+  });
+  return isCancel(value) ? null : value;
+}
+
 async function createProject(args: CliArgs): Promise<void> {
   const interactive = Boolean(process.stdin.isTTY) && !args.yes;
   const requested = args.projectDirectory ?? (interactive ? await askProjectDirectory() : "my-app");
@@ -54,30 +79,42 @@ async function createProject(args: CliArgs): Promise<void> {
     },
   );
 
+  // The spinner runs while the manifest is read and again while files are written.
+  let spinning: "preparing" | "writing" | null = "preparing";
   try {
     const manifest = await readTemplateManifest(source.root);
+    progress.stop(`Starter ${source.ref} ready`);
+    spinning = null;
+    const framework = await chooseFramework(manifest, args.framework, interactive);
+    if (framework === null) {
+      cancel("Operation cancelled.");
+      return;
+    }
     const plan = createPlan({
       targetDirectory,
       identity,
       source,
       manifest,
+      framework,
       cliVersion,
       git: args.git,
       install: args.install,
     });
 
     if (args.dryRun) {
-      progress.stop("Dry run: nothing was written");
       log.message(describePlan(plan).map((line) => `• ${line}`).join("\n"));
-      outro("Run again without --dry-run to create the project.");
+      outro("Dry run: nothing was written. Run again without --dry-run to create the project.");
       return;
     }
 
-    progress.message(`Writing ${plan.files.length} files`);
+    spinning = "writing";
+    progress.start(`Writing ${plan.files.length} files`);
     await executePlan(plan, source);
-    progress.stop(`Created ${identity.packageName} from Starter ${source.ref}`);
+    progress.stop(`Created ${identity.packageName} with ${plan.framework.name} from Starter ${source.ref}`);
+    spinning = null;
   } catch (error) {
-    progress.stop("Project scaffold failed; nothing was left behind");
+    if (spinning === "preparing") progress.stop("Could not read the Starter");
+    if (spinning === "writing") progress.stop("Project scaffold failed; nothing was left behind");
     throw error;
   } finally {
     await source.cleanup();

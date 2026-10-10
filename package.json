@@ -1,6 +1,6 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Create a Next.js or TanStack Start application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
@@ -22,8 +22,8 @@
   },
   "clubedge": {
     "starterRepository": "Clubedge/clubedge-starter",
-    "starterRef": "v0.3.0",
-    "starterCommit": "60f1691920c91a5cf83e480a3ce98c3ddefdef55"
+    "starterRef": "v0.4.0",
+    "starterCommit": "fc01d33bb1a3944e099a1750679be87a96ff9a22"
   },
   "license": "Apache-2.0",
   "repository": {

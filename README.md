@@ -12,23 +12,23 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.1.13
+create-clubedge-app v0.2.0
         |
         v
-Clubedge Starter v0.1.1
-commit 0be0c18d41f01cd011c576fb65c25711081b8ad4
+Clubedge Starter v0.2.0
+commit db15901da90d8d8a190d158c895dfe76c172b415
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.1.13` | `clubedge-starter@v0.1.1` | The CLI's required, tested default |
+| `create-clubedge-app@0.2.0` | `clubedge-starter@v0.2.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.1.1` tag is expected to resolve to commit
-`0be0c18d41f01cd011c576fb65c25711081b8ad4`. The CLI verifies this before
+The `v0.2.0` tag is expected to resolve to commit
+`db15901da90d8d8a190d158c895dfe76c172b415`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
@@ -73,7 +73,7 @@ pnpm dlx @clubedge/create-clubedge-app
 ```text
 Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
---ref <ref>            Select a starter tag, branch, or commit (default: v0.1.1)
+--ref <ref>            Select a starter tag, branch, or commit (default: v0.2.0)
 --no-install           Skip pnpm install
 --no-git               Skip Git initialization
 -h, --help             Show help
@@ -87,9 +87,9 @@ pnpm dlx @clubedge/create-clubedge-app my-app --ref <starter-tag-or-commit>
 pnpm dlx @clubedge/create-clubedge-app my-app --no-install
 ```
 
-The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default is the tested `v0.1.1` Starter release, so the same CLI version produces the same Starter revision. Use `--ref` to explicitly select a tag, branch, or commit.
+The target directory must be empty or not exist. The CLI will not delete or overwrite files in a non-empty target directory. The default is the tested `v0.2.0` Starter release, so the same CLI version produces the same Starter revision. Use `--ref` to explicitly select a tag, branch, or commit.
 
-The default is the tested Starter release tag `v0.1.1`. Every generated project records its CLI version, Starter repository, exact Starter ref, and resolved Starter commit in `package.json` and `README.md`.
+The default is the tested Starter release tag `v0.2.0`. Every generated project records its CLI version, Starter repository, exact Starter ref, and resolved Starter commit in `package.json` and `README.md`.
 
 Use `--ref` only when you intentionally want a different Starter revision:
 
@@ -101,7 +101,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.1.1
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.2.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 ```
 

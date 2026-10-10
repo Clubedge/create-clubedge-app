@@ -92,10 +92,13 @@ jobs:
           if (manifest.clubedge?.cliVersion !== expectedVersion) {
             throw new Error(`Expected CLI ${expectedVersion}, got ${manifest.clubedge?.cliVersion}`);
           }
-          if (manifest.clubedge?.starterRef !== "v0.2.0") {
-            throw new Error(`Expected Starter v0.2.0, got ${manifest.clubedge?.starterRef}`);
+          const { clubedge: pin } = JSON.parse(
+            await readFile(`${process.env.GITHUB_WORKSPACE}/package.json`, "utf8"),
+          );
+          if (manifest.clubedge?.starterRef !== pin.starterRef) {
+            throw new Error(`Expected Starter ${pin.starterRef}, got ${manifest.clubedge?.starterRef}`);
           }
-          if (manifest.clubedge?.starterCommit !== "db15901da90d8d8a190d158c895dfe76c172b415") {
+          if (manifest.clubedge?.starterCommit !== pin.starterCommit) {
             throw new Error(`Unexpected Starter commit: ${manifest.clubedge?.starterCommit}`);
           }
           NODE
@@ -106,3 +109,19 @@ jobs:
           pnpm typecheck
           pnpm test
           pnpm build
+
+  refresh-site:
+    needs: published-package-smoke
+    runs-on: ubuntu-latest
+    steps:
+      # The site also refreshes release data at runtime; the rebuild keeps its static HTML current.
+      - name: Trigger site rebuild
+        env:
+          SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$SITE_DEPLOY_HOOK" ]; then
+            echo "SITE_DEPLOY_HOOK is not configured; skipping the site rebuild."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$SITE_DEPLOY_HOOK" > /dev/null
+          echo "Site rebuild triggered."

@@ -10,9 +10,18 @@ import {
   packageNameFromDirectory,
 } from "../bin/create.mjs";
 
-const { version: cliVersion } = JSON.parse(
+const { version: cliVersion, clubedge: starterPin } = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
+
+describe("published Starter pin", () => {
+  // The site and the release workflow read this field from npm, so keep it well-formed.
+  it("declares a release tag and a full commit SHA", () => {
+    assert.equal(starterPin.starterRepository, "Clubedge/clubedge-starter");
+    assert.match(starterPin.starterRef, /^v\d+\.\d+\.\d+$/);
+    assert.match(starterPin.starterCommit, /^[0-9a-f]{40}$/);
+  });
+});
 
 const temporaryDirectories = [];
 

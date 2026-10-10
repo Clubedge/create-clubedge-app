@@ -20,8 +20,13 @@ use a tested, versioned Starter release by default; do not change the default
 to `main`. For example:
 
 ```text
-create-clubedge-app v0.2.0 -> clubedge-starter v0.2.0
+create-clubedge-app v0.2.1 -> clubedge-starter v0.2.0
 ```
+
+The default Starter pin lives only in the `clubedge` field of `package.json`
+(`starterRef` and `starterCommit`). The CLI, the release workflow, and the
+website all read it from there, so a release only needs that field and
+`version` updated. Get the commit with `git ls-remote https://github.com/Clubedge/clubedge-starter.git refs/tags/<tag>^{}`.
 
 Use `--ref main` only for explicit compatibility experiments. A change to the
 Starter's architecture, dependencies, authentication, database integration, or
@@ -33,7 +38,7 @@ Generated projects must retain the provenance metadata written by the CLI:
 ```json
 {
   "clubedge": {
-    "cliVersion": "0.2.0",
+    "cliVersion": "0.2.1",
     "starterRepository": "Clubedge/clubedge-starter",
     "starterRef": "v0.2.0",
     "starterCommit": "db15901da90d8d8a190d158c895dfe76c172b415"

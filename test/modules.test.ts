@@ -206,7 +206,7 @@ describe("createPlan with modules", () => {
     });
 
     expect(edit(".env.example").apply("# start\nDATABASE_URL=\n\n# clubedge:if auth=supabase\nSUPABASE_URL=\n# clubedge:end\n")).toBe(
-      "# start\nDATABASE_URL=\n\n",
+      "# start\nDATABASE_URL=\n",
     );
     const app = JSON.parse(
       edit("apps/web/package.json").apply(

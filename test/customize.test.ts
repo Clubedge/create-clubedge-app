@@ -183,6 +183,11 @@ describe("applyConditionals", () => {
     expect(applyConditionals(source, selection)).toBe("start\nstorage();\n<p>Both</p>\nend");
   });
 
+  it("leaves no blank lines at the edges when a removed block started or ended the file", () => {
+    const source = "// clubedge:if auth=supabase\nconst a = 1;\n// clubedge:end\n\nconst b = 2;\n\n// clubedge:if auth=supabase\nconst c = 3;\n// clubedge:end\n";
+    expect(applyConditionals(source, selection)).toBe("const b = 2;\n");
+  });
+
   it("keeps or drops single lines with a trailing clubedge:only marker", () => {
     const source = [
       "- Always",

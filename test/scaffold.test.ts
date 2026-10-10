@@ -125,8 +125,8 @@ describe("scaffolding a project", () => {
     expect(await readFile(join(target, "apps/web/src/server/auth.ts"), "utf8")).toBe("export const provider = 'none';\n");
     expect((await readJson(join(target, "apps/web/package.json"))).dependencies).toEqual({});
     expect((await readJson(join(target, "package.json"))).clubedge.modules).toEqual({ auth: "none", storage: "none" });
-    expect(await readFile(join(target, ".env.example"), "utf8")).toBe("# start\nDATABASE_URL=\n\n");
-    expect(await readFile(join(target, "apps/web/.env.local"), "utf8")).toBe("# start\nDATABASE_URL=\n\n");
+    expect(await readFile(join(target, ".env.example"), "utf8")).toBe("# start\nDATABASE_URL=\n");
+    expect(await readFile(join(target, "apps/web/.env.local"), "utf8")).toBe("# start\nDATABASE_URL=\n");
     const readme = await readFile(join(target, "README.md"), "utf8");
     expect(readme).toContain("- Modules: Authentication: None, File storage: None");
     expect(readme).not.toContain("Supabase setup");

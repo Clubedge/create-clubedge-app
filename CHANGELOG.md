@@ -2,11 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
-## Unreleased
+## 0.5.0
 
+- Default to Starter `v0.5.0`, which adds optional modules, Better Auth, and template schema 3.
 - Add `--auth`, `--storage`, and `--cache`, and offer to customize them interactively. Options whose requirements are not met (Supabase Storage without Supabase Auth) are refused with an explanation.
 - Read template schema 3 modules: unselected options' packages, files, provider dependencies, environment variables, and lockfile entries are removed, and selected variants replace the default files.
 - Process `clubedge:if` blocks in the Starter's documentation, environment examples, and sources, so a project only describes what it contains.
+- Support Mermaid (`%%`) markers and single-line `clubedge:only` conditions, and leave no blank lines at file edges after removing blocks.
 - Record the selected modules in the generated `package.json` and `README.md`. The smoke test skips the sign-up check for projects without authentication.
 
 ## 0.4.0

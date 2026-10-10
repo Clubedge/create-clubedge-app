@@ -29,12 +29,19 @@ jobs:
       - run: pnpm build
 
   generated-project:
+    name: generated-project (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        framework: [next, tanstack-start]
+        include:
+          - { name: next-default, framework: next, modules: "" }
+          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory }
+          - { name: next-better-auth, framework: next, modules: --auth better-auth --storage none }
+          - { name: start-default, framework: tanstack-start, modules: "" }
+          - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory }
+          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -57,7 +64,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/packed-cli"
           tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
           npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
-          node "$RUNNER_TEMP/packed-cli/package/bin/create.mjs"             "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} --no-git --no-install --yes
+          node "$RUNNER_TEMP/packed-cli/package/bin/create.mjs"             "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-git --no-install --yes
           # npm strips .gitignore from tarballs; the CLI must restore it.
           test -f "$RUNNER_TEMP/generated-app/.gitignore"
       - name: Install generated project dependencies
@@ -112,7 +119,7 @@ jobs:
       - name: Generate a project from Starter main
         run: |
           pnpm build
-          node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --framework ${{ matrix.framework }} --no-git --no-install --yes
+          node bin/create.mjs "$RUNNER_TEMP/generated-app" --ref main --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-git --no-install --yes
       - name: Install generated project dependencies
         working-directory: ${{ runner.temp }}/generated-app
         run: pnpm install --frozen-lockfile

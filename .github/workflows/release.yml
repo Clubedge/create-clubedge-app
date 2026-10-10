@@ -43,7 +43,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        framework: [next, tanstack-start]
+        include:
+          - { name: next-default, framework: next, modules: "", auth: supabase }
+          - { name: start-default, framework: tanstack-start, modules: "", auth: supabase }
+          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory, auth: none }
+          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory, auth: better-auth }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -79,7 +83,7 @@ jobs:
                   tar -xzf "$package_tarball" -C "$package_dir"
                   npm install --prefix "$package_dir/package" --omit=dev --ignore-scripts
                   node "$package_dir/package/bin/create.mjs" \
-                    "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} --no-git --no-install --yes
+                    "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-git --no-install --yes
                   test -f "$RUNNER_TEMP/generated-app/package.json"
                   # npm strips .gitignore from tarballs; the CLI must restore it.
                   test -f "$RUNNER_TEMP/generated-app/.gitignore"
@@ -95,6 +99,7 @@ jobs:
         shell: bash
         env:
           FRAMEWORK: ${{ matrix.framework }}
+          AUTH: ${{ matrix.auth }}
         run: |
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
@@ -114,6 +119,9 @@ jobs:
           }
           if (manifest.clubedge?.framework !== process.env.FRAMEWORK) {
             throw new Error(`Expected framework ${process.env.FRAMEWORK}, got ${manifest.clubedge?.framework}`);
+          }
+          if (manifest.clubedge?.modules?.auth !== process.env.AUTH) {
+            throw new Error(`Expected auth ${process.env.AUTH}, got ${manifest.clubedge?.modules?.auth}`);
           }
           NODE
       - name: Verify generated application

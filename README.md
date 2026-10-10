@@ -3,7 +3,7 @@
 [![CI](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-Create a Next.js application from the [Clubedge Starter](https://github.com/Clubedge/clubedge-starter) reference implementation.
+Create a Next.js or TanStack Start application from the [Clubedge Starter](https://github.com/Clubedge/clubedge-starter) reference implementation.
 
 The CLI downloads a tested Starter release, names the generated project, creates `apps/web/.env.local` from the example, initializes Git, and installs dependencies. The Starter remains the source of truth for the generated architecture.
 
@@ -68,11 +68,27 @@ When no destination is provided, the CLI asks where to create the project:
 pnpm dlx @clubedge/create-clubedge-app
 ```
 
+### Choosing a framework
+
+The Starter ships the same application for two React frameworks. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively when the Starter offers more than one:
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
+```
+
+| `--framework`    | App                         | Production output             |
+| ---------------- | --------------------------- | ----------------------------- |
+| `next`           | Next.js App Router          | Next.js standalone build      |
+| `tanstack-start` | TanStack Start with Vite    | Nitro `.output` server bundle |
+
+Either way, the app lives in `apps/web` and uses the same shared packages, so the project layout, root scripts, and Docker commands are identical.
+
 ## Options
 
 ```text
 Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
+--framework <id>        App framework: next (default) or tanstack-start
 --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
 --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
 --dry-run               Show what would be created without writing anything
@@ -85,14 +101,14 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 The target directory must be empty or not exist. The CLI never deletes or overwrites existing files, and if scaffolding fails it removes whatever it wrote, so a failed run leaves nothing behind.
 
-Every generated project records its CLI version, Starter repository, Starter ref, and Starter commit in `package.json` and `README.md`.
+Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, and framework in `package.json` and `README.md`.
 
 ```sh
 # Preview the files and edits without writing anything
 pnpm dlx @clubedge/create-clubedge-app my-app --dry-run
 
 # Non-interactive, for scripts and CI
-pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git
+pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstack-start
 
 # Try an unreleased Starter change
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
@@ -109,7 +125,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.
 
-The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
+The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
 
 The CLI first builds a plan (the files to copy and the edits to make), which `--dry-run` prints, and then applies it. The source is organized the same way:
 

@@ -62,3 +62,66 @@ export function starterFiles({ withManifest = true } = {}): Record<string, strin
     ...(withManifest ? { "clubedge.template.json": JSON.stringify(manifest) } : {}),
   };
 }
+
+/** A schema 2 Starter offering Next.js (in place) and TanStack Start (in apps/start). */
+export const frameworksManifest = {
+  ...manifest,
+  schemaVersion: 2,
+  appPackage: "@clubedge/web",
+  defaultFramework: "next",
+  frameworks: {
+    next: { name: "Next.js", app: "apps/web", envExample: ".env.example", dockerfile: "Dockerfile" },
+    "tanstack-start": {
+      name: "TanStack Start",
+      app: "apps/start",
+      envExample: "apps/start/.env.example",
+      dockerfile: "apps/start/Dockerfile",
+    },
+  },
+};
+
+export const lockfile = `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      turbo:
+        specifier: ^2.5.0
+        version: 2.5.0
+
+  apps/start:
+    dependencies:
+      '@tanstack/react-start':
+        specifier: 1.168.61
+        version: 1.168.61
+
+  apps/web:
+    dependencies:
+      next:
+        specifier: ^16.1.0
+        version: 16.1.0
+
+  packages/core: {}
+
+packages:
+
+  next@16.1.0:
+    resolution: {integrity: sha512-x}
+`;
+
+export function frameworkStarterFiles(): Record<string, string> {
+  return {
+    ...starterFiles({ withManifest: false }),
+    "clubedge.template.json": JSON.stringify(frameworksManifest),
+    "pnpm-lock.yaml": lockfile,
+    Dockerfile: "FROM next\n",
+    "apps/web/package.json": JSON.stringify({ name: "@clubedge/web" }),
+    "apps/start/package.json": JSON.stringify({ name: "@clubedge/start" }),
+    "apps/start/.env.example": "APP_URL=\n",
+    "apps/start/.env.local": "SECRET=1\n",
+    "apps/start/Dockerfile": "FROM start\n",
+    "apps/start/src/config/site.json": JSON.stringify(siteConfig),
+    "apps/start/src/routes/index.tsx": "export const Route = null;\n",
+  };
+}

@@ -1,7 +1,7 @@
 {
   "name": "@clubedge/create-clubedge-app",
   "version": "0.3.0",
-  "description": "Create an application from the Clubedge Starter reference implementation.",
+  "description": "Create a Next.js or TanStack Start application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
   "bin": {
@@ -38,6 +38,7 @@
     "create-clubedge-app",
     "clubedge",
     "nextjs",
+    "tanstack-start",
     "starter",
     "scaffolding"
   ],

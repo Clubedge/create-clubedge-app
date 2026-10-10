@@ -12,6 +12,10 @@ export interface Provenance {
   starterRepository: string;
   starterRef: string;
   starterCommit?: string;
+  /** The framework id chosen for the project, such as "tanstack-start". */
+  framework?: string;
+  /** Its display name, for the README. */
+  frameworkName?: string;
 }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
@@ -29,6 +33,7 @@ export function customizeRootManifest(
     starterRepository: provenance.starterRepository,
     starterRef: provenance.starterRef,
     ...(provenance.starterCommit ? { starterCommit: provenance.starterCommit } : {}),
+    ...(provenance.framework ? { framework: provenance.framework } : {}),
   };
 
   for (const script of ["docker:build", "docker:start"]) {
@@ -47,10 +52,11 @@ export function customizeReadme(
   const commitLine = provenance.starterCommit
     ? `\n- Starter commit: \`${provenance.starterCommit}\``
     : "";
+  const frameworkLine = provenance.frameworkName ? `\n- Framework: ${provenance.frameworkName}` : "";
   const origin =
     `## Generated from\n\n` +
     `- Starter repository: \`${provenance.starterRepository}\`\n` +
-    `- Starter ref: \`${provenance.starterRef}\`${commitLine}\n` +
+    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${frameworkLine}\n` +
     `- CLI version: \`${provenance.cliVersion}\``;
 
   // Only the first heading is the project title; leave every other line as written.
@@ -87,4 +93,49 @@ export function customizeLegacySource(source: string, { displayName }: ProjectId
     .replaceAll("Clubedge Starter", displayName)
     .replaceAll(">Clubedge<", `>${displayName}<`)
     .replaceAll("Starter workspace", "Application workspace");
+}
+
+/** Gives the selected framework's app the package name generated projects use. */
+export function customizeAppManifest(source: string, appPackage: string): string {
+  const manifest = JSON.parse(source);
+  manifest.name = appPackage;
+  return json(manifest);
+}
+
+export interface LockfileChanges {
+  /** Workspace importers to drop: the apps of frameworks that were not selected. */
+  remove: string[];
+  /** The selected app's importer, renamed to its location in the generated project. */
+  rename?: { from: string; to: string };
+}
+
+/**
+ * Keeps pnpm-lock.yaml in step with the selected framework so `pnpm install --frozen-lockfile`
+ * works. Importers are keyed by workspace path at two-space indentation; package entries that
+ * are no longer used are harmless, and pnpm prunes them on the next lockfile update.
+ */
+export function customizeLockfile(source: string, { remove, rename }: LockfileChanges): string {
+  const output: string[] = [];
+  let inImporters = false;
+  let skipping = false;
+
+  for (const line of source.split("\n")) {
+    if (/^\S/.test(line)) {
+      inImporters = line === "importers:";
+      skipping = false;
+    } else if (inImporters) {
+      // An importer key, with its value on the next lines or inline ("packages/core: {}").
+      const key = /^ {2}([^\s:][^:]*):(?: |$)/.exec(line)?.[1];
+      if (key !== undefined) {
+        skipping = remove.includes(key);
+        if (!skipping && key === rename?.from) {
+          output.push(`  ${rename.to}:`);
+          continue;
+        }
+      }
+      if (skipping) continue;
+    }
+    output.push(line);
+  }
+  return output.join("\n");
 }

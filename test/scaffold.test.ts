@@ -6,15 +6,16 @@ import { readTemplateManifest } from "../src/core/manifest.js";
 import { createPlan } from "../src/core/plan.js";
 import { readBundledTemplate, readDirectoryTemplate, type TemplateSource } from "../src/core/source.js";
 import { listTemplateFiles, pathExists, toPackedPath } from "../src/utils/fs.js";
-import { starterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
+import { frameworkStarterFiles, starterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
 
-async function scaffold(source: TemplateSource, targetDirectory: string) {
+async function scaffold(source: TemplateSource, targetDirectory: string, framework?: string) {
   const manifest = await readTemplateManifest(source.root);
   const plan = createPlan({
     targetDirectory,
     identity: { packageName: "my-product", displayName: "My Product" },
     source,
     manifest,
+    framework,
     cliVersion: "9.9.9",
     git: false,
     install: false,
@@ -57,6 +58,47 @@ describe("scaffolding a project", () => {
     expect(await readFile(join(target, "README.md"), "utf8")).toMatch(/^# My Product\n/);
     expect(await readFile(join(target, "apps/web/.env.local"), "utf8")).toBe("DATABASE_URL=\n");
     expect(await readFile(join(target, ".gitignore"), "utf8")).toBe("node_modules/\n");
+  });
+
+  it("creates a TanStack Start project in apps/web from a multi-framework Starter", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, frameworkStarterFiles());
+    const target = join(await temporaryDirectory(), "my-product");
+
+    await scaffold(await readDirectoryTemplate(starter), target, "tanstack-start");
+
+    const files = await listTemplateFiles(target);
+    expect(files.filter((file) => file.startsWith("apps/start"))).toEqual([]);
+    expect(files).toContain("apps/web/src/routes/index.tsx");
+    expect(files).not.toContain("apps/web/src/app/page.tsx");
+    expect((await readJson(join(target, "apps/web/package.json"))).name).toBe("@clubedge/web");
+    expect((await readJson(join(target, "apps/web/src/config/site.json"))).name).toBe("My Product");
+    expect((await readJson(join(target, "package.json"))).clubedge.framework).toBe("tanstack-start");
+    expect(await readFile(join(target, "Dockerfile"), "utf8")).toBe("FROM start\n");
+    expect(await readFile(join(target, ".env.example"), "utf8")).toBe("APP_URL=\n");
+    // The Starter's local secret is never copied, even under the new name.
+    expect(await readFile(join(target, "apps/web/.env.local"), "utf8")).toBe("APP_URL=\n");
+    const lock = await readFile(join(target, "pnpm-lock.yaml"), "utf8");
+    expect(lock).toContain("  apps/web:\n    dependencies:\n      '@tanstack/react-start':");
+    expect(lock).toContain("  packages/core: {}\n");
+    expect(lock).not.toContain("apps/start");
+  });
+
+  it("creates a Next.js project and leaves the other framework out", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, frameworkStarterFiles());
+    const target = join(await temporaryDirectory(), "my-product");
+
+    await scaffold(await readDirectoryTemplate(starter), target);
+
+    const files = await listTemplateFiles(target);
+    expect(files.filter((file) => file.startsWith("apps/start"))).toEqual([]);
+    expect(files).toContain("apps/web/src/app/page.tsx");
+    expect(await readFile(join(target, "Dockerfile"), "utf8")).toBe("FROM next\n");
+    expect(await readFile(join(target, "apps/web/.env.local"), "utf8")).toBe("DATABASE_URL=\n");
+    const lock = await readFile(join(target, "pnpm-lock.yaml"), "utf8");
+    expect(lock).toContain("  apps/web:\n    dependencies:\n      next:");
+    expect(lock).not.toContain("apps/start");
   });
 
   it("restores packed dotfiles from the bundled template", async () => {

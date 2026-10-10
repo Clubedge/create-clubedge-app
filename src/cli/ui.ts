@@ -75,6 +75,7 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 Options:
+  --framework <id>        App framework: next (default) or tanstack-start
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --dry-run               Show what would be created without writing anything
@@ -86,6 +87,7 @@ Options:
 
 Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app
+  pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
   pnpm dlx @clubedge/create-clubedge-app my-app --dry-run
   pnpm dlx @clubedge/create-clubedge-app my-app --ref main
   pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter

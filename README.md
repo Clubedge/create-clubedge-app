@@ -83,12 +83,32 @@ pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
 
 Either way, the app lives in `apps/web` and uses the same shared packages, so the project layout, root scripts, and Docker commands are identical.
 
+### Choosing services
+
+Authentication, file storage, and caching are modules. Each has a default, and anything you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries.
+
+| Flag        | Options                                    | Default    |
+| ----------- | ------------------------------------------ | ---------- |
+| `--auth`    | `supabase`, `better-auth`, `none`          | `supabase` |
+| `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
+| `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
+
+```sh
+# Only the monorepo, UI, database, and tooling
+pnpm dlx @clubedge/create-clubedge-app my-app --auth none --storage none --cache memory
+```
+
+Interactive runs ask whether to customize these after the framework question. The options come from the Starter's manifest, so `--help` lists the ones the bundled Starter offers.
+
 ## Options
 
 ```text
 Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 --framework <id>        App framework: next (default) or tanstack-start
+--auth <id>             Authentication: supabase (default), better-auth, or none
+--storage <id>          File storage: s3 (default), supabase, or none
+--cache <id>            Cache and rate limits: redis (default) or memory
 --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
 --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
 --dry-run               Show what would be created without writing anything
@@ -101,7 +121,7 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 
 The target directory must be empty or not exist. The CLI never deletes or overwrites existing files, and if scaffolding fails it removes whatever it wrote, so a failed run leaves nothing behind.
 
-Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, and framework in `package.json` and `README.md`.
+Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
 ```sh
 # Preview the files and edits without writing anything
@@ -125,7 +145,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.
 
-The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
+The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. Schema 3 adds `modules`: for each option, the workspace packages it uses, the files it owns, the variant files that replace defaults, and the options it requires. Files listed under `conditional` contain `clubedge:if <condition>` / `clubedge:end` blocks (in `#`, `//`, `<!-- -->`, or JSX comments) that the CLI keeps or drops for the selection, always removing the markers; `clubedge:if starter-repository` marks sections for Starter maintainers only. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
 
 The CLI first builds a plan (the files to copy and the edits to make), which `--dry-run` prints, and then applies it. The source is organized the same way:
 

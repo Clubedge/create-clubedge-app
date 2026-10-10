@@ -21,6 +21,8 @@ describe("parseCliArgs", () => {
   it("applies defaults", () => {
     expect(parseCliArgs(["my-app"])).toEqual({
       projectDirectory: "my-app",
+      framework: undefined,
+      modules: {},
       ref: undefined,
       templateDir: undefined,
       install: true,
@@ -30,6 +32,15 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
     });
+  });
+
+  it("collects module flags without judging their values", () => {
+    expect(parseCliArgs(["app", "--auth", "none", "--storage=s3", "--cache", " memory "]).modules).toEqual({
+      auth: "none",
+      storage: "s3",
+      cache: "memory",
+    });
+    expect(() => parseCliArgs(["--auth", " "])).toThrow("--auth requires an option");
   });
 
   it("reads flags, negations, and short options", () => {

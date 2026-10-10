@@ -15,6 +15,8 @@ const parsedSchema1 = {
   frameworks: {
     next: { name: "Next.js", app: "apps/web", envExample: ".env.example", dockerfile: "Dockerfile" },
   },
+  modules: {},
+  conditional: [],
 };
 
 describe("parseTemplateManifest", () => {
@@ -23,12 +25,16 @@ describe("parseTemplateManifest", () => {
   });
 
   it("reads a schema 2 manifest with several frameworks", () => {
-    expect(parseTemplateManifest(JSON.stringify(frameworksManifest))).toEqual(frameworksManifest);
+    expect(parseTemplateManifest(JSON.stringify(frameworksManifest))).toEqual({
+      ...frameworksManifest,
+      modules: {},
+      conditional: [],
+    });
   });
 
   it("asks for a newer CLI when the schema is newer than it supports", () => {
-    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 3 }))).toThrow(
-      /template schema 3.*@latest/,
+    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 4 }))).toThrow(
+      /template schema 4.*@latest/,
     );
   });
 

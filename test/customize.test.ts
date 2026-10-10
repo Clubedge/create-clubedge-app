@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyConditionals,
+  ConditionalError,
   customizeAppManifest,
   customizeLegacySource,
   customizeLockfile,
   customizeReadme,
   customizeRootManifest,
   customizeSiteConfig,
+  removePackageDependencies,
   type Provenance,
 } from "../src/core/customize.js";
-import { lockfile, siteConfig } from "./helpers.js";
+import { lockfile, modulesLockfile, siteConfig } from "./helpers.js";
 
 const identity = { packageName: "my-product", displayName: "My Product" };
 const provenance: Provenance = {
@@ -153,6 +156,133 @@ describe("framework provenance", () => {
   it("names the framework in the README", () => {
     expect(customizeReadme("# Clubedge Starter\n", identity, withFramework)).toContain(
       "- Framework: TanStack Start\n",
+    );
+  });
+});
+
+describe("applyConditionals", () => {
+  const selection = { framework: "next", auth: "none", storage: "s3" };
+
+  it("keeps matching blocks, drops the rest, and removes every marker", () => {
+    const source = [
+      "start",
+      "# clubedge:if auth=supabase",
+      "SUPABASE_URL=",
+      "# clubedge:end",
+      "// clubedge:if storage=s3|supabase",
+      "storage();",
+      "// clubedge:end",
+      "<!-- clubedge:if framework!=next -->",
+      "TanStack only",
+      "<!-- clubedge:end -->",
+      "{/* clubedge:if auth=none && storage=s3 */}",
+      "<p>Both</p>",
+      "{/* clubedge:end */}",
+      "end",
+    ].join("\n");
+    expect(applyConditionals(source, selection)).toBe("start\nstorage();\n<p>Both</p>\nend");
+  });
+
+  it("keeps or drops single lines with a trailing clubedge:only marker", () => {
+    const source = [
+      "- Always",
+      "- Supabase <!-- clubedge:only auth=supabase -->",
+      "- No auth <!-- clubedge:only auth=none -->",
+      'storage(); // clubedge:only storage!=none',
+      "SUPABASE_STORAGE_BUCKET= # clubedge:only storage=supabase",
+    ].join("\n");
+    expect(applyConditionals(source, selection)).toBe("- Always\n- No auth\nstorage();");
+  });
+
+  it("checks clubedge:only conditions too", () => {
+    expect(() => applyConditionals("x <!-- clubedge:only cache=redis -->", selection, "README.md")).toThrow(
+      'README.md:1: unknown key "cache"',
+    );
+  });
+
+  it("reads Mermaid comments as markers", () => {
+    const source = "flowchart TB\n  %% clubedge:if storage!=none\n  App --> Storage\n  %% clubedge:end\n  App --> DB";
+    expect(applyConditionals(source, selection)).toBe("flowchart TB\n  App --> Storage\n  App --> DB");
+  });
+
+  it("always drops Starter-repository-only sections", () => {
+    const source = "a\n<!-- clubedge:if starter-repository -->\nMaintainers only.\n<!-- clubedge:end -->\nb";
+    expect(applyConditionals(source, selection)).toBe("a\nb");
+  });
+
+  it("returns sources without markers unchanged", () => {
+    expect(applyConditionals("a\n\n\nb", selection)).toBe("a\n\n\nb");
+  });
+
+  it("collapses the blank lines a removed block leaves behind", () => {
+    const source = "intro\n\n<!-- clubedge:if auth=supabase -->\nSetup.\n<!-- clubedge:end -->\n\noutro\n";
+    expect(applyConditionals(source, selection)).toBe("intro\n\noutro\n");
+  });
+
+  it.each([
+    ["an unknown key", "# clubedge:if cache=redis\n# clubedge:end", "unknown key \"cache\""],
+    ["an unreadable condition", "# clubedge:if auth\n# clubedge:end", "cannot read the condition"],
+    ["a nested block", "# clubedge:if auth=none\n# clubedge:if storage=s3\n# clubedge:end\n# clubedge:end", "cannot nest"],
+    ["an unclosed block", "# clubedge:if auth=none\nx", "never closed"],
+    ["a stray end", "x\n# clubedge:end", "without clubedge:if"],
+  ])("rejects %s with its location", (_label, source, message) => {
+    expect(() => applyConditionals(source, selection, "README.md")).toThrow(ConditionalError);
+    expect(() => applyConditionals(source, selection, "README.md")).toThrow(message);
+    expect(() => applyConditionals(source, selection, "README.md")).toThrow(/^README\.md:\d+:/);
+  });
+});
+
+describe("removePackageDependencies", () => {
+  it("removes left-out packages from every dependency field", () => {
+    const source = JSON.stringify({
+      name: "@clubedge/web",
+      dependencies: { "@clubedge/storage-s3": "workspace:*", zod: "^4" },
+      devDependencies: { "@clubedge/storage-s3": "workspace:*" },
+    });
+    expect(JSON.parse(removePackageDependencies(source, ["@clubedge/storage-s3"]))).toEqual({
+      name: "@clubedge/web",
+      dependencies: { zod: "^4" },
+      devDependencies: {},
+    });
+  });
+
+  it("leaves a manifest without those dependencies byte-for-byte unchanged", () => {
+    const source = '{"name":"x","dependencies":{"zod":"^4"}}';
+    expect(removePackageDependencies(source, ["@clubedge/storage-s3"])).toBe(source);
+  });
+});
+
+describe("customizeLockfile with left-out packages", () => {
+  it("drops their importers and every dependency entry pointing at them", () => {
+    const result = customizeLockfile(modulesLockfile, {
+      remove: ["apps/web", "packages/auth-supabase", "packages/storage-s3", "packages/storage-supabase"],
+      rename: { from: "apps/start", to: "apps/web" },
+      removeDependencies: ["@clubedge/auth-supabase", "@clubedge/storage-s3", "@clubedge/storage-supabase"],
+    });
+
+    expect(result).toBe(`lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  apps/web:
+    dependencies:
+      '@tanstack/react-start':
+        specifier: 1.168.61
+        version: 1.168.61
+
+packages:
+
+  next@16.1.0:
+    resolution: {integrity: sha512-x}
+`);
+  });
+
+  it("drops a dependency group whose entries were all removed", () => {
+    const source = "importers:\n\n  apps/web:\n    dependencies:\n      '@clubedge/storage-s3':\n        specifier: workspace:*\n        version: link:../../packages/storage-s3\n    devDependencies:\n      typescript:\n        specifier: ^5\n        version: 5.9.2\n\npackages: {}\n";
+    expect(customizeLockfile(source, { remove: [], removeDependencies: ["@clubedge/storage-s3"] })).toBe(
+      "importers:\n\n  apps/web:\n    devDependencies:\n      typescript:\n        specifier: ^5\n        version: 5.9.2\n\npackages: {}\n",
     );
   });
 });

@@ -1,4 +1,4 @@
-import { cancel, intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
 import { relative, resolve } from "node:path";
 import process from "node:process";
 import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
@@ -61,6 +61,53 @@ async function chooseFramework(
   return isCancel(value) ? null : value;
 }
 
+/**
+ * Module options from flags, plus prompts for the rest when the visitor wants to customize.
+ * Options whose requirements are not met by earlier answers are not offered. Returns null
+ * when a prompt is cancelled.
+ */
+async function chooseModules(
+  manifest: TemplateManifest,
+  requested: Record<string, string>,
+  interactive: boolean,
+): Promise<Record<string, string> | null> {
+  const unasked = Object.keys(manifest.modules).filter((id) => requested[id] === undefined);
+  if (!interactive || unasked.length === 0) return requested;
+
+  const customize = await confirm({
+    message: "Customize the included services (auth, storage, cache)?",
+    initialValue: false,
+  });
+  if (isCancel(customize)) return null;
+  if (!customize) return requested;
+
+  const chosen = { ...requested };
+  for (const [id, module] of Object.entries(manifest.modules)) {
+    if (chosen[id] !== undefined) continue;
+    const available = Object.entries(module.options).filter(([, option]) =>
+      Object.entries(option.requires).every(([other, allowed]) => {
+        const value = chosen[other] ?? requested[other];
+        // Modules answered later are checked when the plan is created.
+        return value === undefined || allowed.includes(value);
+      }),
+    );
+    const value = await select({
+      message: module.name,
+      initialValue: available.some(([optionId]) => optionId === module.default)
+        ? module.default
+        : available[0]![0],
+      options: available.map(([optionId, option]) => ({
+        value: optionId,
+        label: option.name,
+        ...(optionId === module.default ? { hint: "default" } : {}),
+      })),
+    });
+    if (isCancel(value)) return null;
+    chosen[id] = value;
+  }
+  return chosen;
+}
+
 async function createProject(args: CliArgs): Promise<void> {
   const interactive = Boolean(process.stdin.isTTY) && !args.yes;
   const requested = args.projectDirectory ?? (interactive ? await askProjectDirectory() : "my-app");
@@ -90,12 +137,18 @@ async function createProject(args: CliArgs): Promise<void> {
       cancel("Operation cancelled.");
       return;
     }
+    const modules = await chooseModules(manifest, args.modules, interactive);
+    if (modules === null) {
+      cancel("Operation cancelled.");
+      return;
+    }
     const plan = createPlan({
       targetDirectory,
       identity,
       source,
       manifest,
       framework,
+      modules,
       cliVersion,
       git: args.git,
       install: args.install,

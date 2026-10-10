@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- Add `--auth`, `--storage`, and `--cache`, and offer to customize them interactively. Options whose requirements are not met (Supabase Storage without Supabase Auth) are refused with an explanation.
+- Read template schema 3 modules: unselected options' packages, files, provider dependencies, environment variables, and lockfile entries are removed, and selected variants replace the default files.
+- Process `clubedge:if` blocks in the Starter's documentation, environment examples, and sources, so a project only describes what it contains.
+- Record the selected modules in the generated `package.json` and `README.md`. The smoke test skips the sign-up check for projects without authentication.
+
 ## 0.4.0
 
 - Default to Starter `v0.4.0`, which adds the TanStack Start app and template schema 2.

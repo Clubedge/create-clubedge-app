@@ -2,8 +2,9 @@
 
 import { cancel, intro, isCancel, outro, spinner, text } from "@clack/prompts";
 import { downloadTemplate } from "giget";
-import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -95,6 +96,7 @@ Options:
   --ref <ref>            Starter tag, branch, or commit to scaffold (default: ${defaultStarterRef})
   --no-install           Skip dependency installation
   --no-git               Skip Git repository initialization
+  --with <pkg@version>   Apply a plugin package after scaffolding (repeatable; exact version required)
   -h, --help             Show this help
   -v, --version          Show the CLI version
 
@@ -102,6 +104,7 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app
   pnpm dlx @clubedge/create-clubedge-app my-app --ref <starter-tag-or-commit>
   pnpm dlx @clubedge/create-clubedge-app my-app --no-install
+  pnpm dlx @clubedge/create-clubedge-app my-app --with @scope/plugin@1.2.3
 
 Release model:
   CLI ${packageVersion} -> Starter ${defaultStarterRef}
@@ -113,7 +116,13 @@ Learn more:
 }
 
 function parseArguments(args) {
-  const options = { install: true, git: true, ref: defaultStarterRef, projectDirectory: undefined };
+  const options = {
+    install: true,
+    git: true,
+    ref: defaultStarterRef,
+    projectDirectory: undefined,
+    plugins: [],
+  };
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -140,6 +149,14 @@ function parseArguments(args) {
       options.ref = value;
       continue;
     }
+    if (argument === "--with" || argument.startsWith("--with=")) {
+      const value = argument === "--with" ? args[++index] : argument.slice("--with=".length);
+      if (!value || value.startsWith("-")) {
+        throw new Error("--with requires a plugin package and version, such as @scope/plugin@1.2.3.");
+      }
+      options.plugins.push(parsePluginSpec(value));
+      continue;
+    }
     if (argument.startsWith("-")) {
       throw new Error(`Unknown option: ${argument}. Run with --help to see available options.`);
     }
@@ -151,6 +168,94 @@ function parseArguments(args) {
 
   return options;
 }
+
+/* ------------------------------------------------------------------ */
+/* Plugins                                                             */
+/* ------------------------------------------------------------------ */
+
+// A plugin is an npm package pinned to an exact version. Ranges and dist-tags are
+// rejected so the same command keeps producing the same project.
+const pluginSpecPattern =
+  /^((?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*)@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+
+function parsePluginSpec(spec) {
+  const match = pluginSpecPattern.exec(spec);
+  if (!match) {
+    throw new Error(
+      `Invalid plugin "${spec}". Use an npm package pinned to an exact version, such as @scope/plugin@1.2.3.`,
+    );
+  }
+  return { name: match[1], version: match[2] };
+}
+
+// Imports the plugin entry declared in an installed package's manifest:
+//   { "clubedge": { "plugin": "./plugin.mjs" } }
+// The entry must export an apply() function. Requiring the declaration keeps an
+// ordinary package from being run by mistake.
+async function loadPluginFromDirectory(packageDirectory) {
+  const manifest = JSON.parse(await readFile(join(packageDirectory, "package.json"), "utf8"));
+  const entry = manifest.clubedge?.plugin;
+  if (typeof entry !== "string" || !entry) {
+    throw new Error(
+      `${manifest.name} is not a create-clubedge-app plugin: its package.json has no "clubedge.plugin" entry.`,
+    );
+  }
+  const module = await import(pathToFileURL(resolve(packageDirectory, entry)).href);
+  const apply = module.apply ?? module.default?.apply ?? module.default;
+  if (typeof apply !== "function") {
+    throw new Error(`${manifest.name} plugin entry ${entry} does not export an apply() function.`);
+  }
+  return { name: manifest.name, version: manifest.version, apply };
+}
+
+async function installAndApplyPlugin(plugin, context) {
+  // Install into a throwaway directory so the plugin never becomes a dependency of
+  // the generated project. Lifecycle scripts are skipped.
+  const installDirectory = await mkdtemp(join(tmpdir(), "create-clubedge-app-plugin-"));
+  try {
+    await writeFile(join(installDirectory, "package.json"), '{"private":true}\n');
+    await runCapture(
+      process.platform === "win32" ? "npm.cmd" : "npm",
+      [
+        "install",
+        `${plugin.name}@${plugin.version}`,
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--no-package-lock",
+      ],
+      installDirectory,
+    );
+    const loaded = await loadPluginFromDirectory(join(installDirectory, "node_modules", plugin.name));
+    await loaded.apply(context);
+    return { name: loaded.name, version: loaded.version };
+  } finally {
+    await rm(installDirectory, { recursive: true, force: true });
+  }
+}
+
+async function applyPlugins(directory, plugins, context, applyPlugin = installAndApplyPlugin) {
+  if (plugins.length === 0) return;
+
+  const applied = [];
+  for (const plugin of plugins) {
+    try {
+      applied.push(await applyPlugin(plugin, { ...context, directory }));
+    } catch (error) {
+      throw new Error(
+        `Plugin ${plugin.name}@${plugin.version} failed: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  // Re-read the manifest: plugins may have added dependencies or scripts.
+  const manifestPath = join(directory, "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.clubedge = { ...manifest.clubedge, plugins: applied };
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+/* ------------------------------------------------------------------ */
 
 function isCancelled(value) {
   if (isCancel(value)) {
@@ -384,6 +489,24 @@ async function createProject(options) {
     throw error;
   }
 
+  if (options.plugins.length > 0) {
+    const pluginSpinner = spinner();
+    const names = options.plugins.map((plugin) => `${plugin.name}@${plugin.version}`).join(", ");
+    pluginSpinner.start(`Applying plugins: ${names}`);
+    try {
+      await applyPlugins(projectDirectory, options.plugins, {
+        packageName: projectName,
+        displayName: displayNameFromPackageName(projectName),
+        starterRef: options.ref,
+        cliVersion: packageVersion,
+      });
+      pluginSpinner.stop(`Plugins applied: ${names}`);
+    } catch (error) {
+      pluginSpinner.stop("Plugin step failed");
+      throw error;
+    }
+  }
+
   if (options.git) {
     console.log("\nInitializing Git...");
     await initializeGit(projectDirectory);
@@ -431,7 +554,15 @@ async function main() {
   }
 }
 
-export { customizeProject, displayNameFromPackageName, packageNameFromDirectory };
+export {
+  applyPlugins,
+  customizeProject,
+  displayNameFromPackageName,
+  loadPluginFromDirectory,
+  packageNameFromDirectory,
+  parseArguments,
+  parsePluginSpec,
+};
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   await main();

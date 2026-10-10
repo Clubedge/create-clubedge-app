@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- Add `--with <package>@<version>` to apply third-party plugins after scaffolding. Plugins must be pinned to an exact version and declare a `clubedge.plugin` entry; applied plugins are recorded in `package.json#clubedge.plugins`.
+
 ## 0.1.13
 
 ## 0.1.12

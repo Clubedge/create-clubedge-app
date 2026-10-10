@@ -253,8 +253,11 @@ export function applyConditionals(source: string, selection: Selection, path = "
 
   if (open) throw new ConditionalError(`${path}:${(open as { line: number }).line}: clubedge:if is never closed.`);
   const text = output.join("\n");
-  // A removed block can leave two blank lines in a row; formatted sources never have them.
-  return removed ? text.replace(/\n{3,}/g, "\n\n") : text;
+  if (!removed) return text;
+  // A removed block can leave two blank lines in a row, or blank lines at the start or end of
+  // the file; formatted sources never have them.
+  const collapsed = text.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+  return source.endsWith("\n") ? collapsed.replace(/\n+$/, "\n") : collapsed;
 }
 
 /** Removes dependencies on workspace packages that were left out of the project. */

@@ -76,6 +76,7 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 --ref <ref>            Select a starter tag, branch, or commit (default: v0.1.1)
 --no-install           Skip pnpm install
 --no-git               Skip Git initialization
+--with <pkg@version>   Apply a plugin package after scaffolding (repeatable)
 -h, --help             Show help
 -v, --version          Show the CLI version
 ```
@@ -104,6 +105,50 @@ pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.1.1
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 ```
+
+## Plugins
+
+Plugins add features to the generated project without forking the Starter. A plugin is an npm package pinned to an exact version:
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app my-app --with @scope/plugin@1.2.3 --with other-plugin@0.4.0
+```
+
+Ranges and dist-tags such as `latest` are rejected, so the same command keeps producing the same project. Plugins run in the order given, after the Starter is downloaded and named and before Git initialization and `pnpm install`, so dependencies a plugin adds are installed with the rest. Each applied plugin is recorded next to the Starter provenance:
+
+```json
+{
+  "clubedge": {
+    "cliVersion": "0.1.13",
+    "starterRef": "v0.1.1",
+    "plugins": [{ "name": "@scope/plugin", "version": "1.2.3" }]
+  }
+}
+```
+
+A plugin runs code on your machine. Only use plugins you trust. The CLI installs each one into a temporary directory with lifecycle scripts disabled; it does not become a dependency of the generated project unless the plugin adds it.
+
+### Writing a plugin
+
+Declare the entry in the plugin's `package.json`. Packages without this field are refused:
+
+```json
+{
+  "name": "@scope/plugin",
+  "version": "1.2.3",
+  "clubedge": { "plugin": "./plugin.mjs" }
+}
+```
+
+The entry exports `apply`, which receives the generated project's context and edits files in place:
+
+```js
+export async function apply({ directory, packageName, displayName, starterRef, cliVersion }) {
+  // e.g. add a dependency to package.json, write a route, append to .env.example
+}
+```
+
+If `apply` throws, the CLI stops before Git initialization and installation and names the plugin that failed.
 
 ## How it works
 

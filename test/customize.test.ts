@@ -183,6 +183,28 @@ describe("applyConditionals", () => {
     expect(applyConditionals(source, selection)).toBe("start\nstorage();\n<p>Both</p>\nend");
   });
 
+  it("keeps or drops single lines with a trailing clubedge:only marker", () => {
+    const source = [
+      "- Always",
+      "- Supabase <!-- clubedge:only auth=supabase -->",
+      "- No auth <!-- clubedge:only auth=none -->",
+      'storage(); // clubedge:only storage!=none',
+      "SUPABASE_STORAGE_BUCKET= # clubedge:only storage=supabase",
+    ].join("\n");
+    expect(applyConditionals(source, selection)).toBe("- Always\n- No auth\nstorage();");
+  });
+
+  it("checks clubedge:only conditions too", () => {
+    expect(() => applyConditionals("x <!-- clubedge:only cache=redis -->", selection, "README.md")).toThrow(
+      'README.md:1: unknown key "cache"',
+    );
+  });
+
+  it("reads Mermaid comments as markers", () => {
+    const source = "flowchart TB\n  %% clubedge:if storage!=none\n  App --> Storage\n  %% clubedge:end\n  App --> DB";
+    expect(applyConditionals(source, selection)).toBe("flowchart TB\n  App --> Storage\n  App --> DB");
+  });
+
   it("always drops Starter-repository-only sections", () => {
     const source = "a\n<!-- clubedge:if starter-repository -->\nMaintainers only.\n<!-- clubedge:end -->\nb";
     expect(applyConditionals(source, selection)).toBe("a\nb");

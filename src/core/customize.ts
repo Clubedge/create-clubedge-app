@@ -194,8 +194,11 @@ export class ConditionalError extends Error {
   override name = "ConditionalError";
 }
 
-// A marker line in any comment style the Starter uses: //, #, <!-- -->, /* */, or {/* */}.
-const MARKER = /^\s*(?:\/\/|#|<!--|\{?\/\*)\s*clubedge:(if|end)\b\s*(.*?)\s*(?:-->|\*\/\}?)?\s*$/;
+// A marker line in any comment style the Starter uses: //, #, %% (Mermaid), <!-- -->, /* */,
+// or {/* */}.
+const MARKER = /^\s*(?:\/\/|#|%%|<!--|\{?\/\*)\s*clubedge:(if|end)\b\s*(.*?)\s*(?:-->|\*\/\}?)?\s*$/;
+// A single line kept only when its condition holds: "- Item <!-- clubedge:only auth=supabase -->".
+const LINE_MARKER = /\s*(?:\/\/|#|<!--|\{?\/\*)\s*clubedge:only\s+(.+?)\s*(?:-->|\*\/\}?)?\s*$/;
 
 function evaluateCondition(expression: string, selection: Selection, location: string): boolean {
   // Maintainer-only sections of the Starter repository never reach a generated project.
@@ -235,7 +238,17 @@ export function applyConditionals(source: string, selection: Selection, path = "
       open = null;
       return;
     }
-    if (!open || open.keep) output.push(line);
+    if (open && !open.keep) return;
+    const lineMarker = LINE_MARKER.exec(line);
+    if (lineMarker && line.trim() !== lineMarker[0].trim()) {
+      if (!evaluateCondition(lineMarker[1]!, selection, location)) {
+        removed = true;
+        return;
+      }
+      output.push(line.slice(0, lineMarker.index));
+      return;
+    }
+    output.push(line);
   });
 
   if (open) throw new ConditionalError(`${path}:${(open as { line: number }).line}: clubedge:if is never closed.`);

@@ -79,10 +79,12 @@ async function createProject(args: CliArgs): Promise<void> {
     },
   );
 
-  let writing = false;
+  // The spinner runs while the manifest is read and again while files are written.
+  let spinning: "preparing" | "writing" | null = "preparing";
   try {
     const manifest = await readTemplateManifest(source.root);
     progress.stop(`Starter ${source.ref} ready`);
+    spinning = null;
     const framework = await chooseFramework(manifest, args.framework, interactive);
     if (framework === null) {
       cancel("Operation cancelled.");
@@ -105,12 +107,14 @@ async function createProject(args: CliArgs): Promise<void> {
       return;
     }
 
-    writing = true;
+    spinning = "writing";
     progress.start(`Writing ${plan.files.length} files`);
     await executePlan(plan, source);
     progress.stop(`Created ${identity.packageName} with ${plan.framework.name} from Starter ${source.ref}`);
+    spinning = null;
   } catch (error) {
-    if (writing) progress.stop("Project scaffold failed; nothing was left behind");
+    if (spinning === "preparing") progress.stop("Could not read the Starter");
+    if (spinning === "writing") progress.stop("Project scaffold failed; nothing was left behind");
     throw error;
   } finally {
     await source.cleanup();

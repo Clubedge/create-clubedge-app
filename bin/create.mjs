@@ -2,7 +2,7 @@
 
 import { cancel, intro, isCancel, outro, spinner, text } from "@clack/prompts";
 import { downloadTemplate } from "giget";
-import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
@@ -263,6 +263,63 @@ async function ensureTargetIsSafe(directory) {
   }
 }
 
+async function fileExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Starter v0.2+ keeps project identity in apps/web/src/config/site.json. */
+async function customizeSiteConfig(siteConfigPath, packageName, displayName) {
+  const siteConfig = JSON.parse(await readFile(siteConfigPath, "utf8"));
+  siteConfig.name = displayName;
+  siteConfig.shortName = displayName;
+  siteConfig.description = `${displayName} application foundation.`;
+  siteConfig.serviceId = packageName;
+  siteConfig.workspaceLabel = "Application workspace";
+  await writeFile(siteConfigPath, `${JSON.stringify(siteConfig, null, 2)}\n`);
+}
+
+/** Starter v0.1.x has no site.json, so names are replaced in known source files. */
+async function customizeLegacySources(directory, displayName) {
+  const layoutPath = join(directory, "apps", "web", "src", "app", "layout.tsx");
+  const layout = await readFile(layoutPath, "utf8");
+  const customizedLayout = layout
+    .replaceAll('"Clubedge Starter"', JSON.stringify(displayName))
+    .replace(`%s \u00b7 Clubedge Starter`, `%s \u00b7 ${displayName}`)
+    .replace(
+      "A production-minded foundation for Clubedge applications.",
+      `${displayName} application foundation.`,
+    );
+  await writeFile(layoutPath, customizedLayout);
+
+  const appFiles = [
+    join(directory, "apps", "web", "src", "app", "page.tsx"),
+    join(directory, "apps", "web", "src", "app", "dashboard", "_components", "app-sidebar.tsx"),
+    join(directory, "apps", "web", "src", "app", "dashboard", "page.tsx"),
+    join(directory, "apps", "web", "src", "app", "login", "page.tsx"),
+  ];
+  for (const appFile of appFiles) {
+    let source;
+    try {
+      source = await readFile(appFile, "utf8");
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    const customizedSource = source
+      .replaceAll("Clubedge Starter", displayName)
+      .replaceAll('>Clubedge<', `>${displayName}<`)
+      .replaceAll("Starter workspace", "Application workspace");
+    await writeFile(appFile, customizedSource);
+  }
+}
+
 async function customizeProject(
   directory,
   packageName,
@@ -301,38 +358,11 @@ async function customizeProject(
     );
   await writeFile(readmePath, customizedReadme);
 
-  const layoutPath = join(directory, "apps", "web", "src", "app", "layout.tsx");
-  const layout = await readFile(layoutPath, "utf8");
-  const customizedLayout = layout
-    .replaceAll('"Clubedge Starter"', JSON.stringify(displayName))
-    .replace(`%s \u00b7 Clubedge Starter`, `%s \u00b7 ${displayName}`)
-    .replace(
-      "A production-minded foundation for Clubedge applications.",
-      `${displayName} application foundation.`,
-    );
-  await writeFile(layoutPath, customizedLayout);
-
-  const appFiles = [
-    join(directory, "apps", "web", "src", "app", "page.tsx"),
-    join(directory, "apps", "web", "src", "app", "dashboard", "_components", "app-sidebar.tsx"),
-    join(directory, "apps", "web", "src", "app", "dashboard", "page.tsx"),
-    join(directory, "apps", "web", "src", "app", "login", "page.tsx"),
-  ];
-  for (const appFile of appFiles) {
-    let source;
-    try {
-      source = await readFile(appFile, "utf8");
-    } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-        continue;
-      }
-      throw error;
-    }
-    const customizedSource = source
-      .replaceAll("Clubedge Starter", displayName)
-      .replaceAll('>Clubedge<', `>${displayName}<`)
-      .replaceAll("Starter workspace", "Application workspace");
-    await writeFile(appFile, customizedSource);
+  const siteConfigPath = join(directory, "apps", "web", "src", "config", "site.json");
+  if (await fileExists(siteConfigPath)) {
+    await customizeSiteConfig(siteConfigPath, packageName, displayName);
+  } else {
+    await customizeLegacySources(directory, displayName);
   }
 
   const exampleEnvironment = join(directory, ".env.example");

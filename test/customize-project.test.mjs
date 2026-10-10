@@ -89,4 +89,44 @@ describe("customizeProject", () => {
     assert.doesNotMatch(login, /Clubedge Starter/);
     assert.equal(localEnvironment, "DATABASE_URL=\n");
   });
+
+  it("writes project identity to site.json when the Starter provides one", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "create-clubedge-app-"));
+    temporaryDirectories.push(directory);
+
+    const configDirectory = join(directory, "apps", "web", "src", "config");
+    const appDirectory = join(directory, "apps", "web", "src", "app");
+    await mkdir(configDirectory, { recursive: true });
+    await mkdir(appDirectory, { recursive: true });
+    await writeFile(join(directory, "package.json"), JSON.stringify({ name: "clubedge-starter-v1" }));
+    await writeFile(join(directory, "README.md"), "# Clubedge Starter\n");
+    await writeFile(join(directory, ".env.example"), "DATABASE_URL=\n");
+    const layoutSource = "title: { default: siteConfig.name }";
+    await writeFile(join(appDirectory, "layout.tsx"), layoutSource);
+    await writeFile(
+      join(configDirectory, "site.json"),
+      JSON.stringify({
+        name: "Clubedge Starter",
+        shortName: "Clubedge",
+        description: "A production-minded foundation for Clubedge applications.",
+        serviceId: "clubedge-starter",
+        workspaceLabel: "Starter workspace",
+        links: { repository: "https://example.com/repo", setupGuide: "https://example.com/setup" },
+      }),
+    );
+
+    await customizeProject(directory, "my-product", "v0.2.0");
+
+    const siteConfig = JSON.parse(await readFile(join(configDirectory, "site.json"), "utf8"));
+    assert.deepEqual(siteConfig, {
+      name: "My Product",
+      shortName: "My Product",
+      description: "My Product application foundation.",
+      serviceId: "my-product",
+      workspaceLabel: "Application workspace",
+      links: { repository: "https://example.com/repo", setupGuide: "https://example.com/setup" },
+    });
+    // Source files are left untouched once identity lives in data.
+    assert.equal(await readFile(join(appDirectory, "layout.tsx"), "utf8"), layoutSource);
+  });
 });

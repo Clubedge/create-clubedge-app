@@ -6,9 +6,20 @@ import { readTemplateManifest } from "../src/core/manifest.js";
 import { createPlan } from "../src/core/plan.js";
 import { readBundledTemplate, readDirectoryTemplate, type TemplateSource } from "../src/core/source.js";
 import { listTemplateFiles, pathExists, toPackedPath } from "../src/utils/fs.js";
-import { frameworkStarterFiles, starterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
+import {
+  frameworkStarterFiles,
+  moduleStarterFiles,
+  starterFiles,
+  temporaryDirectory,
+  writeFiles,
+} from "./helpers.js";
 
-async function scaffold(source: TemplateSource, targetDirectory: string, framework?: string) {
+async function scaffold(
+  source: TemplateSource,
+  targetDirectory: string,
+  framework?: string,
+  modules?: Record<string, string>,
+) {
   const manifest = await readTemplateManifest(source.root);
   const plan = createPlan({
     targetDirectory,
@@ -16,6 +27,7 @@ async function scaffold(source: TemplateSource, targetDirectory: string, framewo
     source,
     manifest,
     framework,
+    modules,
     cliVersion: "9.9.9",
     git: false,
     install: false,
@@ -99,6 +111,45 @@ describe("scaffolding a project", () => {
     const lock = await readFile(join(target, "pnpm-lock.yaml"), "utf8");
     expect(lock).toContain("  apps/web:\n    dependencies:\n      next:");
     expect(lock).not.toContain("apps/start");
+  });
+
+  it("leaves out unselected modules everywhere: files, packages, env, docs, and lockfile", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, moduleStarterFiles());
+    const target = join(await temporaryDirectory(), "my-product");
+
+    await scaffold(await readDirectoryTemplate(starter), target, "tanstack-start", { auth: "none", storage: "none" });
+
+    const files = await listTemplateFiles(target);
+    expect(files.filter((file) => /variants|login|storage|auth-supabase|packages\//.test(file))).toEqual([]);
+    expect(await readFile(join(target, "apps/web/src/server/auth.ts"), "utf8")).toBe("export const provider = 'none';\n");
+    expect((await readJson(join(target, "apps/web/package.json"))).dependencies).toEqual({});
+    expect((await readJson(join(target, "package.json"))).clubedge.modules).toEqual({ auth: "none", storage: "none" });
+    expect(await readFile(join(target, ".env.example"), "utf8")).toBe("# start\nDATABASE_URL=\n\n");
+    expect(await readFile(join(target, "apps/web/.env.local"), "utf8")).toBe("# start\nDATABASE_URL=\n\n");
+    const readme = await readFile(join(target, "README.md"), "utf8");
+    expect(readme).toContain("- Modules: Authentication: None, File storage: None");
+    expect(readme).not.toContain("Supabase setup");
+    expect(readme).not.toContain("clubedge:");
+    const lock = await readFile(join(target, "pnpm-lock.yaml"), "utf8");
+    expect(lock).not.toMatch(/auth-supabase|storage-s3|storage-supabase|apps\/start/);
+    expect(lock).toContain("  apps/web:\n    dependencies:\n      '@tanstack/react-start':");
+  });
+
+  it("keeps the default modules and their sections", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, moduleStarterFiles());
+    const target = join(await temporaryDirectory(), "my-product");
+
+    await scaffold(await readDirectoryTemplate(starter), target);
+
+    const files = await listTemplateFiles(target);
+    expect(files).toEqual(expect.arrayContaining(["apps/web/src/app/login/page.tsx", "packages/storage-s3/package.json"]));
+    expect(files.filter((file) => /variants|storage-supabase/.test(file))).toEqual([]);
+    expect(await readFile(join(target, ".env.example"), "utf8")).toBe(
+      "# next\nDATABASE_URL=\n\nSUPABASE_URL=\n\nSTORAGE_BUCKET=\n",
+    );
+    expect(await readFile(join(target, "README.md"), "utf8")).toContain("Supabase setup.");
   });
 
   it("restores packed dotfiles from the bundled template", async () => {

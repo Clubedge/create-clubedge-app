@@ -3,6 +3,8 @@ import { parseArgs } from "node:util";
 export interface CliArgs {
   projectDirectory?: string;
   framework?: string;
+  /** Module options from --auth, --storage, and --cache, validated against the Starter later. */
+  modules: Record<string, string>;
   ref?: string;
   templateDir?: string;
   install: boolean;
@@ -12,6 +14,9 @@ export interface CliArgs {
   help: boolean;
   version: boolean;
 }
+
+/** Module flags the CLI accepts. Which options exist is up to the Starter's manifest. */
+export const MODULE_FLAGS = ["auth", "storage", "cache"] as const;
 
 export class UsageError extends Error {
   override name = "UsageError";
@@ -27,6 +32,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
       strict: true,
       options: {
         framework: { type: "string" },
+        auth: { type: "string" },
+        storage: { type: "string" },
+        cache: { type: "string" },
         ref: { type: "string" },
         "template-dir": { type: "string" },
         install: { type: "boolean", default: true },
@@ -47,6 +55,13 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (values.framework !== undefined && !values.framework.trim()) {
     throw new UsageError("--framework requires a framework id, such as next or tanstack-start.");
   }
+  const modules: Record<string, string> = {};
+  for (const module of MODULE_FLAGS) {
+    const value = values[module];
+    if (value === undefined) continue;
+    if (!value.trim()) throw new UsageError(`--${module} requires an option, such as none.`);
+    modules[module] = value.trim();
+  }
   if (values.ref !== undefined && !values.ref.trim()) {
     throw new UsageError("--ref requires a tag, branch, or commit.");
   }
@@ -57,6 +72,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
   return {
     projectDirectory: positionals[0],
     framework: values.framework?.trim(),
+    modules,
     ref: values.ref,
     templateDir: values["template-dir"],
     install: values.install,

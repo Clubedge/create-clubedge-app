@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const MANIFEST_FILE = "clubedge.template.json";
-export const SUPPORTED_SCHEMA_VERSION = 2;
+export const SUPPORTED_SCHEMA_VERSION = 3;
 
 /** Where one framework's files live in the Starter repository. */
 export interface FrameworkTemplate {
@@ -16,9 +16,30 @@ export interface FrameworkTemplate {
   dockerfile: string;
 }
 
+/** One choice within a module, such as `storage: s3`. Paths use the Starter's layout. */
+export interface ModuleOption {
+  name: string;
+  /** Workspace packages (name to directory) this option uses. Unused ones are left out. */
+  packages: Record<string, string>;
+  /** Paths owned by this option. A path is kept only when a selected option owns it. */
+  files: string[];
+  /** Default files replaced by variants when this option is selected: target to variant. */
+  replace: Record<string, string>;
+  /** Options that must be selected alongside this one, by module. */
+  requires: Record<string, string[]>;
+}
+
+/** A replaceable part of the app, such as authentication or storage. */
+export interface TemplateModule {
+  name: string;
+  default: string;
+  options: Record<string, ModuleOption>;
+}
+
 /**
  * How a Starter describes itself to the CLI (clubedge.template.json). Top-level paths describe
- * the generated project; `frameworks` says where each framework's files live in the Starter.
+ * the generated project; `frameworks` says where each framework's files live in the Starter,
+ * and `modules` (schema 3) describes the optional parts.
  */
 export interface TemplateManifest {
   schemaVersion: number;
@@ -35,6 +56,10 @@ export interface TemplateManifest {
   dockerImage: string;
   defaultFramework: string;
   frameworks: Record<string, FrameworkTemplate>;
+  /** Optional parts of the app; empty before schema 3. */
+  modules: Record<string, TemplateModule>;
+  /** Text files with `clubedge:if` blocks, kept or dropped by the selected framework and modules. */
+  conditional: string[];
   /** Template files that should not be copied into generated projects. */
   exclude: string[];
 }
@@ -57,6 +82,8 @@ export const legacyManifest: TemplateManifest = {
   env: { example: ".env.example", target: "apps/web/.env.local" },
   dockerImage: "clubedge-starter",
   ...singleNextFramework("apps/web", ".env.example"),
+  modules: {},
+  conditional: [],
   exclude: [],
 };
 
@@ -105,8 +132,97 @@ export function parseTemplateManifest(source: string): TemplateManifest {
     env: { example: envExample, target: requireString(env, "target", "env.") },
     dockerImage: requireString(data, "dockerImage"),
     ...(schemaVersion >= 2 ? parseFrameworks(data) : singleNextFramework(app, envExample)),
+    modules: schemaVersion >= 3 ? parseModules(data.modules) : {},
+    conditional: schemaVersion >= 3 ? optionalStringArray(data, "conditional") : [],
     exclude: data.exclude ?? [],
   };
+}
+
+const ID = /^[a-z][a-z0-9-]*$/;
+
+function parseModules(value: unknown): Record<string, TemplateModule> {
+  if (value === undefined) return {};
+  if (!isRecord(value)) throw new ManifestError(`${MANIFEST_FILE}: modules must be an object.`);
+
+  const modules: Record<string, TemplateModule> = {};
+  for (const [id, entry] of Object.entries(value)) {
+    if (!ID.test(id) || id === "framework") {
+      throw new ManifestError(`${MANIFEST_FILE}: "${id}" is not a valid module id.`);
+    }
+    if (!isRecord(entry)) throw new ManifestError(`${MANIFEST_FILE}: modules.${id} must be an object.`);
+    const prefix = `modules.${id}.`;
+    const optionsValue = entry.options;
+    if (!isRecord(optionsValue) || Object.keys(optionsValue).length === 0) {
+      throw new ManifestError(`${MANIFEST_FILE}: ${prefix}options must describe at least one option.`);
+    }
+
+    const options: Record<string, ModuleOption> = {};
+    for (const [optionId, option] of Object.entries(optionsValue)) {
+      const optionPrefix = `${prefix}options.${optionId}.`;
+      if (!ID.test(optionId)) {
+        throw new ManifestError(`${MANIFEST_FILE}: "${optionId}" is not a valid option id in ${prefix.slice(0, -1)}.`);
+      }
+      if (!isRecord(option)) throw new ManifestError(`${MANIFEST_FILE}: ${optionPrefix.slice(0, -1)} must be an object.`);
+      options[optionId] = {
+        name: requireString(option, "name", optionPrefix),
+        packages: optionalStringRecord(option, "packages", optionPrefix),
+        files: optionalStringArray(option, "files", optionPrefix),
+        replace: optionalStringRecord(option, "replace", optionPrefix),
+        requires: parseRequires(option.requires, optionPrefix),
+      };
+    }
+
+    const defaultOption = requireString(entry, "default", prefix);
+    if (!options[defaultOption]) {
+      throw new ManifestError(`${MANIFEST_FILE}: ${prefix}default "${defaultOption}" is not in its options.`);
+    }
+    modules[id] = { name: requireString(entry, "name", prefix), default: defaultOption, options };
+  }
+
+  // Requirements must name real modules and options, or a selection could never be valid.
+  for (const [id, module] of Object.entries(modules)) {
+    for (const [optionId, option] of Object.entries(module.options)) {
+      for (const [requiredModule, allowed] of Object.entries(option.requires)) {
+        const unknown = allowed.find((value) => !modules[requiredModule]?.options[value]);
+        if (unknown !== undefined) {
+          throw new ManifestError(
+            `${MANIFEST_FILE}: modules.${id}.options.${optionId}.requires names unknown option ${requiredModule}=${unknown}.`,
+          );
+        }
+      }
+    }
+  }
+  return modules;
+}
+
+function parseRequires(value: unknown, prefix: string): Record<string, string[]> {
+  if (value === undefined) return {};
+  if (!isRecord(value)) throw new ManifestError(`${MANIFEST_FILE}: ${prefix}requires must be an object.`);
+  const requires: Record<string, string[]> = {};
+  for (const [module, allowed] of Object.entries(value)) {
+    const list = typeof allowed === "string" ? [allowed] : allowed;
+    if (!isStringArray(list) || list.length === 0) {
+      throw new ManifestError(`${MANIFEST_FILE}: ${prefix}requires.${module} must name one or more options.`);
+    }
+    requires[module] = list;
+  }
+  return requires;
+}
+
+function optionalStringArray(record: Record<string, unknown>, key: string, prefix = ""): string[] {
+  const value = record[key];
+  if (value === undefined) return [];
+  if (!isStringArray(value)) throw new ManifestError(`${MANIFEST_FILE}: ${prefix}${key} must be an array of paths.`);
+  return value;
+}
+
+function optionalStringRecord(record: Record<string, unknown>, key: string, prefix = ""): Record<string, string> {
+  const value = record[key];
+  if (value === undefined) return {};
+  if (!isRecord(value) || !Object.values(value).every((item) => typeof item === "string" && item)) {
+    throw new ManifestError(`${MANIFEST_FILE}: ${prefix}${key} must map names to paths.`);
+  }
+  return value as Record<string, string>;
 }
 
 function parseFrameworks(data: Record<string, unknown>) {
@@ -117,7 +233,7 @@ function parseFrameworks(data: Record<string, unknown>) {
 
   const parsed: Record<string, FrameworkTemplate> = {};
   for (const [id, entry] of Object.entries(frameworks)) {
-    if (!/^[a-z][a-z0-9-]*$/.test(id)) {
+    if (!ID.test(id)) {
       throw new ManifestError(`${MANIFEST_FILE}: "${id}" is not a valid framework id.`);
     }
     if (!isRecord(entry)) throw new ManifestError(`${MANIFEST_FILE}: frameworks.${id} must be an object.`);

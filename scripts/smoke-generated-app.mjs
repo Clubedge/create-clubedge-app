@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 const baseUrl = process.env.APP_BASE_URL ?? "http://127.0.0.1:3000";
 const timeout = Date.now() + 60_000;
+
+// Run from the generated project; its package.json records the selected modules.
+const { clubedge } = JSON.parse(await readFile("package.json", "utf8"));
+const hasAuth = clubedge?.modules?.auth !== "none";
 
 async function get(path) {
   let lastError;
@@ -24,9 +29,14 @@ const landing = await get("/");
 assert.equal(landing.status, 200, "the landing page should render");
 assert.match(await landing.text(), /Generated App/, "the generated project name should be rendered");
 
-const login = await get("/login?mode=signup");
-assert.equal(login.status, 200, "the sign-up page should render");
-assert.match(await login.text(), /Create your account/, "the sign-up view should be available");
+if (hasAuth) {
+  const login = await get("/login?mode=signup");
+  assert.equal(login.status, 200, "the sign-up page should render");
+  assert.match(await login.text(), /Create your account/, "the sign-up view should be available");
+} else {
+  const login = await get("/login");
+  assert.equal(login.status, 404, "projects without auth should have no login page");
+}
 
 const dashboard = await get("/dashboard");
 assert.equal(dashboard.status, 200, "the dashboard should render");

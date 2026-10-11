@@ -118,6 +118,78 @@ jobs:
           pnpm test
           pnpm build
 
+  generated-project-macos:
+    name: generated-project-macos (${{ matrix.name }})
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: next-default, framework: next, modules: "", change: add cache memory, final: --cache memory }
+          - {
+              name: start-local,
+              framework: tanstack-start,
+              modules: --infra local --auth better-auth,
+              change: remove storage,
+              final: --infra local --auth better-auth --storage none,
+            }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Build, bundle, and pack the CLI
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm bundle-template
+          temp="$RUNNER_TEMP"
+          npm pack --pack-destination "$temp"
+          mkdir -p "$temp/packed-cli"
+          tar -xzf "$temp"/clubedge-create-clubedge-app-*.tgz -C "$temp/packed-cli"
+          npm install --prefix "$temp/packed-cli/package" --omit=dev --ignore-scripts
+          echo "CLI=$temp/packed-cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+          echo "TEMP_DIR=$temp" >> "$GITHUB_ENV"
+      - name: Generate a project
+        run: |
+          set -euo pipefail
+          node "$CLI" "$TEMP_DIR/changed/my-app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-install --yes
+          cd "$TEMP_DIR/changed/my-app"
+          git config user.email ci@example.com
+          git config user.name CI
+          git add -A
+          git commit -qm "Generated project"
+          echo "Notes of our own." >> README.md
+          git commit -qam "Our change"
+      - name: Change a module and match a project generated with that selection
+        run: |
+          set -euo pipefail
+          cd "$TEMP_DIR/changed/my-app"
+          node "$CLI" ${{ matrix.change }} --no-install --yes
+          node "$CLI" "$TEMP_DIR/fresh/my-app" --framework ${{ matrix.framework }} ${{ matrix.final }} --no-install --no-git --yes
+          diff -r -x .git "$TEMP_DIR/changed/my-app" "$TEMP_DIR/fresh/my-app" > "$TEMP_DIR/diff.txt" || true
+          cat "$TEMP_DIR/diff.txt"
+          # Our README line is the only difference.
+          test "$(grep -c '^[<>]' "$TEMP_DIR/diff.txt")" = 1
+          grep -qx '< Notes of our own.' "$TEMP_DIR/diff.txt"
+      - name: Install, lint, typecheck, test, and build the changed project
+        working-directory: ${{ runner.temp }}/changed/my-app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
   generated-project:
     name: generated-project (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -238,7 +310,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for change in "add auth better-auth" "remove storage" "add cache memory" "add infra local" "add email resend" "add payments stripe" "add jobs pg-boss" "add observability otel"; do
+          for change in "add auth better-auth" "remove storage" "add cache memory" "add infra local" "add email resend payments stripe" "add jobs pg-boss observability otel"; do
             echo "::group::$change"
             node "$CLI" $change --no-install --yes
             git add -A

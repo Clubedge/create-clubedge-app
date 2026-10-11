@@ -7,7 +7,7 @@ import { createPlan } from "../src/core/plan.js";
 import { readProject } from "../src/core/project.js";
 import { readDirectoryTemplate } from "../src/core/source.js";
 import { applyUpdate, planUpdate } from "../src/core/update.js";
-import { completeCommand, upgradedModules } from "../src/modify.js";
+import { changedModules, completeCommand, upgradedModules } from "../src/modify.js";
 import { pathExists } from "../src/utils/fs.js";
 import { moduleStarterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
 
@@ -240,18 +240,56 @@ describe("completeCommand", () => {
     const manifest = await readTemplateManifest(starter);
     const project = { modules: { auth: "supabase", storage: "s3" } } as unknown as Parameters<typeof completeCommand>[1];
 
-    await expect(completeCommand(manifest, project, { name: "add", module: "auth", option: "none" }, false)).resolves.toEqual({
-      name: "add",
-      module: "auth",
-      option: "none",
-    });
-    await expect(completeCommand(manifest, project, { name: "remove", module: "storage" }, false)).resolves.toEqual({
+    const add = { name: "add" as const, changes: [{ module: "auth", option: "none" }, { module: "storage", option: "none" }] };
+    await expect(completeCommand(manifest, project, add, false)).resolves.toEqual(add);
+    await expect(completeCommand(manifest, project, { name: "remove", modules: ["storage"] }, false)).resolves.toEqual({
       name: "remove",
-      module: "storage",
+      modules: ["storage"],
     });
-    await expect(completeCommand(manifest, project, { name: "add", module: "auth" }, false)).rejects.toThrow(
+    await expect(completeCommand(manifest, project, { name: "add", changes: [{ module: "auth" }] }, false)).rejects.toThrow(
       "Run it in a terminal to choose from a list",
     );
-    await expect(completeCommand(manifest, project, { name: "remove" }, false)).rejects.toThrow("Usage: remove <module>");
+    await expect(completeCommand(manifest, project, { name: "remove", modules: [] }, false)).rejects.toThrow(
+      "Usage: remove <module>",
+    );
+  });
+});
+
+describe("changedModules", () => {
+  async function setup(modules: Record<string, string>) {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, moduleStarterFiles());
+    const manifest = await readTemplateManifest(starter);
+    const project = { modules } as unknown as Parameters<typeof changedModules>[1];
+    return { manifest, project };
+  }
+
+  it("applies every change before checking requirements, so related changes can go together", async () => {
+    const { manifest, project } = await setup({ auth: "none", storage: "none" });
+    const storageOnly = { name: "add" as const, changes: [{ module: "storage", option: "supabase" }] };
+    expect(() => changedModules(manifest, project, storageOnly, "pnpm clubedge")).toThrow();
+
+    const both = {
+      name: "add" as const,
+      changes: [
+        { module: "storage", option: "supabase" },
+        { module: "auth", option: "supabase" },
+      ],
+    };
+    expect(changedModules(manifest, project, both, "pnpm clubedge")).toEqual({ auth: "supabase", storage: "supabase" });
+  });
+
+  it("removes several modules at once and names the first problem", async () => {
+    const { manifest, project } = await setup({ auth: "supabase", storage: "s3" });
+    expect(changedModules(manifest, project, { name: "remove", modules: ["storage", "auth"] }, "pnpm clubedge")).toEqual({
+      auth: "none",
+      storage: "none",
+    });
+    expect(() =>
+      changedModules(manifest, project, { name: "add", changes: [{ module: "cache", option: "redis" }] }, "pnpm clubedge"),
+    ).toThrow('Unknown module "cache"');
+    expect(() =>
+      changedModules(manifest, project, { name: "add", changes: [{ module: "auth", option: "magic" }] }, "pnpm clubedge"),
+    ).toThrow('Unknown auth option "magic"');
   });
 });

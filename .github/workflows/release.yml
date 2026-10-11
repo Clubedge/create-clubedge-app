@@ -39,7 +39,7 @@ jobs:
   published-package-smoke:
     needs: publish
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -57,10 +57,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.14.0
+      # npm can take several minutes to serve a new version everywhere.
       - name: Wait for npm package availability
         shell: bash
         run: |
-          for attempt in {1..30}; do
+          for attempt in {1..90}; do
             if npm view "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" version 2>/dev/null | grep -Fx "${GITHUB_REF_NAME#v}"; then
               exit 0
             fi

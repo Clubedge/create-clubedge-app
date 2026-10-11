@@ -85,7 +85,7 @@ Either way, the app lives in `apps/web` and uses the same shared packages, so th
 
 ### Choosing services
 
-Authentication, file storage, and caching are modules. Each has a default, and anything you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries.
+Authentication, file storage, caching, and local infrastructure are modules. Each has a default, and anything you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries. The Starter's `clubedge.template.json` defines the modules, so a module a newer Starter adds gets its `--<module>` flag without a CLI change; `--help` lists the modules of the Starter this CLI release creates.
 
 | Flag        | Options                                    | Default    |
 | ----------- | ------------------------------------------ | ---------- |

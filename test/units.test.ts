@@ -81,6 +81,27 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["--auth", " "])).toThrow("--auth requires an option");
   });
 
+  it("accepts flags for modules the CLI does not know, for the Starter to validate", () => {
+    const args = parseCliArgs(["--email", "smtp", "app", "--payments=stripe", "--ref", "v1.0.0", "--no-install"]);
+    expect(args).toMatchObject({
+      projectDirectory: "app",
+      modules: { email: "smtp", payments: "stripe" },
+      ref: "v1.0.0",
+      install: false,
+    });
+  });
+
+  it("still reports unknown flags without a value", () => {
+    expect(() => parseCliArgs(["app", "--verbose"])).toThrow("Unknown option --verbose");
+    expect(() => parseCliArgs(["app", "--email", "--yes"])).toThrow("Unknown option --email");
+    expect(() => parseCliArgs(["app", "--Email", "smtp"])).toThrow("Unknown option --Email");
+  });
+
+  it("never reads a string option's value as a module flag", () => {
+    expect(parseCliArgs(["--template-dir=--odd-folder"])).toMatchObject({ templateDir: "--odd-folder", modules: {} });
+    expect(parseCliArgs(["--framework", "next", "app"])).toMatchObject({ framework: "next", projectDirectory: "app", modules: {} });
+  });
+
   it("reads flags, negations, and short options", () => {
     expect(
       parseCliArgs(["app", "--ref=main", "--no-install", "--no-git", "-y", "--dry-run"]),

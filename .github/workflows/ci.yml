@@ -37,10 +37,11 @@ jobs:
       matrix:
         include:
           - { name: next-default, framework: next, modules: "" }
-          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory }
+          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory --infra none }
           - { name: next-better-auth, framework: next, modules: --auth better-auth --storage none }
+          - { name: next-supabase-infra, framework: next, modules: --infra supabase --storage supabase }
           - { name: start-default, framework: tanstack-start, modules: "" }
-          - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory }
+          - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory --infra none }
           - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory }
     steps:
       - uses: actions/checkout@v4

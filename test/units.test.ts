@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
+import { pickTagCommit } from "../src/core/source.js";
 import { assertSupportedNode } from "../src/index.js";
 import { cliVersion, starterPin } from "../src/package-info.js";
 import { detectLauncher } from "../src/steps/install.js";
@@ -91,5 +92,23 @@ describe("published Starter pin", () => {
     expect(starterPin.starterRepository).toBe("Clubedge/clubedge-starter");
     expect(starterPin.starterRef).toMatch(/^v\d+\.\d+\.\d+$/);
     expect(starterPin.starterCommit).toMatch(/^[0-9a-f]{40}$/);
+  });
+});
+
+describe("tag resolution", () => {
+  const output = [
+    "d93d95e3bb3366c019411d41d9f2cac9d0bb96ba\trefs/tags/v0.5.0",
+    "d9375c2c3b520323ff0255ef8ec65da19251c3c1\trefs/tags/v0.5.0^{}",
+    "1111111111111111111111111111111111111111\trefs/tags/v0.5.0-beta",
+    "2222222222222222222222222222222222222222\trefs/tags/v0.4.0",
+  ].join("\n");
+
+  it("uses the commit an annotated tag points to", () => {
+    expect(pickTagCommit(output, "v0.5.0")).toBe("d9375c2c3b520323ff0255ef8ec65da19251c3c1");
+  });
+
+  it("uses a lightweight tag's own commit and ignores tags with a shared prefix", () => {
+    expect(pickTagCommit(output, "v0.4.0")).toBe("2222222222222222222222222222222222222222");
+    expect(pickTagCommit(output, "v0.5")).toBeUndefined();
   });
 });

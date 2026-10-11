@@ -106,14 +106,20 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app add [module] [option]   (inside a project)
   pnpm dlx @clubedge/create-clubedge-app remove [module]         (inside a project)
   pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app status                  (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app doctor                  (inside a project)
 
-  Inside a project with the clubedge script, use pnpm clubedge add, remove, or
-  upgrade. Without a module or option, add and remove ask for them.
+  Inside a project with the clubedge script, use pnpm clubedge add, remove,
+  upgrade, status, or doctor. Without a module or option, add and remove ask for them.
 
   add and remove change one module of an existing project, and upgrade moves it
   to a newer Starter (this CLI's release unless --ref is given). The change is
   merged into your code; lines you changed that it also changes get conflict
   markers. Commit first so you can review the result with git diff.
+
+  status shows the project's Starter release, modules, and Git state, and whether a
+  newer Starter is available. doctor checks Node.js, pnpm, the dependencies, the
+  lockfile, and the env file, then runs pnpm check:services; it changes nothing.
 
 Options:
 ${selectionHelp(manifest)}
@@ -122,6 +128,7 @@ ${selectionHelp(manifest)}
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove: change a project with uncommitted changes or without Git
+  --no-services           doctor: skip pnpm check:services
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
   --no-git                Skip Git repository initialization
@@ -138,6 +145,8 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app add auth better-auth
   pnpm dlx @clubedge/create-clubedge-app remove storage --dry-run
   pnpm dlx @clubedge/create-clubedge-app@latest upgrade
+  pnpm clubedge status
+  pnpm clubedge doctor --no-services
 
 Learn more:
   CLI      ${cliUrl}

@@ -6,7 +6,10 @@ export type Command =
   /** Without a module or option, an interactive run asks for them. */
   | { name: "add"; module?: string; option?: string }
   | { name: "remove"; module?: string }
-  | { name: "upgrade" };
+  | { name: "upgrade" }
+  /** Read-only: where the project stands, and whether it can run. */
+  | { name: "status" }
+  | { name: "doctor" };
 
 export interface CliArgs {
   command: Command;
@@ -25,6 +28,8 @@ export interface CliArgs {
   dryRun: boolean;
   /** Change a project even with uncommitted changes or without Git. */
   force: boolean;
+  /** doctor: also run `pnpm check:services`. */
+  services: boolean;
   help: boolean;
   version: boolean;
 }
@@ -43,6 +48,7 @@ const OPTIONS = {
   yes: { type: "boolean", short: "y", default: false },
   "dry-run": { type: "boolean", default: false },
   force: { type: "boolean", default: false },
+  services: { type: "boolean", default: true },
   help: { type: "boolean", short: "h", default: false },
   version: { type: "boolean", short: "v", default: false },
 } as const;
@@ -116,7 +122,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
       "--framework and module flags only apply when creating a project; use add or remove to change one module.",
     );
   }
-  if ((command.name === "add" || command.name === "remove") && values.ref !== undefined) {
+  if (command.name !== "create" && command.name !== "upgrade" && values.ref !== undefined) {
     throw new UsageError("--ref only applies when creating or upgrading a project.");
   }
   if (values.framework !== undefined && !values.framework.trim()) {
@@ -141,14 +147,16 @@ export function parseCliArgs(argv: string[]): CliArgs {
     yes: values.yes,
     dryRun: values["dry-run"],
     force: values.force,
+    services: values.services,
     help: values.help,
     version: values.version,
   };
 }
 
 /**
- * `add <module> <option>`, `remove <module>`, and `upgrade` change an existing project; anything
- * else is the directory of a new project. Create a project literally named "add" with `./add`.
+ * `add <module> <option>`, `remove <module>`, and `upgrade` change an existing project, and `status`
+ * and `doctor` inspect one; anything else is the directory of a new project. Create a project
+ * literally named "add" with `./add`.
  */
 function parseCommand(positionals: string[]): Command {
   const [name, module, option, ...extra] = positionals;
@@ -159,6 +167,10 @@ function parseCommand(positionals: string[]): Command {
   if (name === "remove") {
     if (option !== undefined) throw new UsageError("Usage: remove [module], for example: remove storage");
     return { name, module };
+  }
+  if (name === "status" || name === "doctor") {
+    if (module !== undefined) throw new UsageError(`Usage: ${name}, run inside a project.`);
+    return { name };
   }
   if (name === "upgrade") {
     if (module !== undefined) throw new UsageError("Usage: upgrade [--ref <tag>], for example: upgrade --ref v0.8.0");

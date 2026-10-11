@@ -32,6 +32,7 @@ describe("parseCliArgs", () => {
       yes: false,
       dryRun: false,
       force: false,
+      services: true,
       help: false,
       version: false,
     });
@@ -72,6 +73,15 @@ describe("parseCliArgs", () => {
       dryRun: true,
     });
     expect(() => parseCliArgs(["upgrade", "v0.8.0"])).toThrow("Usage: upgrade [--ref <tag>]");
+  });
+
+  it("reads status and doctor, with doctor's --no-services", () => {
+    expect(parseCliArgs(["status"])).toMatchObject({ command: { name: "status" } });
+    expect(parseCliArgs(["doctor"])).toMatchObject({ command: { name: "doctor" }, services: true });
+    expect(parseCliArgs(["doctor", "--no-services"])).toMatchObject({ services: false });
+    expect(() => parseCliArgs(["status", "now"])).toThrow("Usage: status");
+    expect(() => parseCliArgs(["doctor", "--ref", "v1.0.0"])).toThrow("--ref only applies");
+    expect(() => parseCliArgs(["status", "--auth", "none"])).toThrow("only apply when creating");
   });
 
   it("collects module flags without judging their values", () => {

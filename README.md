@@ -157,6 +157,17 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 
 The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 
+## Check a project
+
+Two read-only commands help you keep a project healthy:
+
+```sh
+pnpm clubedge status    # Starter release, modules, Git state, and whether a newer Starter exists
+pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and pnpm check:services
+```
+
+`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that `apps/web/.env.local` has every variable in `.env.example`, then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
+
 ## Version relationship
 
 Each CLI release is tested against one specific Starter release:
@@ -208,6 +219,7 @@ src/
 | --- | --- |
 | Configure a generated project | Its `SETUP.md`, also in the [Starter repository](https://github.com/Clubedge/clubedge-starter/blob/main/SETUP.md) |
 | Change modules or upgrade a project | [Change an existing project](#change-an-existing-project) |
+| See where a project stands, or why it does not run | [Check a project](#check-a-project) |
 | Reproduce an exact Starter version | [Version relationship](#version-relationship) |
 | See what changed in each release | [CHANGELOG.md](CHANGELOG.md) |
 | See what is planned next | [ROADMAP.md](ROADMAP.md) |

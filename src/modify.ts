@@ -22,12 +22,12 @@ import { cliVersion, starterPin } from "./package-info.js";
 import { installDependencies, resolvePnpm } from "./steps/install.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
-type ChangeCommand = Exclude<CliArgs["command"], { name: "create" }>;
+type ChangeCommand = Extract<CliArgs["command"], { name: "add" | "remove" | "upgrade" }>;
 /** add or remove with every argument known. */
 type ModuleCommand = { name: "add"; module: string; option: string } | { name: "remove"; module: string };
 
 /** How to run the CLI in this project: its `clubedge` script when it has one. */
-async function cliCommand(project: Project): Promise<string> {
+export async function cliCommand(project: Project): Promise<string> {
   try {
     const manifest = JSON.parse(await readFile(join(project.root, "package.json"), "utf8"));
     if (manifest.scripts?.clubedge) return "pnpm clubedge";
@@ -313,7 +313,7 @@ async function planChange(
 
 export async function changeProject(args: CliArgs): Promise<void> {
   const command = args.command;
-  if (command.name === "create") throw new Error("Not a project change.");
+  if (command.name !== "add" && command.name !== "remove" && command.name !== "upgrade") throw new Error("Not a project change.");
   const interactive = Boolean(process.stdin.isTTY) && !args.yes;
   const project = await readProject(process.cwd());
   await assertSafeToChange(project, args, interactive);

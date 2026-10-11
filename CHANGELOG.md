@@ -2,8 +2,9 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
-## Unreleased
+## 0.7.0
 
+- Default to Starter `v0.7.0`, which adds `--infra local`: PostgreSQL through PGlite and a local folder for files, so `pnpm dev` runs with nothing installed.
 - Remove optional peer links to packages that only left-out modules installed, so generated projects no longer install them. For example, a project without `--infra local` no longer installs PGlite through drizzle-orm, and a project without Better Auth no longer installs its optional peers.
 
 ## 0.6.0

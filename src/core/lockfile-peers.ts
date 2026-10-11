@@ -179,5 +179,19 @@ export function pruneOptionalPeers(source: string): string {
     }
     output.push(line);
   }
-  return output.join("\n");
+  return closeEmptySnapshots(output).join("\n");
+}
+
+/**
+ * A snapshot whose only dependencies were removed links is left without a body, which pnpm reads
+ * as null and rejects as a broken lockfile; pnpm itself writes such entries as "key: {}".
+ */
+function closeEmptySnapshots(lines: string[]): string[] {
+  let section = "";
+  return lines.map((line, index) => {
+    if (/^\S/.test(line)) section = line.replace(/:.*$/, "");
+    if (section !== "snapshots" || !/^ {2}\S.*:$/.test(line)) return line;
+    const next = lines.slice(index + 1).find((candidate) => candidate.trim() !== "");
+    return next === undefined || !/^ {4}/.test(next) ? `${line} {}` : line;
+  });
 }

@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.11.0
+
+- Default to Starter `v0.10.0`, which adds the deploy module (`--deploy docker|fly|railway|render|vercel|netlify`), a migrator in the production image, a manual deploy workflow, and the `/api/ready` readiness endpoint. `--deploy` needs no CLI code: it comes from the Starter's manifest.
+- Test Fly.io and Vercel projects in CI and a Netlify project in the release smoke test.
+
 ## 0.10.0
 
 - Default to Starter `v0.9.0`, which adds the email module (`--email smtp|resend|none`), password reset for both auth providers, and email verification for Better Auth. `--email` needs no CLI code: it comes from the Starter's manifest.

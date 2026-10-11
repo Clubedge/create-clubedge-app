@@ -273,14 +273,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: next-from-v0.6.0, framework: next, from: v0.6.0, modules: "", final: "" }
+          # Both predate the email module, so the upgrade adds it as none.
+          - { name: next-from-v0.6.0, framework: next, from: v0.6.0, modules: "", final: --email none }
           # v0.5.0 predates the infra module, so the upgrade adds it as none.
           - {
               name: start-from-v0.5.0,
               framework: tanstack-start,
               from: v0.5.0,
               modules: --auth better-auth,
-              final: --auth better-auth --infra none,
+              final: --auth better-auth --infra none --email none,
             }
     steps:
       - uses: actions/checkout@v4

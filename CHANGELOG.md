@@ -5,6 +5,7 @@ All notable changes to `create-clubedge-app` are documented here.
 ## 0.10.0
 
 - Default to Starter `v0.9.0`, which adds the email module (`--email smtp|resend|none`), password reset for both auth providers, and email verification for Better Auth. `--email` needs no CLI code: it comes from the Starter's manifest.
+- Fix a doubled blank line in `.env.local` when `add` or `remove` swaps one section of variables for another, such as switching `--email smtp` to `resend`.
 - Take module flags from the Starter's manifest: any `--<module> <option>` flag is accepted and validated against the modules the Starter describes, so new Starter modules need no CLI release. A mistyped module lists the Starter's modules; an unknown flag without a value is still an error.
 - Build the help text's framework and module lines, and the "customize the included services" prompt, from the Starter's manifest.
 

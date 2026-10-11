@@ -80,6 +80,12 @@ describe("updateEnvFile", () => {
     expect(result.text).toBe("DATABASE_URL=x\n\n# Storage\nSTORAGE_BUCKET=mine\n");
   });
 
+  it("swaps one section for another without doubling the blank line between sections", () => {
+    const smtp = "A=1\n\n# SMTP\nSMTP_URL=\nEMAIL_FROM=x\n";
+    const resend = "A=1\n\n# Resend\nRESEND_API_KEY=\nEMAIL_FROM=x\n";
+    expect(updateEnvFile(smtp, smtp, resend).text).toBe(resend);
+  });
+
   it("leaves no blank lines at the end after removing the last variables", () => {
     const result = updateEnvFile("A=1\n\n# Cache\nREDIS_URL=\n", "A=1\n\n# Cache\nREDIS_URL=\n", "A=1\n");
     expect(result.text).toBe("A=1\n");

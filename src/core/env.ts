@@ -92,8 +92,17 @@ export function updateEnvFile(local: string, baseExample: string, targetExample:
     let anchor = at - 1;
     while (anchor >= 0 && !keyOf(target[anchor]!)) anchor--;
     const position = anchor >= 0 ? find(lines, keyOf(target[anchor]!)!) : -1;
-    if (position === -1) appended.push(...commentsAbove(target, at), line);
-    else lines.splice(position + 1, 0, ...target.slice(anchor + 1, at + 1));
+    if (position === -1) {
+      appended.push(...commentsAbove(target, at), line);
+      return;
+    }
+    const between = target.slice(anchor + 1, at + 1);
+    // A removed section can leave its blank separator after the anchor; reuse it rather than
+    // adding a second one.
+    // The last element is the end of the file after its final newline, not a blank line.
+    const followedByBlank = position + 1 < lines.length - 1 && lines[position + 1]!.trim() === "";
+    const reuseBlank = between[0]?.trim() === "" && followedByBlank;
+    lines.splice(position + (reuseBlank ? 2 : 1), 0, ...(reuseBlank ? between.slice(1) : between));
   });
 
   let text = lines.join(eol);

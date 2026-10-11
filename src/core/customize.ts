@@ -24,14 +24,25 @@ export interface Provenance {
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
+/** Root package.json scripts that module options set or that left-out options remove. */
+export interface ScriptChanges {
+  set: Record<string, string>;
+  remove: string[];
+}
+
 export function customizeRootManifest(
   source: string,
   { packageName }: ProjectIdentity,
   provenance: Provenance,
   dockerImage: string,
+  scripts: ScriptChanges = { set: {}, remove: [] },
 ): string {
   const manifest = JSON.parse(source);
   manifest.name = packageName;
+  if (manifest.scripts && typeof manifest.scripts === "object") {
+    for (const name of scripts.remove) delete manifest.scripts[name];
+  }
+  if (Object.keys(scripts.set).length) manifest.scripts = { ...manifest.scripts, ...scripts.set };
   manifest.clubedge = {
     cliVersion: provenance.cliVersion,
     starterRepository: provenance.starterRepository,

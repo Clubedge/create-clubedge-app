@@ -11,6 +11,7 @@ import {
   type LockfileChanges,
   type ProjectIdentity,
   type Provenance,
+  type ScriptChanges,
   type Selection,
 } from "./customize.js";
 import type { FrameworkTemplate, TemplateManifest } from "./manifest.js";
@@ -168,8 +169,22 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection) {
     }
   }
 
+  // Selected options set their scripts; scripts only left-out options define are removed.
+  const scripts: ScriptChanges = { set: {}, remove: [] };
+  const offeredScripts = new Set<string>();
+  for (const [id, module] of Object.entries(manifest.modules)) {
+    for (const [optionId, option] of Object.entries(module.options)) {
+      for (const [name, command] of Object.entries(option.scripts)) {
+        offeredScripts.add(name);
+        if (selection[id] === optionId) scripts.set[name] = command;
+      }
+    }
+  }
+  scripts.remove = [...offeredScripts].filter((name) => !(name in scripts.set));
+
   const removedPackages = [...offeredPackages].filter(([name]) => !usedPackages.has(name));
   return {
+    scripts,
     removedPackageNames: removedPackages.map(([name]) => name),
     removedPackageDirectories: removedPackages.map(([, directory]) => directory),
     replacedTargets: new Set(replacements.values()),
@@ -239,7 +254,8 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     edits.push({
       path: "package.json",
       description: `Name the package "${identity.packageName}" and record its origin`,
-      apply: (text) => customizeRootManifest(text, identity, provenance, manifest.dockerImage),
+      apply: (text) =>
+        customizeRootManifest(text, identity, provenance, manifest.dockerImage, moduleFiles.scripts),
     });
   }
   const appManifest = `${manifest.app}/package.json`;

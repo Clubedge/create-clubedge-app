@@ -1,4 +1,5 @@
 import process from "node:process";
+import type { TemplateManifest } from "../core/manifest.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "../package-info.js";
 
 // Each glyph is 6 rows tall. Rows are padded to a common width when rendered.
@@ -64,7 +65,36 @@ export function showBanner(): void {
   console.log("");
 }
 
-export function helpText(): string {
+/** "a (default), b, or c" */
+function choices(ids: string[], defaultId: string) {
+  const labels = ids.map((id) => (id === defaultId ? `${id} (default)` : id));
+  return labels.length > 1 ? `${labels.slice(0, -1).join(", ")}${labels.length > 2 ? "," : ""} or ${labels.at(-1)}` : labels[0] ?? "";
+}
+
+/**
+ * The framework and module flags of a Starter, from its manifest, so new modules appear in the
+ * help without CLI changes. Without a manifest, a generic line explains module flags.
+ */
+export function selectionHelp(manifest: TemplateManifest | null): string {
+  const line = (flag: string, text: string) => `  ${flag.padEnd(24)}${text}`;
+  if (!manifest) {
+    return [
+      line("--framework <id>", "App framework, such as next or tanstack-start"),
+      line("--<module> <option>", "A module option, such as --auth none; the Starter lists its modules"),
+    ].join("\n");
+  }
+  const frameworks = Object.keys(manifest.frameworks);
+  return [
+    ...(frameworks.length > 1
+      ? [line("--framework <id>", `App framework: ${choices(frameworks, manifest.defaultFramework)}`)]
+      : []),
+    ...Object.entries(manifest.modules).map(([id, module]) =>
+      line(`--${id} <id>`, `${module.name}: ${choices(Object.keys(module.options), module.default)}`),
+    ),
+  ].join("\n");
+}
+
+export function helpText(manifest: TemplateManifest | null = null): string {
   return `
 create-clubedge-app ${cliVersion}
 
@@ -86,11 +116,7 @@ Usage:
   markers. Commit first so you can review the result with git diff.
 
 Options:
-  --framework <id>        App framework: next (default) or tanstack-start
-  --auth <id>             Authentication: supabase (default), better-auth, or none
-  --storage <id>          File storage: s3 (default), supabase, or none
-  --cache <id>            Cache and rate limits: redis (default) or memory
-  --infra <id>            Local services: docker (default), supabase, local, or none
+${selectionHelp(manifest)}
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
                           (upgrade: the Starter to upgrade to)
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)

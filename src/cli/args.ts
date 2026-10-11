@@ -12,7 +12,10 @@ export interface CliArgs {
   command: Command;
   projectDirectory?: string;
   framework?: string;
-  /** Module options from --auth, --storage, --cache, and --infra, validated against the Starter later. */
+  /**
+   * Module options from flags such as --auth none. Any flag that is not one of the CLI's own
+   * options names a module; the Starter's manifest validates modules and options later.
+   */
   modules: Record<string, string>;
   ref?: string;
   templateDir?: string;
@@ -26,36 +29,76 @@ export interface CliArgs {
   version: boolean;
 }
 
-/** Module flags the CLI accepts. Which options exist is up to the Starter's manifest. */
-export const MODULE_FLAGS = ["auth", "storage", "cache", "infra"] as const;
-
 export class UsageError extends Error {
   override name = "UsageError";
 }
 
+/** The CLI's own long options; every other --name value flag selects a module option. */
+const OPTIONS = {
+  framework: { type: "string" },
+  ref: { type: "string" },
+  "template-dir": { type: "string" },
+  install: { type: "boolean", default: true },
+  git: { type: "boolean", default: true },
+  yes: { type: "boolean", short: "y", default: false },
+  "dry-run": { type: "boolean", default: false },
+  force: { type: "boolean", default: false },
+  help: { type: "boolean", short: "h", default: false },
+  version: { type: "boolean", short: "v", default: false },
+} as const;
+
+const isOwnOption = (name: string) =>
+  name in OPTIONS || (name.startsWith("no-") && OPTIONS[name.slice(3) as keyof typeof OPTIONS]?.type === "boolean");
+
+/**
+ * Takes module flags (`--email smtp` or `--email=smtp`) out of the arguments, leaving the CLI's
+ * own options for the strict parser. A flag that is neither needs a value, so a stray unknown
+ * flag such as --verbose is still reported.
+ */
+function extractModuleFlags(argv: string[]) {
+  const rest: string[] = [];
+  const modules: Record<string, string> = {};
+  for (let i = 0; i < argv.length; i++) {
+    const argument = argv[i]!;
+    if (argument === "--") {
+      rest.push(...argv.slice(i));
+      break;
+    }
+    const match = /^--([^=]+)(?:=(.*))?$/.exec(argument);
+    if (!match || isOwnOption(match[1]!)) {
+      rest.push(argument);
+      // A string option's value is never a flag of its own.
+      if (match && match[2] === undefined && OPTIONS[match[1] as keyof typeof OPTIONS]?.type === "string") {
+        if (argv[i + 1] !== undefined) rest.push(argv[++i]!);
+      }
+      continue;
+    }
+    const [, name, inline] = match;
+    if (!/^[a-z][a-z0-9-]*$/.test(name!)) throw new UsageError(`Unknown option --${name}. Run with --help to see available options.`);
+    const next = argv[i + 1];
+    const value = inline ?? (next !== undefined && !next.startsWith("-") ? argv[++i] : undefined);
+    if (value === undefined) {
+      throw new UsageError(
+        `Unknown option --${name}. Module flags take an option, such as --${name} none. Run with --help to see available options.`,
+      );
+    }
+    if (!value.trim()) throw new UsageError(`--${name} requires an option, such as none.`);
+    modules[name!] = value.trim();
+  }
+  return { rest, modules };
+}
+
 export function parseCliArgs(argv: string[]): CliArgs {
+  const { rest, modules } = extractModuleFlags(argv);
   let parsed;
   try {
     parsed = parseArgs({
-      args: argv,
+      args: rest,
       allowPositionals: true,
       allowNegative: true,
       strict: true,
       options: {
-        framework: { type: "string" },
-        auth: { type: "string" },
-        storage: { type: "string" },
-        cache: { type: "string" },
-        infra: { type: "string" },
-        ref: { type: "string" },
-        "template-dir": { type: "string" },
-        install: { type: "boolean", default: true },
-        git: { type: "boolean", default: true },
-        yes: { type: "boolean", short: "y", default: false },
-        "dry-run": { type: "boolean", default: false },
-        force: { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-        version: { type: "boolean", short: "v", default: false },
+        ...OPTIONS,
       },
     });
   } catch (error) {
@@ -68,7 +111,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (command.name === "create" && positionals.length > 1) {
     throw new UsageError("Only one project directory can be provided.");
   }
-  if (command.name !== "create" && (values.framework !== undefined || MODULE_FLAGS.some((id) => values[id]))) {
+  if (command.name !== "create" && (values.framework !== undefined || Object.keys(modules).length)) {
     throw new UsageError(
       "--framework and module flags only apply when creating a project; use add or remove to change one module.",
     );
@@ -78,13 +121,6 @@ export function parseCliArgs(argv: string[]): CliArgs {
   }
   if (values.framework !== undefined && !values.framework.trim()) {
     throw new UsageError("--framework requires a framework id, such as next or tanstack-start.");
-  }
-  const modules: Record<string, string> = {};
-  for (const module of MODULE_FLAGS) {
-    const value = values[module];
-    if (value === undefined) continue;
-    if (!value.trim()) throw new UsageError(`--${module} requires an option, such as none.`);
-    modules[module] = value.trim();
   }
   if (values.ref !== undefined && !values.ref.trim()) {
     throw new UsageError("--ref requires a tag, branch, or commit.");

@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- Take module flags from the Starter's manifest: any `--<module> <option>` flag is accepted and validated against the modules the Starter describes, so new Starter modules need no CLI release. A mistyped module lists the Starter's modules; an unknown flag without a value is still an error.
+- Build the help text's framework and module lines, and the "customize the included services" prompt, from the Starter's manifest.
+
 ## 0.9.0
 
 - Default to Starter `v0.8.0`, whose projects have a `clubedge` script: `pnpm clubedge add`, `remove`, and `upgrade`.

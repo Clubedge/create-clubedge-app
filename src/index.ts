@@ -7,8 +7,8 @@ import { dim, helpText, showBanner } from "./cli/ui.js";
 import { assertTargetIsUsable, executePlan } from "./core/execute.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { createPlan, describePlan, selectFramework } from "./core/plan.js";
-import { resolveTemplateSource } from "./core/source.js";
-import { cliUrl, cliVersion, siteUrl } from "./package-info.js";
+import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
+import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
 import { changeProject } from "./modify.js";
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, installDependencies, resolvePnpm } from "./steps/install.js";
@@ -77,7 +77,9 @@ async function chooseModules(
   if (!interactive || unasked.length === 0) return requested;
 
   const customize = await confirm({
-    message: "Customize the included services (auth, storage, cache, local infrastructure)?",
+    message: `Customize the included services (${Object.values(manifest.modules)
+      .map((module) => module.name.toLowerCase())
+      .join(", ")})?`,
     initialValue: false,
   });
   if (isCancel(customize)) return null;
@@ -214,6 +216,18 @@ async function createProject(args: CliArgs): Promise<void> {
   );
 }
 
+/** The bundled Starter's manifest, for the help text; null in a checkout without a bundle. */
+async function bundledManifest(): Promise<TemplateManifest | null> {
+  try {
+    const bundled = await readBundledTemplate();
+    // A checkout can hold an older bundle; only the pinned release describes what this CLI creates.
+    if (!bundled || bundled.commit !== starterPin.starterCommit) return null;
+    return await readTemplateManifest(bundled.root);
+  } catch {
+    return null;
+  }
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   try {
     const args = parseCliArgs(argv);
@@ -223,7 +237,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     }
     showBanner();
     if (args.help) {
-      console.log(helpText());
+      console.log(helpText(await bundledManifest()));
       return;
     }
     assertSupportedNode();

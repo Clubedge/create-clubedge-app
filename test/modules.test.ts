@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ManifestError, parseTemplateManifest } from "../src/core/manifest.js";
 import { createPlan, describePlan, ModuleError, selectModules } from "../src/core/plan.js";
+import { parseCliArgs } from "../src/cli/args.js";
+import { selectionHelp } from "../src/cli/ui.js";
 import { frameworksManifest, modulesManifest } from "./helpers.js";
 
 const manifest = parseTemplateManifest(JSON.stringify(modulesManifest));
@@ -252,5 +254,34 @@ describe("module scripts", () => {
 
   it("removes every option's scripts when the selected option has none", () => {
     expect(rootScripts({ infra: "none" })).toEqual({ dev: "next dev" });
+  });
+});
+
+describe("modules the CLI has no code for", () => {
+  const emailManifest = {
+    ...modulesManifest,
+    modules: {
+      ...modulesManifest.modules,
+      email: {
+        name: "Email",
+        default: "none",
+        options: {
+          smtp: { name: "SMTP", files: ["apps/web/src/server/email.ts", "apps/start/src/server/email.ts"] },
+          none: { name: "None" },
+        },
+      },
+    },
+  };
+
+  it("are selected by flag and listed in the help", () => {
+    const manifest = parseTemplateManifest(JSON.stringify(emailManifest));
+    const selection = selectModules(manifest, parseCliArgs(["app", "--email", "smtp"]).modules);
+    expect(selection).toMatchObject({ auth: "supabase", storage: "s3", email: "smtp" });
+    expect(selectionHelp(manifest)).toContain("  --email <id>            Email: smtp or none (default)");
+    expect(() => selectModules(manifest, parseCliArgs(["app", "--emial", "smtp"]).modules)).toThrow('"emial"');
+  });
+
+  it("explain module flags in general when there is no manifest", () => {
+    expect(selectionHelp(null)).toContain("--<module> <option>");
   });
 });

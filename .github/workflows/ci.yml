@@ -134,7 +134,7 @@ jobs:
           - { name: start-default, framework: tanstack-start, modules: "" }
           - { name: start-vercel, framework: tanstack-start, modules: --deploy vercel }
           - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory --infra none --email none }
-          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory --payments stripe }
+          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory --payments stripe --jobs pg-boss }
           - { name: start-local, framework: tanstack-start, modules: --infra local --auth better-auth }
     steps:
       - uses: actions/checkout@v4
@@ -238,7 +238,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for change in "add auth better-auth" "remove storage" "add cache memory" "add infra local" "add email resend" "add payments stripe"; do
+          for change in "add auth better-auth" "remove storage" "add cache memory" "add infra local" "add email resend" "add payments stripe" "add jobs pg-boss"; do
             echo "::group::$change"
             node "$CLI" $change --no-install --yes
             git add -A
@@ -250,7 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           node "$CLI" "$RUNNER_TEMP/fresh/my-app" --framework ${{ matrix.framework }} \
-            --auth better-auth --storage none --cache memory --infra local --email resend --payments stripe --no-install --no-git --yes
+            --auth better-auth --storage none --cache memory --infra local --email resend --payments stripe --jobs pg-boss --no-install --no-git --yes
           diff -r -x .git -x node_modules "$RUNNER_TEMP/changed/my-app" "$RUNNER_TEMP/fresh/my-app" > "$RUNNER_TEMP/diff.txt" || true
           cat "$RUNNER_TEMP/diff.txt"
           # Our README line is the only difference.

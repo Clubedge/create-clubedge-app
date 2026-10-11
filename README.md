@@ -218,7 +218,7 @@ The required CI job always tests the pinned default. The scheduled compatibility
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidance. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidance, and [ROADMAP.md](ROADMAP.md) for the planned phases. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

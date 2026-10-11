@@ -2,9 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
-## Unreleased
+## 0.6.0
 
-- Let module options set root `package.json` scripts; scripts that only left-out options define are removed. This prepares the local infrastructure module, whose `infra:*` scripts differ by option.
+- Default to Starter `v0.6.0`, which adds the local infrastructure module and `pnpm check:services`.
+- Add `--infra docker|supabase|none`: Docker Compose services, the Supabase CLI's local stack, or no local services. The environment examples point at the chosen services.
+- Let module options set root `package.json` scripts; scripts that only left-out options define are removed, so each project gets the `infra:*` scripts for its option.
+- Fix Starter tag verification on Windows, where an annotated tag resolved to the tag object instead of its commit and scaffolding a downloaded Starter release failed.
 
 ## 0.5.0
 

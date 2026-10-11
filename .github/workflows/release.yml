@@ -44,10 +44,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: next-default, framework: next, modules: "", auth: supabase }
-          - { name: start-default, framework: tanstack-start, modules: "", auth: supabase }
-          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory, auth: none }
-          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory, auth: better-auth }
+          - { name: next-default, framework: next, modules: "", auth: supabase, infra: docker }
+          - { name: start-default, framework: tanstack-start, modules: "", auth: supabase, infra: docker }
+          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory --infra none, auth: none, infra: none }
+          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory --infra supabase, auth: better-auth, infra: supabase }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -100,6 +100,7 @@ jobs:
         env:
           FRAMEWORK: ${{ matrix.framework }}
           AUTH: ${{ matrix.auth }}
+          INFRA: ${{ matrix.infra }}
         run: |
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
@@ -122,6 +123,12 @@ jobs:
           }
           if (manifest.clubedge?.modules?.auth !== process.env.AUTH) {
             throw new Error(`Expected auth ${process.env.AUTH}, got ${manifest.clubedge?.modules?.auth}`);
+          }
+          if (manifest.clubedge?.modules?.infra !== process.env.INFRA) {
+            throw new Error(`Expected infra ${process.env.INFRA}, got ${manifest.clubedge?.modules?.infra}`);
+          }
+          if ((process.env.INFRA === "none") !== (manifest.scripts?.["infra:up"] === undefined)) {
+            throw new Error(`Unexpected infra:up script for infra ${process.env.INFRA}`);
           }
           NODE
       - name: Verify generated application

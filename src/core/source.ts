@@ -76,15 +76,21 @@ export async function readDirectoryTemplate(directory: string): Promise<Template
 
 /** Resolves a tag to its commit with `git ls-remote`, following annotated tags. */
 export async function resolveTagCommit(repository: string, tag: string): Promise<string | undefined> {
-  const output = await runCapture("git", [
-    "ls-remote",
-    `https://github.com/${repository}.git`,
-    `refs/tags/${tag}^{}`,
-    `refs/tags/${tag}`,
-  ]);
-  const lines = output.split("\n").map((line) => line.split(/\s+/));
-  const peeled = lines.find(([, ref]) => ref?.endsWith("^{}"));
-  return (peeled ?? lines[0])?.[0] || undefined;
+  // List every tag rather than passing a `refs/tags/<tag>^{}` pattern: on Windows the command
+  // runs through cmd.exe, which strips `^`, so the peeled ref would never match.
+  const output = await runCapture("git", ["ls-remote", "--tags", `https://github.com/${repository}.git`]);
+  return pickTagCommit(output, tag);
+}
+
+/** Picks a tag's commit from `git ls-remote` output, preferring the peeled ref of an annotated tag. */
+export function pickTagCommit(output: string, tag: string): string | undefined {
+  const refs = new Map(
+    output
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/))
+      .map(([id, ref]) => [ref, id] as const),
+  );
+  return refs.get(`refs/tags/${tag}^{}`) ?? refs.get(`refs/tags/${tag}`);
 }
 
 export async function downloadGitHubTemplate(

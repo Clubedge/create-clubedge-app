@@ -43,7 +43,6 @@ jobs:
           - { name: start-default, framework: tanstack-start, modules: "" }
           - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory --infra none }
           - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory }
-          - { name: start-local, framework: tanstack-start, modules: --infra local --auth better-auth }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

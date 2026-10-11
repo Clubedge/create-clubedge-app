@@ -48,6 +48,7 @@ jobs:
           - { name: start-default, framework: tanstack-start, modules: "", auth: supabase, infra: docker }
           - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory --infra none, auth: none, infra: none }
           - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory --infra supabase, auth: better-auth, infra: supabase }
+          - { name: next-local, framework: next, modules: --infra local --auth better-auth, auth: better-auth, infra: local }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

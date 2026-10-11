@@ -12,27 +12,27 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.6.0
+create-clubedge-app v0.7.0
         |
         v
-Clubedge Starter v0.6.0
-commit bf5a5e801254816455cbb837902283b788ab7595
+Clubedge Starter v0.7.0
+commit 3b8114760b8151c2538b57c06620ff2b884f2d56
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.6.0` | `clubedge-starter@v0.6.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.7.0` | `clubedge-starter@v0.7.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.6.0` tag is expected to resolve to commit
-`bf5a5e801254816455cbb837902283b788ab7595`. The CLI verifies this before
+The `v0.7.0` tag is expected to resolve to commit
+`3b8114760b8151c2538b57c06620ff2b884f2d56`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.6.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.7.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 ## Requirements
 
@@ -92,7 +92,7 @@ Authentication, file storage, and caching are modules. Each has a default, and a
 | `--auth`    | `supabase`, `better-auth`, `none`          | `supabase` |
 | `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
 | `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
-| `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `none` | `docker` |
+| `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `local` (no Docker: PGlite and a local folder), `none` | `docker` |
 
 ```sh
 # Only the monorepo, UI, database, and tooling
@@ -110,7 +110,7 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 --auth <id>             Authentication: supabase (default), better-auth, or none
 --storage <id>          File storage: s3 (default), supabase, or none
 --cache <id>            Cache and rate limits: redis (default) or memory
---infra <id>            Local services: docker (default), supabase, or none
+--infra <id>            Local services: docker (default), supabase, local, or none
 --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
 --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
 --dry-run               Show what would be created without writing anything
@@ -136,7 +136,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.6.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.7.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -181,7 +181,7 @@ CI packs the CLI with `npm pack`, scaffolds a clean project from the packed tarb
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.6.0`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.7.0`, and publish the Starter release.
 
 ### CLI maintainers
 

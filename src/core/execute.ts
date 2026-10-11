@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, parse } from "node:path";
-import { copyTemplateFiles, emptyDirectory } from "../utils/fs.js";
+import { copyTemplateFiles, emptyDirectory, pathExists } from "../utils/fs.js";
 import type { ScaffoldPlan } from "./plan.js";
 import type { TemplateSource } from "./source.js";
 
@@ -31,7 +31,8 @@ export async function assertTargetIsUsable(directory: string): Promise<void> {
 export async function executePlan(plan: ScaffoldPlan, source: Pick<TemplateSource, "root">): Promise<void> {
   const target = plan.targetDirectory;
   await assertTargetIsUsable(target);
-  await mkdir(dirname(target), { recursive: true });
+  // Only create a missing parent: on Windows, mkdir on an existing drive root (D:\) fails.
+  if (!(await pathExists(dirname(target)))) await mkdir(dirname(target), { recursive: true });
 
   let created = false;
   try {

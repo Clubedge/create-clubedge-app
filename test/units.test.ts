@@ -40,27 +40,42 @@ describe("parseCliArgs", () => {
 
   it("reads add and remove commands", () => {
     expect(parseCliArgs(["add", "cache", "redis", "--dry-run"])).toMatchObject({
-      command: { name: "add", module: "cache", option: "redis" },
+      command: { name: "add", changes: [{ module: "cache", option: "redis" }] },
       projectDirectory: undefined,
       dryRun: true,
     });
     expect(parseCliArgs(["remove", "storage", "--force", "--no-install"])).toMatchObject({
-      command: { name: "remove", module: "storage" },
+      command: { name: "remove", modules: ["storage"] },
       force: true,
       install: false,
     });
     expect(parseCliArgs(["./add"]).command).toEqual({ name: "create" });
   });
 
+  it("reads several modules in one add or remove", () => {
+    expect(parseCliArgs(["add", "email", "resend", "payments", "stripe"]).command).toEqual({
+      name: "add",
+      changes: [
+        { module: "email", option: "resend" },
+        { module: "payments", option: "stripe" },
+      ],
+    });
+    expect(parseCliArgs(["remove", "storage", "payments"]).command).toEqual({
+      name: "remove",
+      modules: ["storage", "payments"],
+    });
+  });
+
   it("leaves the module and option to ask for when they are missing", () => {
-    expect(parseCliArgs(["add"]).command).toEqual({ name: "add", module: undefined, option: undefined });
-    expect(parseCliArgs(["add", "cache"]).command).toEqual({ name: "add", module: "cache", option: undefined });
-    expect(parseCliArgs(["remove"]).command).toEqual({ name: "remove", module: undefined });
+    expect(parseCliArgs(["add"]).command).toEqual({ name: "add", changes: [] });
+    expect(parseCliArgs(["add", "cache"]).command).toEqual({ name: "add", changes: [{ module: "cache" }] });
+    expect(parseCliArgs(["remove"]).command).toEqual({ name: "remove", modules: [] });
   });
 
   it("explains malformed add and remove commands", () => {
-    expect(() => parseCliArgs(["add", "cache", "redis", "extra"])).toThrow("Usage: add [module] [option]");
-    expect(() => parseCliArgs(["remove", "storage", "s3"])).toThrow("Usage: remove [module]");
+    expect(() => parseCliArgs(["add", "cache", "redis", "extra"])).toThrow("Usage: add [module option]...");
+    expect(() => parseCliArgs(["add", "cache", "redis", "cache", "memory"])).toThrow('"cache" is named more than once');
+    expect(() => parseCliArgs(["remove", "storage", "storage"])).toThrow('"storage" is named more than once');
     expect(() => parseCliArgs(["add", "cache", "redis", "--auth", "none"])).toThrow("only apply when creating");
     expect(() => parseCliArgs(["remove", "storage", "--ref", "v1.0.0"])).toThrow("--ref only applies");
   });

@@ -103,8 +103,8 @@ This CLI release scaffolds Starter ${starterPin.starterRef} (commit ${starterPin
 
 Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
-  pnpm dlx @clubedge/create-clubedge-app add [module] [option]   (inside a project)
-  pnpm dlx @clubedge/create-clubedge-app remove [module]         (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app add [module option]...  (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app remove [module]...      (inside a project)
   pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
   pnpm dlx @clubedge/create-clubedge-app status                  (inside a project)
   pnpm dlx @clubedge/create-clubedge-app doctor                  (inside a project)
@@ -112,10 +112,11 @@ Usage:
   Inside a project with the clubedge script, use pnpm clubedge add, remove,
   upgrade, status, or doctor. Without a module or option, add and remove ask for them.
 
-  add and remove change one module of an existing project, and upgrade moves it
-  to a newer Starter (this CLI's release unless --ref is given). The change is
-  merged into your code; lines you changed that it also changes get conflict
-  markers. Commit first so you can review the result with git diff.
+  add and remove change modules of an existing project, several at once as one
+  change, and upgrade moves it to a newer Starter (this CLI's release unless --ref
+  is given) and lists the Starter releases it crosses. The change is merged into
+  your code; lines you changed that it also changes get conflict markers. Commit
+  first so you can review the result with git diff.
 
   status shows the project's Starter release, modules, and Git state, and whether a
   newer Starter is available. doctor checks Node.js, pnpm, the dependencies, the
@@ -143,6 +144,7 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app --ref main
   pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
   pnpm dlx @clubedge/create-clubedge-app add auth better-auth
+  pnpm dlx @clubedge/create-clubedge-app add email resend payments stripe
   pnpm dlx @clubedge/create-clubedge-app remove storage --dry-run
   pnpm dlx @clubedge/create-clubedge-app@latest upgrade
   pnpm clubedge status

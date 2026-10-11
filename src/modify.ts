@@ -8,7 +8,9 @@ import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
-import type { MergeAction } from "./core/merge.js";
+import { compareVersions } from "./core/health.js";
+import { countConflicts, type MergeAction } from "./core/merge.js";
+import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
 import { selectModules } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
 import {
@@ -24,7 +26,9 @@ import { commandSucceeds, runCapture } from "./utils/process.js";
 
 type ChangeCommand = Extract<CliArgs["command"], { name: "add" | "remove" | "upgrade" }>;
 /** add or remove with every argument known. */
-type ModuleCommand = { name: "add"; module: string; option: string } | { name: "remove"; module: string };
+type ModuleCommand =
+  | { name: "add"; changes: Array<{ module: string; option: string }> }
+  | { name: "remove"; modules: string[] };
 
 /** How to run the CLI in this project: its `clubedge` script when it has one. */
 export async function cliCommand(project: Project): Promise<string> {
@@ -105,10 +109,10 @@ export async function completeCommand(
   command: Exclude<ChangeCommand, { name: "upgrade" }>,
   interactive: boolean,
 ): Promise<ModuleCommand | null> {
-  if (command.name === "add" && command.module && command.option) {
-    return { name: "add", module: command.module, option: command.option };
+  if (command.name === "add" && command.changes.length && command.changes.every((change) => change.option)) {
+    return { name: "add", changes: command.changes.map(({ module, option }) => ({ module, option: option! })) };
   }
-  if (command.name === "remove" && command.module) return { name: "remove", module: command.module };
+  if (command.name === "remove" && command.modules.length) return { name: "remove", modules: command.modules };
   if (!interactive) {
     throw new UsageError(
       command.name === "add"
@@ -117,7 +121,7 @@ export async function completeCommand(
     );
   }
 
-  let moduleId = command.module;
+  let moduleId = command.name === "add" ? command.changes[0]?.module : undefined;
   if (!moduleId) {
     const choices = Object.entries(manifest.modules).filter(([id, module]) =>
       command.name === "add" ? true : Boolean(module.options.none) && project.modules[id] !== "none",
@@ -134,7 +138,7 @@ export async function completeCommand(
     if (isCancel(value)) return null;
     moduleId = value;
   }
-  if (command.name === "remove") return { name: "remove", module: moduleId };
+  if (command.name === "remove") return { name: "remove", modules: [moduleId] };
 
   const module = manifest.modules[moduleId];
   if (!module) {
@@ -153,32 +157,36 @@ export async function completeCommand(
     })),
   });
   if (isCancel(option)) return null;
-  return { name: "add", module: moduleId, option };
+  return { name: "add", changes: [{ module: moduleId, option }] };
 }
 
-/** The selection after add or remove, validated against the Starter's manifest. */
-function changedModules(manifest: TemplateManifest, project: Project, command: ModuleCommand, cli: string) {
-  const module = manifest.modules[command.module];
-  if (!module) {
-    throw new UsageError(`Unknown module "${command.module}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
-  }
-  let option: string;
-  if (command.name === "add") {
-    option = command.option;
-    if (!module.options[option]) {
-      throw new UsageError(`Unknown ${command.module} option "${option}". Choose one of: ${Object.keys(module.options).join(", ")}.`);
+/**
+ * The selection after add or remove, validated against the Starter's manifest. Every change
+ * applies before requirements are checked, so changes that only work together, such as Supabase
+ * Auth with Supabase Storage, can be made in one command.
+ */
+export function changedModules(manifest: TemplateManifest, project: Project, command: ModuleCommand, cli: string) {
+  const changes =
+    command.name === "add" ? command.changes : command.modules.map((module) => ({ module, option: "none" }));
+  const requested = { ...project.modules };
+  for (const { module: id, option } of changes) {
+    const module = manifest.modules[id];
+    if (!module) {
+      throw new UsageError(`Unknown module "${id}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
     }
-  } else {
-    if (!module.options.none) {
-      const others = Object.keys(module.options).filter((id) => id !== project.modules[command.module]);
+    if (command.name === "remove" && !module.options.none) {
+      const others = Object.keys(module.options).filter((other) => other !== project.modules[id]);
       throw new UsageError(
-        `${module.name} cannot be removed. Switch it instead, for example: ${cli} add ${command.module} ${others[0] ?? module.default}`,
+        `${module.name} cannot be removed. Switch it instead, for example: ${cli} add ${id} ${others[0] ?? module.default}`,
       );
     }
-    option = "none";
+    if (!module.options[option]) {
+      throw new UsageError(`Unknown ${id} option "${option}". Choose one of: ${Object.keys(module.options).join(", ")}.`);
+    }
+    requested[id] = option;
   }
   // Validates requirements between modules, such as Supabase Storage needing Supabase Auth.
-  return selectModules(manifest, { ...project.modules, [command.module]: option });
+  return selectModules(manifest, requested);
 }
 
 /**
@@ -231,11 +239,19 @@ function describe(plan: UpdatePlan): string {
 }
 
 function report(plan: UpdatePlan) {
-  const conflicts = plan.actions.filter((action) => action.kind === "conflict");
+  const conflicts = plan.actions.filter(
+    (action): action is Extract<MergeAction, { kind: "conflict" }> => action.kind === "conflict",
+  );
   const kept = plan.actions.filter((action): action is Extract<MergeAction, { kind: "keep" }> => action.kind === "keep");
   if (conflicts.length) {
+    const blocks = conflicts.map((action) => countConflicts(action.content));
+    const total = blocks.reduce((sum, count) => sum + count, 0);
     log.warn(
-      `Resolve the conflict markers (<<<<<<< yours / >>>>>>> clubedge) in:\n${conflicts.map((action) => `  ${action.path}`).join("\n")}`,
+      `Resolve ${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}. ` +
+        "Each is marked <<<<<<< yours ... ======= ... >>>>>>> clubedge: keep your lines, the Starter's, or a mix, then delete the markers.\n" +
+        conflicts
+          .map((action, i) => `  ${action.path} ${dim(`(${blocks[i]} ${blocks[i] === 1 ? "block" : "blocks"})`)}`)
+          .join("\n"),
     );
   }
   if (kept.length) {
@@ -261,6 +277,8 @@ interface Change {
   /** One line describing the change, such as "Starter v0.6.0 -> v0.7.0". */
   summary: string;
   notes: string[];
+  /** upgrade: one line per Starter release it crosses, when GitHub could be reached. */
+  releases?: string;
 }
 
 /** Works out what the command changes; resolves null when the project is already there. */
@@ -303,11 +321,18 @@ async function planChange(
   if (/^v\d/.test(target.ref)) {
     notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
   }
+  let releases: string | undefined;
+  if (compareVersions(project.starterRef, target.ref) !== null) {
+    const published = await fetchReleases(target.repository);
+    const crossed = published ? releasesBetween(published, project.starterRef, target.ref) : [];
+    if (crossed.length) releases = describeReleases(crossed);
+  }
   return {
     base: baseSide,
     target: { source: target, manifest: targetManifest, modules, cliVersion },
     summary: `Starter ${project.starterRef} -> ${target.ref}`,
     notes,
+    releases,
   };
 }
 
@@ -347,6 +372,7 @@ export async function changeProject(args: CliArgs): Promise<void> {
     }
     const plan = await planUpdate(project, change.base, change.target);
 
+    if (change.releases) log.info(`Starter releases in this upgrade:\n${change.releases}`);
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
     if (args.dryRun) {
       for (const note of change.notes) log.info(note);

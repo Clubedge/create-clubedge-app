@@ -21,6 +21,15 @@ export type MergeAction =
 
 export const CONFLICT_LABELS = { yours: "yours", theirs: "clubedge" } as const;
 
+/** How many conflict blocks a merged file has. */
+export function countConflicts(content: Buffer): number {
+  const marker = `<<<<<<< ${CONFLICT_LABELS.yours}`;
+  return content
+    .toString("utf8")
+    .split(/\r?\n/)
+    .filter((line) => line === marker).length;
+}
+
 function isBinary(content: Buffer) {
   return content.subarray(0, 8000).includes(0);
 }

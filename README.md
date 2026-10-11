@@ -95,8 +95,8 @@ Interactive runs ask whether to customize these after the framework question.
 ```text
 Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
-  pnpm dlx @clubedge/create-clubedge-app add [module] [option]   (inside a project)
-  pnpm dlx @clubedge/create-clubedge-app remove [module]         (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app add [module option]...  (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app remove [module]...      (inside a project)
   pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
 
 Options:
@@ -136,12 +136,14 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 ## Change an existing project
 
-Inside a project created by the CLI, `add` and `remove` change one module at a time, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them:
+Inside a project created by the CLI, `add` and `remove` change modules, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them:
 
 ```sh
 pnpm clubedge add                                            # choose a module and option from a list
 pnpm dlx @clubedge/create-clubedge-app add cache redis      # or switch: add auth better-auth
 pnpm dlx @clubedge/create-clubedge-app remove storage
+pnpm clubedge add email resend payments stripe              # several modules as one change
+pnpm clubedge remove storage payments
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
 pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.13.1 # or a specific tag, branch, or commit
@@ -154,6 +156,8 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 - Your own files are never touched.
 - `apps/web/.env.local` keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
 - `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.
+
+Several modules in one command are applied as one change, and their requirements are checked together, so `add auth supabase storage supabase` works even though Supabase Storage needs Supabase Auth. When lines conflict, the CLI lists each file with its number of conflict blocks. Before an upgrade, it lists the Starter releases it crosses with the sections of their release notes, such as `v0.13.0  Observability, Tests, Also`.
 
 The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 

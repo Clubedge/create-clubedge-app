@@ -1,11 +1,17 @@
 import { parseArgs } from "node:util";
 
+/** A module to add or switch; an interactive run asks for a missing option. */
+export interface ModuleChange {
+  module: string;
+  option?: string;
+}
+
 /** What to do: create a project (the default), or change the modules of an existing one. */
 export type Command =
   | { name: "create" }
-  /** Without a module or option, an interactive run asks for them. */
-  | { name: "add"; module?: string; option?: string }
-  | { name: "remove"; module?: string }
+  /** Several changes apply as one; with none, or one without an option, a terminal asks. */
+  | { name: "add"; changes: ModuleChange[] }
+  | { name: "remove"; modules: string[] }
   | { name: "upgrade" }
   /** Read-only: where the project stands, and whether it can run. */
   | { name: "status" }
@@ -119,7 +125,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
   }
   if (command.name !== "create" && (values.framework !== undefined || Object.keys(modules).length)) {
     throw new UsageError(
-      "--framework and module flags only apply when creating a project; use add or remove to change one module.",
+      "--framework and module flags only apply when creating a project; use add or remove to change modules.",
     );
   }
   if (command.name !== "create" && command.name !== "upgrade" && values.ref !== undefined) {
@@ -153,20 +159,35 @@ export function parseCliArgs(argv: string[]): CliArgs {
   };
 }
 
+function assertDistinct(modules: string[]) {
+  const repeated = modules.find((module, index) => modules.indexOf(module) !== index);
+  if (repeated) throw new UsageError(`The module "${repeated}" is named more than once.`);
+}
+
 /**
- * `add <module> <option>`, `remove <module>`, and `upgrade` change an existing project, and `status`
+ * `add <module> <option>...`, `remove <module>...`, and `upgrade` change an existing project, and `status`
  * and `doctor` inspect one; anything else is the directory of a new project. Create a project
  * literally named "add" with `./add`.
  */
 function parseCommand(positionals: string[]): Command {
-  const [name, module, option, ...extra] = positionals;
+  const [name, ...rest] = positionals;
+  const module = rest[0];
   if (name === "add") {
-    if (extra.length) throw new UsageError("Usage: add [module] [option], for example: add cache redis");
-    return { name, module, option };
+    if (rest.length > 1 && rest.length % 2 === 1) {
+      throw new UsageError(
+        "Usage: add [module option]..., for example: add cache redis, or add email resend payments stripe",
+      );
+    }
+    const changes: ModuleChange[] =
+      rest.length === 1
+        ? [{ module: rest[0]! }]
+        : Array.from({ length: rest.length / 2 }, (_, i) => ({ module: rest[2 * i]!, option: rest[2 * i + 1]! }));
+    assertDistinct(changes.map((change) => change.module));
+    return { name, changes };
   }
   if (name === "remove") {
-    if (option !== undefined) throw new UsageError("Usage: remove [module], for example: remove storage");
-    return { name, module };
+    assertDistinct(rest);
+    return { name, modules: rest };
   }
   if (name === "status" || name === "doctor") {
     if (module !== undefined) throw new UsageError(`Usage: ${name}, run inside a project.`);

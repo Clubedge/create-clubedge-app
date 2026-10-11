@@ -118,7 +118,10 @@ export async function downloadGitHubTemplate(
   }
 
   const temporary = await mkdtemp(join(tmpdir(), "create-clubedge-app-"));
-  const cleanup = () => rm(temporary, { recursive: true, force: true });
+  // Windows can briefly lock a folder that was just read (antivirus, indexing). Retry, and never
+  // fail a command that already did its work over a leftover folder in the system temp directory.
+  const cleanup = () =>
+    rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   try {
     const root = join(temporary, "starter");
     await downloadTemplate(`gh:${repository}#${ref}`, { dir: root, force: true });

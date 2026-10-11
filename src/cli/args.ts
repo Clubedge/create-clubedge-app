@@ -4,7 +4,8 @@ import { parseArgs } from "node:util";
 export type Command =
   | { name: "create" }
   | { name: "add"; module: string; option: string }
-  | { name: "remove"; module: string };
+  | { name: "remove"; module: string }
+  | { name: "upgrade" };
 
 export interface CliArgs {
   command: Command;
@@ -67,7 +68,12 @@ export function parseCliArgs(argv: string[]): CliArgs {
     throw new UsageError("Only one project directory can be provided.");
   }
   if (command.name !== "create" && (values.framework !== undefined || MODULE_FLAGS.some((id) => values[id]))) {
-    throw new UsageError(`${command.name} changes one module; --framework and module flags only apply when creating a project.`);
+    throw new UsageError(
+      "--framework and module flags only apply when creating a project; use add or remove to change one module.",
+    );
+  }
+  if ((command.name === "add" || command.name === "remove") && values.ref !== undefined) {
+    throw new UsageError("--ref only applies when creating or upgrading a project.");
   }
   if (values.framework !== undefined && !values.framework.trim()) {
     throw new UsageError("--framework requires a framework id, such as next or tanstack-start.");
@@ -104,8 +110,8 @@ export function parseCliArgs(argv: string[]): CliArgs {
 }
 
 /**
- * `add <module> <option>` and `remove <module>` change an existing project; anything else is
- * the directory of a new project. Create a project literally named "add" with `./add`.
+ * `add <module> <option>`, `remove <module>`, and `upgrade` change an existing project; anything
+ * else is the directory of a new project. Create a project literally named "add" with `./add`.
  */
 function parseCommand(positionals: string[]): Command {
   const [name, module, option, ...extra] = positionals;
@@ -120,6 +126,10 @@ function parseCommand(positionals: string[]): Command {
       throw new UsageError("Usage: remove <module>, for example: remove storage");
     }
     return { name, module };
+  }
+  if (name === "upgrade") {
+    if (module !== undefined) throw new UsageError("Usage: upgrade [--ref <tag>], for example: upgrade --ref v0.8.0");
+    return { name };
   }
   return { name: "create" };
 }

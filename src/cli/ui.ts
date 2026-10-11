@@ -75,9 +75,11 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
   pnpm dlx @clubedge/create-clubedge-app add <module> <option>   (inside a project)
   pnpm dlx @clubedge/create-clubedge-app remove <module>         (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
 
-  add and remove change one module of an existing project and merge the change
-  into your code; lines you changed that the module also changes get conflict
+  add and remove change one module of an existing project, and upgrade moves it
+  to a newer Starter (this CLI's release unless --ref is given). The change is
+  merged into your code; lines you changed that it also changes get conflict
   markers. Commit first so you can review the result with git diff.
 
 Options:
@@ -87,6 +89,7 @@ Options:
   --cache <id>            Cache and rate limits: redis (default) or memory
   --infra <id>            Local services: docker (default), supabase, local, or none
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
+                          (upgrade: the Starter to upgrade to)
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove: change a project with uncommitted changes or without Git
@@ -105,6 +108,7 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
   pnpm dlx @clubedge/create-clubedge-app add auth better-auth
   pnpm dlx @clubedge/create-clubedge-app remove storage --dry-run
+  pnpm dlx @clubedge/create-clubedge-app@latest upgrade
 
 Learn more:
   CLI      ${cliUrl}

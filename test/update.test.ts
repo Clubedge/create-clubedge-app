@@ -7,6 +7,7 @@ import { createPlan } from "../src/core/plan.js";
 import { readProject } from "../src/core/project.js";
 import { readDirectoryTemplate } from "../src/core/source.js";
 import { applyUpdate, planUpdate } from "../src/core/update.js";
+import { upgradedModules } from "../src/modify.js";
 import { pathExists } from "../src/utils/fs.js";
 import { moduleStarterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
 
@@ -147,5 +148,87 @@ describe("planUpdate and applyUpdate", () => {
 
     expect(await project.read("apps/web/package.json")).toBe(before);
     expect(await project.read("apps/web/src/server/storage.ts")).toBe("export const storage = 's3';\n");
+  });
+});
+
+describe("upgrading to a newer Starter", () => {
+  /** v1 is the modules fixture; v2 changes a file, adds one, and introduces a cache module. */
+  async function twoRevisions() {
+    const v1 = await temporaryDirectory();
+    await writeFiles(v1, moduleStarterFiles());
+    const v2 = await temporaryDirectory();
+    const v2Manifest = {
+      ...JSON.parse(moduleStarterFiles()["clubedge.template.json"]!),
+      modules: {
+        ...JSON.parse(moduleStarterFiles()["clubedge.template.json"]!).modules,
+        cache: {
+          name: "Cache",
+          default: "redis",
+          options: { redis: { name: "Redis", files: ["apps/web/src/server/cache.ts"] }, none: { name: "None" } },
+        },
+      },
+    };
+    await writeFiles(v2, {
+      ...moduleStarterFiles(),
+      "clubedge.template.json": JSON.stringify(v2Manifest),
+      "apps/web/src/server/auth.ts": "export const provider = 'supabase';\nexport const version = 2;\n",
+      "apps/web/src/server/cache.ts": "export const cache = 'redis';\n",
+      "apps/web/src/server/health.ts": "export const healthy = true;\n",
+    });
+    return { v1: await readDirectoryTemplate(v1), v2: await readDirectoryTemplate(v2) };
+  }
+
+  it("brings the Starter's changes into an edited project and keeps new modules off", async () => {
+    const { v1, v2 } = await twoRevisions();
+    const root = join(await temporaryDirectory(), "my-product");
+    const v1Manifest = await readTemplateManifest(v1.root);
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "my-product", displayName: "My Product" },
+        source: { ...v1, ref: "v1.0.0", commit: "1".repeat(40) },
+        manifest: v1Manifest,
+        framework: "next",
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+    await writeFile(join(root, "apps/web/src/server/storage.ts"), "export const storage = 's3'; // mine\n");
+
+    const project = await readProject(root);
+    const v2Manifest = await readTemplateManifest(v2.root);
+    const { modules, introduced } = upgradedModules(v2Manifest, project);
+    expect(introduced).toEqual(["cache"]);
+    expect(modules).toEqual({ auth: "supabase", storage: "s3", cache: "none" });
+
+    const plan = await planUpdate(
+      project,
+      { source: { ...v1, ref: project.starterRef, commit: project.starterCommit }, manifest: v1Manifest, modules: project.modules, cliVersion: project.cliVersion },
+      { source: { ...v2, ref: "v2.0.0", commit: "2".repeat(40) }, manifest: v2Manifest, modules, cliVersion: "2.0.0" },
+    );
+    await applyUpdate(plan);
+
+    const read = (path: string) => readFile(join(root, path), "utf8");
+    expect(await read("apps/web/src/server/auth.ts")).toContain("export const version = 2;");
+    expect(await read("apps/web/src/server/health.ts")).toBe("export const healthy = true;\n");
+    expect(await read("apps/web/src/server/storage.ts")).toContain("// mine");
+    expect(await pathExists(join(root, "apps/web/src/server/cache.ts"))).toBe(false);
+    expect(JSON.parse(await read("package.json")).clubedge).toMatchObject({
+      cliVersion: "2.0.0",
+      starterRef: "v2.0.0",
+      starterCommit: "2".repeat(40),
+      modules: { auth: "supabase", storage: "s3", cache: "none" },
+    });
+    // The provenance lines match the project, so they update without conflicts.
+    expect(plan.actions.filter((action) => action.kind === "conflict")).toEqual([]);
+  });
+
+  it("refuses an option the new Starter no longer offers", async () => {
+    const { v2 } = await twoRevisions();
+    const manifest = await readTemplateManifest(v2.root);
+    const project = { modules: { auth: "magic-link", storage: "s3" } } as unknown as Parameters<typeof upgradedModules>[1];
+    expect(() => upgradedModules(manifest, project)).toThrow('no longer offers Authentication "magic-link"');
   });
 });

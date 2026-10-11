@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
-import { pickTagCommit } from "../src/core/source.js";
+import { pickBranchCommit, pickTagCommit } from "../src/core/source.js";
 import { assertSupportedNode } from "../src/index.js";
 import { cliVersion, starterPin } from "../src/package-info.js";
 import { detectLauncher } from "../src/steps/install.js";
@@ -57,6 +57,17 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["remove"])).toThrow("Usage: remove <module>");
     expect(() => parseCliArgs(["remove", "storage", "s3"])).toThrow("Usage: remove <module>");
     expect(() => parseCliArgs(["add", "cache", "redis", "--auth", "none"])).toThrow("only apply when creating");
+    expect(() => parseCliArgs(["remove", "storage", "--ref", "v1.0.0"])).toThrow("--ref only applies");
+  });
+
+  it("reads upgrade with an optional --ref", () => {
+    expect(parseCliArgs(["upgrade"])).toMatchObject({ command: { name: "upgrade" }, ref: undefined });
+    expect(parseCliArgs(["upgrade", "--ref", "v0.8.0", "--dry-run"])).toMatchObject({
+      command: { name: "upgrade" },
+      ref: "v0.8.0",
+      dryRun: true,
+    });
+    expect(() => parseCliArgs(["upgrade", "v0.8.0"])).toThrow("Usage: upgrade [--ref <tag>]");
   });
 
   it("collects module flags without judging their values", () => {
@@ -134,5 +145,11 @@ describe("tag resolution", () => {
   it("uses a lightweight tag's own commit and ignores tags with a shared prefix", () => {
     expect(pickTagCommit(output, "v0.4.0")).toBe("2222222222222222222222222222222222222222");
     expect(pickTagCommit(output, "v0.5")).toBeUndefined();
+  });
+
+  it("finds a branch's commit, ignoring branches with a shared prefix", () => {
+    const branches = `${"3".repeat(40)}\trefs/heads/main-old\n${"4".repeat(40)}\trefs/heads/main`;
+    expect(pickBranchCommit(branches, "main")).toBe("4".repeat(40));
+    expect(pickBranchCommit(branches, "dev")).toBeUndefined();
   });
 });

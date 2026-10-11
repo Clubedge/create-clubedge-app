@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.12.0
+
+- Default to Starter `v0.11.0`, which adds payments (`--payments stripe`): Stripe Checkout, the customer portal, and verified webhooks behind a provider-neutral payments interface. `--payments` needs no CLI code: it comes from the Starter's manifest.
+- Test a payments project in CI and in the release smoke test, and add the payments module in the change-modules job.
+
 ## 0.11.0
 
 - Default to Starter `v0.10.0`, which adds the deploy module (`--deploy docker|fly|railway|render|vercel|netlify`), a migrator in the production image, a manual deploy workflow, and the `/api/ready` readiness endpoint. `--deploy` needs no CLI code: it comes from the Starter's manifest.

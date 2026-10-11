@@ -12,27 +12,27 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.8.0
+create-clubedge-app v0.9.0
         |
         v
-Clubedge Starter v0.7.0
-commit 3b8114760b8151c2538b57c06620ff2b884f2d56
+Clubedge Starter v0.8.0
+commit 0b77577a3fe77617c84e250d8b220169b72a297e
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.8.0` | `clubedge-starter@v0.7.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.9.0` | `clubedge-starter@v0.8.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.7.0` tag is expected to resolve to commit
-`3b8114760b8151c2538b57c06620ff2b884f2d56`. The CLI verifies this before
+The `v0.8.0` tag is expected to resolve to commit
+`0b77577a3fe77617c84e250d8b220169b72a297e`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.7.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.8.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 ## Requirements
 
@@ -136,7 +136,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.7.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.8.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -204,7 +204,7 @@ CI packs the CLI with `npm pack`, scaffolds a clean project from the packed tarb
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.7.0`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.8.0`, and publish the Starter release.
 
 ### CLI maintainers
 

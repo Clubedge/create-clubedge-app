@@ -2,8 +2,9 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
-## Unreleased
+## 0.9.0
 
+- Default to Starter `v0.8.0`, whose projects have a `clubedge` script: `pnpm clubedge add`, `remove`, and `upgrade`.
 - `add` and `remove` ask for the module and option when they are not given, offering only options the project can use. Without a terminal, missing arguments remain an error.
 - Messages suggest `pnpm clubedge ...` in projects with the `clubedge` script, and the outro after creating a project mentions it.
 - Test the CLI on Windows in CI: its checks and tests, and generated projects with a module change.

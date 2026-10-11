@@ -52,7 +52,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "giget": "^2.0.0"
+    "giget": "^2.0.0",
+    "node-diff3": "^3.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

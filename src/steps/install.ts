@@ -14,7 +14,7 @@ export function detectLauncher(userAgent = process.env.npm_config_user_agent): s
   return name && ["npm", "pnpm", "yarn", "bun"].includes(name) ? name : null;
 }
 
-export async function installDependencies(directory: string, pnpm: string[]): Promise<void> {
+export async function installDependencies(directory: string, pnpm: string[], args: string[] = []): Promise<void> {
   const [command, ...prefix] = pnpm;
-  await run(command!, [...prefix, "install"], directory);
+  await run(command!, [...prefix, "install", ...args], directory);
 }

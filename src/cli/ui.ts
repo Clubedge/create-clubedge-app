@@ -73,6 +73,12 @@ This CLI release scaffolds Starter ${starterPin.starterRef} (commit ${starterPin
 
 Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
+  pnpm dlx @clubedge/create-clubedge-app add <module> <option>   (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app remove <module>         (inside a project)
+
+  add and remove change one module of an existing project and merge the change
+  into your code; lines you changed that the module also changes get conflict
+  markers. Commit first so you can review the result with git diff.
 
 Options:
   --framework <id>        App framework: next (default) or tanstack-start
@@ -82,7 +88,8 @@ Options:
   --infra <id>            Local services: docker (default), supabase, local, or none
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
-  --dry-run               Show what would be created without writing anything
+  --dry-run               Show what would be created or changed without writing anything
+  --force                 add/remove: change a project with uncommitted changes or without Git
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
   --no-git                Skip Git repository initialization
@@ -96,6 +103,8 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app --dry-run
   pnpm dlx @clubedge/create-clubedge-app my-app --ref main
   pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
+  pnpm dlx @clubedge/create-clubedge-app add auth better-auth
+  pnpm dlx @clubedge/create-clubedge-app remove storage --dry-run
 
 Learn more:
   CLI      ${cliUrl}

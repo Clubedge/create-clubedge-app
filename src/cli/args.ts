@@ -1,6 +1,13 @@
 import { parseArgs } from "node:util";
 
+/** What to do: create a project (the default), or change the modules of an existing one. */
+export type Command =
+  | { name: "create" }
+  | { name: "add"; module: string; option: string }
+  | { name: "remove"; module: string };
+
 export interface CliArgs {
+  command: Command;
   projectDirectory?: string;
   framework?: string;
   /** Module options from --auth, --storage, --cache, and --infra, validated against the Starter later. */
@@ -11,6 +18,8 @@ export interface CliArgs {
   git: boolean;
   yes: boolean;
   dryRun: boolean;
+  /** Change a project even with uncommitted changes or without Git. */
+  force: boolean;
   help: boolean;
   version: boolean;
 }
@@ -42,6 +51,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
         git: { type: "boolean", default: true },
         yes: { type: "boolean", short: "y", default: false },
         "dry-run": { type: "boolean", default: false },
+        force: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -52,7 +62,13 @@ export function parseCliArgs(argv: string[]): CliArgs {
   }
 
   const { values, positionals } = parsed;
-  if (positionals.length > 1) throw new UsageError("Only one project directory can be provided.");
+  const command = parseCommand(positionals);
+  if (command.name === "create" && positionals.length > 1) {
+    throw new UsageError("Only one project directory can be provided.");
+  }
+  if (command.name !== "create" && (values.framework !== undefined || MODULE_FLAGS.some((id) => values[id]))) {
+    throw new UsageError(`${command.name} changes one module; --framework and module flags only apply when creating a project.`);
+  }
   if (values.framework !== undefined && !values.framework.trim()) {
     throw new UsageError("--framework requires a framework id, such as next or tanstack-start.");
   }
@@ -71,7 +87,8 @@ export function parseCliArgs(argv: string[]): CliArgs {
   }
 
   return {
-    projectDirectory: positionals[0],
+    command,
+    projectDirectory: command.name === "create" ? positionals[0] : undefined,
     framework: values.framework?.trim(),
     modules,
     ref: values.ref,
@@ -80,7 +97,29 @@ export function parseCliArgs(argv: string[]): CliArgs {
     git: values.git,
     yes: values.yes,
     dryRun: values["dry-run"],
+    force: values.force,
     help: values.help,
     version: values.version,
   };
+}
+
+/**
+ * `add <module> <option>` and `remove <module>` change an existing project; anything else is
+ * the directory of a new project. Create a project literally named "add" with `./add`.
+ */
+function parseCommand(positionals: string[]): Command {
+  const [name, module, option, ...extra] = positionals;
+  if (name === "add") {
+    if (!module || !option || extra.length) {
+      throw new UsageError("Usage: add <module> <option>, for example: add cache redis");
+    }
+    return { name, module, option };
+  }
+  if (name === "remove") {
+    if (!module || option !== undefined) {
+      throw new UsageError("Usage: remove <module>, for example: remove storage");
+    }
+    return { name, module };
+  }
+  return { name: "create" };
 }

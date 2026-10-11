@@ -8,6 +8,7 @@ import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js"
 import { createPlan, describePlan, selectFramework } from "./core/plan.js";
 import { resolveTemplateSource } from "./core/source.js";
 import { cliUrl, cliVersion, siteUrl } from "./package-info.js";
+import { changeModules } from "./modify.js";
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, installDependencies, resolvePnpm } from "./steps/install.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
@@ -220,8 +221,13 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     }
     assertSupportedNode();
-    intro("Create a project with Clubedge Starter");
-    await createProject(args);
+    if (args.command.name === "create") {
+      intro("Create a project with Clubedge Starter");
+      await createProject(args);
+    } else {
+      intro(args.command.name === "add" ? "Add a module to this project" : "Remove a module from this project");
+      await changeModules(args);
+    }
   } catch (error) {
     console.error(`\n${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;

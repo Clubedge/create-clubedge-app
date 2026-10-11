@@ -1,6 +1,6 @@
 # Roadmap
 
-This roadmap describes the CLI work planned after 0.9.0. The Starter side of the same phases, the modules themselves, lives in the [Starter roadmap](https://github.com/Clubedge/clubedge-starter/blob/main/ROADMAP.md). Each phase ends with a Starter release and a CLI release pinned to it.
+This roadmap describes the CLI's releases since 0.5.0 and the work planned next. The Starter side of the same phases, the modules themselves, lives in the [Starter roadmap](https://github.com/Clubedge/clubedge-starter/blob/main/ROADMAP.md). Each phase ends with a Starter release and a CLI release pinned to it.
 
 ## Done
 
@@ -11,44 +11,16 @@ This roadmap describes the CLI work planned after 0.9.0. The Starter side of the
 | 5.2 | 0.7.0 | `--infra local`, pruning of optional peer links |
 | 5.3–5.4 | 0.8.0 | `add`, `remove`, and `upgrade` with a three-way merge, drive-root fix |
 | 6 | 0.9.0 | Menus for `add` and `remove`, `pnpm clubedge` in messages, Windows CI |
-
-## Before Phase 7: modules without CLI changes
-
-Today every module flag is hard-coded (`MODULE_FLAGS` in `src/cli/args.ts`), and the help text and the "customize the included services" prompt name the four current modules. Each new Starter module would need a CLI change before anyone could select it.
-
-- Accept `--<module> <option>` for any module the Starter's manifest describes. Parse flags leniently, then validate them against the manifest, which `selectModules` already does with helpful errors.
-- Build the help text's module list and the customize prompt from the bundled Starter's manifest.
-- Keep `MODULE_FLAGS` only as the list of flags known to older Starters, so unknown flags still fail fast for typos.
-
-**Tests:** a fixture Starter with an extra module is selectable by flag, by prompt, and with `add`, with no CLI code naming it.
-
-## Phase 7: Email
-
-The CLI side is small once module flags come from the manifest.
-
-- `--email resend|smtp|none` works without new flag code, and appears in help, prompts, and README tables.
-- CI: generated-project entries for `--email smtp --auth better-auth` (Next.js) and `--email none` (TanStack Start). An `add email smtp` case joins the change-modules job.
-- The release smoke test checks the recorded `email` option.
-
-## Phase 8: Deployment
-
-- `--deploy docker|vercel|fly|railway|none`, through the manifest.
-- `upgrade` must handle platform config files that the developer edits a lot, such as `fly.toml`: they are merged like any file, and conflicts there should be reported with the platform's docs link.
-- CI: generated-project entries per platform that check the config file is present and that the production build for that platform succeeds.
-
-## Phase 9: Payments
-
-- `--payments stripe|none`. The manifest's `requires` keeps payments off when `--auth none` is chosen, with the existing explanation in the error.
-- `add payments stripe` must add the subscriptions migrations and say so in the outro (`pnpm db:migrate`), and append the Stripe variables to `.env.local` empty.
-
-## Phase 10: Background jobs and observability
-
-- `--jobs pg-boss|none` and `--observability sentry|otel|none`.
-- `add jobs pg-boss` changes the `dev` script (a worker next to the app), which every option of the module must then set, as `infra` does today. The Starter's core-scripts test already guards this.
+| Before 7 | 0.10.0 | Module flags, help text, and the customize prompt from the Starter's manifest, so new modules need no CLI release |
+| 7 | 0.10.0 | `--email`, and a fix for doubled blank lines in `.env.local` when a module's variables are swapped |
+| 8 | 0.11.0 | `--deploy`, with Fly.io and Vercel projects in CI and a Netlify project in the release smoke test |
+| 9 | 0.12.0 | `--payments`, tested in CI, in the release smoke test, and by `add payments stripe` |
+| 10.1 | 0.13.0 | `--jobs`, and a fix for lockfile entries left empty when an optional peer is pruned |
+| 10.2 | 0.14.0 | `--observability` |
 
 ## CLI improvements
 
-These are independent of the module phases and can land between them.
+These are independent of the Starter's modules and can land in any order.
 
 - **Release workflow:** wait up to 15 minutes for npm to serve a new version before the published-package smoke tests start. The 0.9.0 release needed a re-run after the 5-minute wait expired.
 - **Several modules at once:** `add email smtp payments stripe`, or `change --email smtp --payments stripe`, applied as one merge so the project never sits in an in-between state.

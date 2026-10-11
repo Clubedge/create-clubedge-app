@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.13.0
+
+- Default to Starter `v0.12.0`, which adds background jobs (`--jobs pg-boss`): jobs stored in the project's PostgreSQL, run by a worker inside the app server, with retries and schedules, and `/api/jobs/run` for serverless hosts. `--jobs` needs no CLI code: it comes from the Starter's manifest.
+- Fix generated lockfiles that pnpm rejected as broken when pruning an optional peer left a package with no dependencies, such as `pg-pool` once `pg` is pruned for `--jobs none`. Such entries are now written as `{}`, the way pnpm writes them.
+- Test a jobs project in CI and in the release smoke test, and add the jobs module in the change-modules job.
+
 ## 0.12.0
 
 - Default to Starter `v0.11.0`, which adds payments (`--payments stripe`): Stripe Checkout, the customer portal, and verified webhooks behind a provider-neutral payments interface. `--payments` needs no CLI code: it comes from the Starter's manifest.

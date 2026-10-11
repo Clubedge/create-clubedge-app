@@ -1,76 +1,57 @@
+<div align="center">
+
 # create-clubedge-app
 
-[![CI](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+**Create a production-ready Next.js or TanStack Start app with one command, and keep it up to date.**
 
-Create a Next.js or TanStack Start application from the [Clubedge Starter](https://github.com/Clubedge/clubedge-starter) reference implementation.
+Pick only the modules you need: auth, storage, email, payments, jobs, observability, deployment.<br>
+Add, remove, or upgrade them later without losing your own changes.
 
-The CLI downloads a tested Starter release, names the generated project, creates `apps/web/.env.local` from the example, initializes Git, and installs dependencies. The Starter remains the source of truth for the generated architecture.
+[![npm](https://img.shields.io/npm/v/@clubedge/create-clubedge-app?style=flat-square)](https://www.npmjs.com/package/@clubedge/create-clubedge-app)
+[![npm downloads](https://img.shields.io/npm/dm/@clubedge/create-clubedge-app?style=flat-square)](https://www.npmjs.com/package/@clubedge/create-clubedge-app)
+[![CI](https://img.shields.io/github/actions/workflow/status/Clubedge/create-clubedge-app/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/Clubedge/create-clubedge-app/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Clubedge/create-clubedge-app?style=flat-square)](https://github.com/Clubedge/create-clubedge-app/releases)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 
-## Version relationship
+[Website](https://starter.clubedge.live) ·
+[Clubedge Starter](https://github.com/Clubedge/clubedge-starter) ·
+[Changelog](CHANGELOG.md) ·
+[Roadmap](ROADMAP.md) ·
+[Contributing](CONTRIBUTING.md)
 
-Each CLI release is tested against one specific Starter release:
-
-```text
-create-clubedge-app v0.14.0
-        |
-        v
-Clubedge Starter v0.13.0
-commit 62fb8d1b1e13ed8e8e134bd1e53f2bfdde2c6a50
-```
-
-The current relationship is:
-
-| CLI release | Default Starter release | Meaning |
-| --- | --- | --- |
-| `create-clubedge-app@0.14.0` | `clubedge-starter@v0.13.0` | The CLI's required, tested default |
-
-This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
-
-The `v0.13.0` tag is expected to resolve to commit
-`62fb8d1b1e13ed8e8e134bd1e53f2bfdde2c6a50`. The CLI verifies this before
-scaffolding with the default reference and fails rather than silently using a
-moved tag.
-
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.13.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
-
-## Requirements
-
-- Node.js 22.12 or newer.
-- pnpm 10.9.0 or newer. The generated project is a pnpm workspace, so dependencies are installed with pnpm even when you start the CLI with `npx`; the CLI falls back to `corepack pnpm` when `pnpm` is not on your path.
-- Git, when using the default Git initialization.
-- Internet access to install dependencies. The default Starter release ships inside the CLI package, so GitHub is only contacted for `--ref`.
-
-## Usage
+</div>
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app
 ```
 
-Or run it with npm:
+## Why create-clubedge-app
+
+Copying a starter is easy; living with it is not. You delete the services you don't use by hand, and once you've changed the code, every later improvement to the starter has to be copied over by hand too.
+
+create-clubedge-app generates a project from a tested release of [Clubedge Starter](https://github.com/Clubedge/clubedge-starter) with only the modules you choose. A module you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries. The project records exactly what it was generated from, so later the CLI can add a module, remove one, or upgrade to a newer Starter release by merging the change into your code. Files you never touched are updated; your edits are kept.
+
+Every CLI release is pinned to one Starter release and verified against it, so the same command always produces the same project.
+
+## Quick start
+
+You need Node.js 22.12 or newer and pnpm 10.9.0 or newer. Git is used for the default repository initialization.
 
 ```sh
-npx @clubedge/create-clubedge-app my-app
-```
-
-After scaffolding:
-
-```sh
+pnpm dlx @clubedge/create-clubedge-app my-app
 cd my-app
 pnpm dev
 ```
 
-The generated project includes `.env.local`; fill in `DATABASE_URL` to start the app and configure Supabase Auth or other providers as needed. The root route is a project-named landing page, and the reference dashboard is available at `/dashboard`. See its `SETUP.md` for database, Redis, storage, and Docker setup.
+Or start it with npm: `npx @clubedge/create-clubedge-app my-app`. The generated project is a pnpm workspace, so dependencies are installed with pnpm either way; the CLI falls back to `corepack pnpm` when `pnpm` is not on your path. Without a destination, the CLI asks where to create the project.
 
-When no destination is provided, the CLI asks where to create the project:
+The generated project includes `apps/web/.env.local`, created from the example and pointing at the local services you chose. Its `SETUP.md` describes every variable and provider. The root route is a landing page named after your project, and the dashboard is at `/dashboard`.
 
-```sh
-pnpm dlx @clubedge/create-clubedge-app
-```
+The default Starter release ships inside the CLI package, so GitHub is only contacted when you pass `--ref`. Internet access is needed to install dependencies.
 
-### Choosing a framework
+## Choosing a framework
 
-The Starter ships the same application for two React frameworks. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively when the Starter offers more than one:
+The Starter ships the same application for two React frameworks. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively:
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
@@ -83,9 +64,9 @@ pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
 
 Either way, the app lives in `apps/web` and uses the same shared packages, so the project layout, root scripts, and Docker commands are identical.
 
-### Choosing services
+## Choosing modules
 
-Authentication, file storage, caching, email, payments, background jobs, observability, local infrastructure, and deployment are modules. Each has a default, and anything you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries. The Starter's `clubedge.template.json` defines the modules, so a module a newer Starter adds gets its `--<module>` flag without a CLI change; `--help` lists the modules of the Starter this CLI release creates.
+Authentication, file storage, caching, email, payments, background jobs, observability, local infrastructure, and deployment are modules. Each has a default, and anything you leave out is removed completely. The Starter's `clubedge.template.json` defines the modules, so a module a newer Starter adds gets its `--<module>` flag without a CLI change; `--help` lists the modules of the Starter this CLI release creates.
 
 | Flag        | Options                                    | Default    |
 | ----------- | ------------------------------------------ | ---------- |
@@ -101,34 +82,39 @@ Authentication, file storage, caching, email, payments, background jobs, observa
 
 ```sh
 # Only the monorepo, UI, database, and tooling
-pnpm dlx @clubedge/create-clubedge-app my-app --auth none --storage none --cache memory
+pnpm dlx @clubedge/create-clubedge-app my-app --auth none --storage none --cache memory --email none
+
+# A SaaS starting point: your own auth, payments, and background jobs, no Docker needed
+pnpm dlx @clubedge/create-clubedge-app my-app --auth better-auth --payments stripe --jobs pg-boss --infra local
 ```
 
-Interactive runs ask whether to customize these after the framework question. The options come from the Starter's manifest, so `--help` lists the ones the bundled Starter offers.
+Interactive runs ask whether to customize these after the framework question.
 
 ## Options
 
 ```text
-Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
+Usage:
+  pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
+  pnpm dlx @clubedge/create-clubedge-app add [module] [option]   (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app remove [module]         (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
 
---framework <id>        App framework: next (default) or tanstack-start
---auth <id>             Authentication: supabase (default), better-auth, or none
---storage <id>          File storage: s3 (default), supabase, or none
---cache <id>            Cache and rate limits: redis (default) or memory
---infra <id>            Local services: docker (default), supabase, local, or none
---ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
---template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
---dry-run               Show what would be created without writing anything
--y, --yes               Accept defaults and never prompt (default directory: my-app)
---no-install            Skip dependency installation
---no-git                Skip Git initialization
--h, --help              Show help
--v, --version           Show the CLI version
+Options:
+  --framework <id>        App framework, such as next or tanstack-start
+  --<module> <option>     A module option, such as --auth none; the Starter lists its modules
+  --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
+                          (upgrade: the Starter to upgrade to)
+  --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
+  --dry-run               Show what would be created or changed without writing anything
+  --force                 add/remove: change a project with uncommitted changes or without Git
+  -y, --yes               Accept defaults and never prompt (default directory: my-app)
+  --no-install            Skip dependency installation
+  --no-git                Skip Git repository initialization
+  -h, --help              Show this help
+  -v, --version           Show the CLI version
 ```
 
 The target directory must be empty or not exist. The CLI never deletes or overwrites existing files, and if scaffolding fails it removes whatever it wrote, so a failed run leaves nothing behind.
-
-Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
 ```sh
 # Preview the files and edits without writing anything
@@ -171,6 +157,35 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 
 The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 
+## Version relationship
+
+Each CLI release is tested against one specific Starter release:
+
+```text
+create-clubedge-app v0.14.0
+        |
+        v
+Clubedge Starter v0.13.0
+commit 62fb8d1b1e13ed8e8e134bd1e53f2bfdde2c6a50
+```
+
+The current relationship is:
+
+| CLI release | Default Starter release | Meaning |
+| --- | --- | --- |
+| `create-clubedge-app@0.14.0` | `clubedge-starter@v0.13.0` | The CLI's required, tested default |
+
+This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
+
+The `v0.13.0` tag is expected to resolve to commit
+`62fb8d1b1e13ed8e8e134bd1e53f2bfdde2c6a50`. The CLI verifies this before
+scaffolding with the default reference and fails rather than silently using a
+moved tag.
+
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.13.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+
+Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
+
 ## How it works
 
 Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.
@@ -182,10 +197,22 @@ The CLI first builds a plan (the files to copy and the edits to make), which `--
 ```text
 src/
   cli/      argument parsing and terminal output
-  core/     manifest, template sources, customizations, planning, and execution
+  core/     manifest, template sources, customizations, planning, merging, and execution
   steps/    Git initialization and dependency installation
   utils/    file listing and copying, processes, and naming
 ```
+
+## Documentation
+
+| I want to | Read |
+| --- | --- |
+| Configure a generated project | Its `SETUP.md`, also in the [Starter repository](https://github.com/Clubedge/clubedge-starter/blob/main/SETUP.md) |
+| Change modules or upgrade a project | [Change an existing project](#change-an-existing-project) |
+| Reproduce an exact Starter version | [Version relationship](#version-relationship) |
+| See what changed in each release | [CHANGELOG.md](CHANGELOG.md) |
+| See what is planned next | [ROADMAP.md](ROADMAP.md) |
+| Contribute code | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Report a security problem | [SECURITY.md](SECURITY.md) |
 
 ## Development
 
@@ -200,7 +227,7 @@ node ./bin/create.mjs my-app --template-dir ../clubedge-starter --dry-run
 
 Without a bundled template, a local build downloads the pinned Starter release from GitHub and verifies its commit. Run `pnpm bundle-template` to bundle it, or `pnpm bundle-template --from ../clubedge-starter` to bundle a local checkout.
 
-CI packs the CLI with `npm pack`, scaffolds a clean project from the packed tarball, installs its dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts the generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. A scheduled, non-blocking compatibility job also checks Starter `main`.
+CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarball, installs their dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts each generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. It also adds and removes modules in an existing project and upgrades a project from an older Starter. A scheduled, non-blocking compatibility job checks Starter `main`.
 
 ## Release workflow
 
@@ -221,9 +248,28 @@ CI packs the CLI with `npm pack`, scaffolds a clean project from the packed tarb
 
 The required CI job always tests the pinned default. The scheduled compatibility job tests Starter `main` early, but unreleased Starter changes must not change the stable CLI default.
 
-## Contributing
+## Roadmap
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidance, and [ROADMAP.md](ROADMAP.md) for the planned phases. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+Each phase ends with a Starter release and a CLI release pinned to it. The full plan is in [ROADMAP.md](ROADMAP.md).
+
+| CLI release | Starter release | Theme |
+| --- | --- | --- |
+| 0.5.0 to 0.9.0 | v0.5.0 to v0.8.0 | Optional modules, local services, `add`, `remove`, and `upgrade` |
+| 0.10.0 | v0.9.0 | Module flags from the Starter's manifest, and email |
+| 0.11.0 | v0.10.0 | Deployment |
+| 0.12.0 | v0.11.0 | Payments |
+| 0.13.0 | v0.12.0 | Background jobs |
+| 0.14.0 | v0.13.0 | Observability |
+| next | | `status` and `doctor` commands, several modules in one change, macOS CI |
+
+## Community
+
+- **[Issues](https://github.com/Clubedge/create-clubedge-app/issues)** for problems creating, changing, or upgrading a project.
+- **[Clubedge Starter issues](https://github.com/Clubedge/clubedge-starter/issues)** for problems in the generated application itself.
+- **[Pull requests](https://github.com/Clubedge/create-clubedge-app/pulls)** are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Security problems** go through the private process in [SECURITY.md](SECURITY.md), not public issues.
+
+Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

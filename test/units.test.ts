@@ -51,11 +51,15 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["./add"]).command).toEqual({ name: "create" });
   });
 
+  it("leaves the module and option to ask for when they are missing", () => {
+    expect(parseCliArgs(["add"]).command).toEqual({ name: "add", module: undefined, option: undefined });
+    expect(parseCliArgs(["add", "cache"]).command).toEqual({ name: "add", module: "cache", option: undefined });
+    expect(parseCliArgs(["remove"]).command).toEqual({ name: "remove", module: undefined });
+  });
+
   it("explains malformed add and remove commands", () => {
-    expect(() => parseCliArgs(["add", "cache"])).toThrow("Usage: add <module> <option>");
-    expect(() => parseCliArgs(["add", "cache", "redis", "extra"])).toThrow("Usage: add <module> <option>");
-    expect(() => parseCliArgs(["remove"])).toThrow("Usage: remove <module>");
-    expect(() => parseCliArgs(["remove", "storage", "s3"])).toThrow("Usage: remove <module>");
+    expect(() => parseCliArgs(["add", "cache", "redis", "extra"])).toThrow("Usage: add [module] [option]");
+    expect(() => parseCliArgs(["remove", "storage", "s3"])).toThrow("Usage: remove [module]");
     expect(() => parseCliArgs(["add", "cache", "redis", "--auth", "none"])).toThrow("only apply when creating");
     expect(() => parseCliArgs(["remove", "storage", "--ref", "v1.0.0"])).toThrow("--ref only applies");
   });

@@ -73,9 +73,12 @@ This CLI release scaffolds Starter ${starterPin.starterRef} (commit ${starterPin
 
 Usage:
   pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
-  pnpm dlx @clubedge/create-clubedge-app add <module> <option>   (inside a project)
-  pnpm dlx @clubedge/create-clubedge-app remove <module>         (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app add [module] [option]   (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app remove [module]         (inside a project)
   pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
+
+  Inside a project with the clubedge script, use pnpm clubedge add, remove, or
+  upgrade. Without a module or option, add and remove ask for them.
 
   add and remove change one module of an existing project, and upgrade moves it
   to a newer Starter (this CLI's release unless --ref is given). The change is

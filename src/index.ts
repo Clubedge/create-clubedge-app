@@ -1,5 +1,6 @@
 import { cancel, confirm, intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
-import { relative, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
 import process from "node:process";
 import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
 import { dim, helpText, showBanner } from "./cli/ui.js";
@@ -201,9 +202,14 @@ async function createProject(args: CliArgs): Promise<void> {
   }
 
   const directory = relative(process.cwd(), targetDirectory) || ".";
+  const scripts = JSON.parse(await readFile(join(targetDirectory, "package.json"), "utf8")).scripts ?? {};
+  const later = scripts.clubedge
+    ? `Change modules later with \`pnpm clubedge add\` or \`pnpm clubedge remove\`, and get Starter updates with \`pnpm clubedge upgrade\`.\n\n`
+    : "";
   outro(
     `Next steps:\n  cd ${directory}\n  ${pnpmCommand} dev\n\n` +
       `See SETUP.md for database and provider configuration.\n\n` +
+      later +
       `${dim("Docs")}     ${cliUrl}\n${dim("Clubedge")} ${siteUrl}`,
   );
 }

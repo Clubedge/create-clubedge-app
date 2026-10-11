@@ -1,7 +1,9 @@
 // `add`, `remove`, and `upgrade` change an existing project. The project's recorded Starter
 // commit and modules (base) and the new state (target: other modules, or a newer Starter) are
 // rendered in memory, and the difference is merged into the project (see core/update.ts).
-import { confirm, isCancel, log, outro, spinner } from "@clack/prompts";
+import { confirm, isCancel, log, outro, select, spinner } from "@clack/prompts";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
@@ -21,6 +23,19 @@ import { installDependencies, resolvePnpm } from "./steps/install.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
 type ChangeCommand = Exclude<CliArgs["command"], { name: "create" }>;
+/** add or remove with every argument known. */
+type ModuleCommand = { name: "add"; module: string; option: string } | { name: "remove"; module: string };
+
+/** How to run the CLI in this project: its `clubedge` script when it has one. */
+async function cliCommand(project: Project): Promise<string> {
+  try {
+    const manifest = JSON.parse(await readFile(join(project.root, "package.json"), "utf8"));
+    if (manifest.scripts?.clubedge) return "pnpm clubedge";
+  } catch {
+    // Fall back to the full command below.
+  }
+  return "pnpm dlx @clubedge/create-clubedge-app";
+}
 
 /** The Starter revision the project was generated from. */
 async function projectSource(project: Project, templateDir: string | undefined): Promise<TemplateSource> {
@@ -74,8 +89,75 @@ async function assertSafeToChange(project: Project, args: CliArgs, interactive: 
   if (isCancel(proceed) || !proceed) throw new UsageError("Cancelled; nothing was changed.");
 }
 
+/** Whether an option's requirements hold for the project's other modules. */
+function available(manifest: TemplateManifest, project: Project, moduleId: string, optionId: string) {
+  const option = manifest.modules[moduleId]!.options[optionId]!;
+  return Object.entries(option.requires).every(([other, allowed]) => allowed.includes(project.modules[other] ?? ""));
+}
+
+/**
+ * Asks for whatever add or remove was not given: the module, then the option. Without a
+ * terminal, the missing arguments are an error. Resolves null when a prompt is cancelled.
+ */
+export async function completeCommand(
+  manifest: TemplateManifest,
+  project: Project,
+  command: Exclude<ChangeCommand, { name: "upgrade" }>,
+  interactive: boolean,
+): Promise<ModuleCommand | null> {
+  if (command.name === "add" && command.module && command.option) {
+    return { name: "add", module: command.module, option: command.option };
+  }
+  if (command.name === "remove" && command.module) return { name: "remove", module: command.module };
+  if (!interactive) {
+    throw new UsageError(
+      command.name === "add"
+        ? "Usage: add <module> <option>, for example: add cache redis. Run it in a terminal to choose from a list."
+        : "Usage: remove <module>, for example: remove storage. Run it in a terminal to choose from a list.",
+    );
+  }
+
+  let moduleId = command.module;
+  if (!moduleId) {
+    const choices = Object.entries(manifest.modules).filter(([id, module]) =>
+      command.name === "add" ? true : Boolean(module.options.none) && project.modules[id] !== "none",
+    );
+    if (!choices.length) throw new UsageError("No module can be removed: every removable module is already none.");
+    const value = await select({
+      message: command.name === "add" ? "Which module do you want to add or switch?" : "Which module do you want to remove?",
+      options: choices.map(([id, module]) => ({
+        value: id,
+        label: module.name,
+        hint: `now: ${module.options[project.modules[id] ?? ""]?.name ?? project.modules[id] ?? "not set"}`,
+      })),
+    });
+    if (isCancel(value)) return null;
+    moduleId = value;
+  }
+  if (command.name === "remove") return { name: "remove", module: moduleId };
+
+  const module = manifest.modules[moduleId];
+  if (!module) {
+    throw new UsageError(`Unknown module "${moduleId}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
+  }
+  const options = Object.keys(module.options).filter(
+    (id) => id !== project.modules[moduleId] && available(manifest, project, moduleId, id),
+  );
+  if (!options.length) throw new UsageError(`${module.name} has no other option this project can use.`);
+  const option = await select({
+    message: `${module.name}: which option?`,
+    options: options.map((id) => ({
+      value: id,
+      label: module.options[id]!.name,
+      ...(id === module.default ? { hint: "default" } : {}),
+    })),
+  });
+  if (isCancel(option)) return null;
+  return { name: "add", module: moduleId, option };
+}
+
 /** The selection after add or remove, validated against the Starter's manifest. */
-function changedModules(manifest: TemplateManifest, project: Project, command: Exclude<ChangeCommand, { name: "upgrade" }>) {
+function changedModules(manifest: TemplateManifest, project: Project, command: ModuleCommand, cli: string) {
   const module = manifest.modules[command.module];
   if (!module) {
     throw new UsageError(`Unknown module "${command.module}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
@@ -90,7 +172,7 @@ function changedModules(manifest: TemplateManifest, project: Project, command: E
     if (!module.options.none) {
       const others = Object.keys(module.options).filter((id) => id !== project.modules[command.module]);
       throw new UsageError(
-        `${module.name} cannot be removed. Switch it instead, for example: add ${command.module} ${others[0] ?? module.default}`,
+        `${module.name} cannot be removed. Switch it instead, for example: ${cli} add ${command.module} ${others[0] ?? module.default}`,
       );
     }
     option = "none";
@@ -103,7 +185,7 @@ function changedModules(manifest: TemplateManifest, project: Project, command: E
  * The project's selection in a newer Starter. Modules the project predates get their "none"
  * option where there is one, so an upgrade never adds a service on its own.
  */
-export function upgradedModules(manifest: TemplateManifest, project: Project) {
+export function upgradedModules(manifest: TemplateManifest, project: Project, cli = "pnpm clubedge") {
   const requested: Record<string, string> = {};
   const introduced: string[] = [];
   for (const [id, module] of Object.entries(manifest.modules)) {
@@ -113,7 +195,7 @@ export function upgradedModules(manifest: TemplateManifest, project: Project) {
       introduced.push(id);
     } else if (!module.options[recorded]) {
       throw new UsageError(
-        `The new Starter no longer offers ${module.name} "${recorded}". Choose one of: ${Object.keys(module.options).join(", ")}, with add ${id} <option>, before upgrading.`,
+        `The new Starter no longer offers ${module.name} "${recorded}". Switch to one of ${Object.keys(module.options).join(", ")} with ${cli} add ${id} <option> before upgrading.`,
       );
     } else {
       requested[id] = recorded;
@@ -184,15 +266,16 @@ interface Change {
 /** Works out what the command changes; resolves null when the project is already there. */
 async function planChange(
   project: Project,
-  command: ChangeCommand,
+  command: ModuleCommand | { name: "upgrade" },
   base: TemplateSource,
+  baseManifest: TemplateManifest,
   target: TemplateSource | null,
+  cli: string,
 ): Promise<Change | null> {
-  const baseManifest = await readTemplateManifest(base.root);
   const baseSide = { source: asRecorded(base, project), manifest: baseManifest, modules: project.modules, cliVersion: project.cliVersion };
 
   if (command.name !== "upgrade") {
-    const modules = changedModules(baseManifest, project, command);
+    const modules = changedModules(baseManifest, project, command, cli);
     const changed = Object.keys(modules).filter((id) => modules[id] !== project.modules[id]);
     if (!changed.length) return null;
     return {
@@ -209,11 +292,11 @@ async function planChange(
   }
   if (target.commit && target.commit === project.starterCommit) return null;
   const targetManifest = await readTemplateManifest(target.root);
-  const { modules, introduced, dropped } = upgradedModules(targetManifest, project);
+  const { modules, introduced, dropped } = upgradedModules(targetManifest, project, cli);
   const notes = [
     ...introduced.map((id) => {
       const module = targetManifest.modules[id]!;
-      return `Starter ${target.ref} adds ${module.name}; the project uses "${modules[id]}". Choose another option with: add ${id} <option>`;
+      return `Starter ${target.ref} adds ${module.name}; the project uses "${modules[id]}". Choose another option with: ${cli} add ${id} <option>`;
     }),
     ...dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`),
   ];
@@ -246,15 +329,22 @@ export async function changeProject(args: CliArgs): Promise<void> {
     sources.push(base);
     const target = upgrading ? await upgradeSource(args) : null;
     if (target) sources.push(target);
-
-    const change = await planChange(project, command, base, target);
+    const baseManifest = await readTemplateManifest(base.root);
+    progress.stop("Starter ready");
     spinning = false;
+
+    const cli = await cliCommand(project);
+    const complete =
+      command.name === "upgrade" ? command : await completeCommand(baseManifest, project, command, interactive);
+    if (!complete) {
+      outro("Cancelled; nothing was changed.");
+      return;
+    }
+    const change = await planChange(project, complete, base, baseManifest, target, cli);
     if (!change) {
-      progress.stop("Starter ready");
       outro(upgrading ? `The project is already on Starter ${project.starterRef}.` : "The project already uses that selection; nothing to change.");
       return;
     }
-    progress.stop("Starter ready");
     const plan = await planUpdate(project, change.base, change.target);
 
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);

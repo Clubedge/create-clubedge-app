@@ -3,8 +3,9 @@ import { parseArgs } from "node:util";
 /** What to do: create a project (the default), or change the modules of an existing one. */
 export type Command =
   | { name: "create" }
-  | { name: "add"; module: string; option: string }
-  | { name: "remove"; module: string }
+  /** Without a module or option, an interactive run asks for them. */
+  | { name: "add"; module?: string; option?: string }
+  | { name: "remove"; module?: string }
   | { name: "upgrade" };
 
 export interface CliArgs {
@@ -116,15 +117,11 @@ export function parseCliArgs(argv: string[]): CliArgs {
 function parseCommand(positionals: string[]): Command {
   const [name, module, option, ...extra] = positionals;
   if (name === "add") {
-    if (!module || !option || extra.length) {
-      throw new UsageError("Usage: add <module> <option>, for example: add cache redis");
-    }
+    if (extra.length) throw new UsageError("Usage: add [module] [option], for example: add cache redis");
     return { name, module, option };
   }
   if (name === "remove") {
-    if (!module || option !== undefined) {
-      throw new UsageError("Usage: remove <module>, for example: remove storage");
-    }
+    if (option !== undefined) throw new UsageError("Usage: remove [module], for example: remove storage");
     return { name, module };
   }
   if (name === "upgrade") {

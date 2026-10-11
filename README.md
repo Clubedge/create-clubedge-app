@@ -12,27 +12,27 @@ The CLI downloads a tested Starter release, names the generated project, creates
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.13.0
+create-clubedge-app v0.14.0
         |
         v
-Clubedge Starter v0.12.0
-commit 445add73c3505cd8505faccb3b0b7061a29f5356
+Clubedge Starter v0.13.0
+commit 62fb8d1b1e13ed8e8e134bd1e53f2bfdde2c6a50
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.13.0` | `clubedge-starter@v0.12.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.14.0` | `clubedge-starter@v0.13.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.12.0` tag is expected to resolve to commit
-`445add73c3505cd8505faccb3b0b7061a29f5356`. The CLI verifies this before
+The `v0.13.0` tag is expected to resolve to commit
+`62fb8d1b1e13ed8e8e134bd1e53f2bfdde2c6a50`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.12.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.13.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 ## Requirements
 
@@ -85,7 +85,7 @@ Either way, the app lives in `apps/web` and uses the same shared packages, so th
 
 ### Choosing services
 
-Authentication, file storage, caching, email, payments, background jobs, local infrastructure, and deployment are modules. Each has a default, and anything you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries. The Starter's `clubedge.template.json` defines the modules, so a module a newer Starter adds gets its `--<module>` flag without a CLI change; `--help` lists the modules of the Starter this CLI release creates.
+Authentication, file storage, caching, email, payments, background jobs, observability, local infrastructure, and deployment are modules. Each has a default, and anything you leave out is removed completely: its package, its provider SDK, its environment variables, its documentation, and its lockfile entries. The Starter's `clubedge.template.json` defines the modules, so a module a newer Starter adds gets its `--<module>` flag without a CLI change; `--help` lists the modules of the Starter this CLI release creates.
 
 | Flag        | Options                                    | Default    |
 | ----------- | ------------------------------------------ | ---------- |
@@ -95,6 +95,7 @@ Authentication, file storage, caching, email, payments, background jobs, local i
 | `--email`   | `smtp` (any provider, or a local inbox), `resend`, `none` | `smtp` |
 | `--payments` | `stripe`, `none` (needs an auth module) | `none` |
 | `--jobs` | `pg-boss`, `none` | `none` |
+| `--observability` | `otel` (OpenTelemetry, to any OTLP collector), `sentry`, `none` | `none` |
 | `--deploy`  | `docker` (any container host), `fly`, `railway`, `render`, `vercel`, `netlify` | `docker` |
 | `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `local` (no Docker: PGlite and a local folder), `none` | `docker` |
 
@@ -140,7 +141,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.12.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.13.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -157,7 +158,7 @@ pnpm dlx @clubedge/create-clubedge-app add cache redis      # or switch: add aut
 pnpm dlx @clubedge/create-clubedge-app remove storage
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
-pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.12.0 # or a specific tag, branch, or commit
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.13.0 # or a specific tag, branch, or commit
 ```
 
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
@@ -208,7 +209,7 @@ CI packs the CLI with `npm pack`, scaffolds a clean project from the packed tarb
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.12.0`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.13.0`, and publish the Starter release.
 
 ### CLI maintainers
 

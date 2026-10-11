@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.14.0
+
+- Default to Starter `v0.13.0`, which adds observability (`--observability otel|sentry`): request tracing and server error reporting through OpenTelemetry, to any OTLP collector, or Sentry, behind provider-neutral hooks in `@clubedge/core`. `--observability` needs no CLI code: it comes from the Starter's manifest.
+- Test an observability project in CI and in the release smoke test, and add the observability module in the change-modules job.
+
 ## 0.13.0
 
 - Default to Starter `v0.12.0`, which adds background jobs (`--jobs pg-boss`): jobs stored in the project's PostgreSQL, run by a worker inside the app server, with retries and schedules, and `/api/jobs/run` for serverless hosts. `--jobs` needs no CLI code: it comes from the Starter's manifest.

@@ -17,15 +17,11 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 9 | 0.12.0 | `--payments`, tested in CI, in the release smoke test, and by `add payments stripe` |
 | 10.1 | 0.13.0 | `--jobs`, and a fix for lockfile entries left empty when an optional peer is pruned |
 | 10.2 | 0.14.0 | `--observability` |
+| 11 | 0.15.0 | `status` and `doctor`, several modules in one change, conflict and upgrade summaries, macOS CI, a 15-minute npm wait in the release workflow |
 
 ## CLI improvements
 
 These are independent of the Starter's modules and can land in any order.
 
-- **Release workflow:** wait up to 15 minutes for npm to serve a new version before the published-package smoke tests start. The 0.9.0 release needed a re-run after the 5-minute wait expired.
-- **Several modules at once:** `add email smtp payments stripe`, or `change --email smtp --payments stripe`, applied as one merge so the project never sits in an in-between state.
-- **`status`:** show the project's Starter version, modules, whether a newer Starter is available, and whether the working tree is clean. Ends with the command to run next.
-- **`doctor`:** check Node.js and pnpm versions, the lockfile against `package.json`, the local env file against the example (missing or unused variables), and run `pnpm check:services`.
-- **Conflict experience:** after `add`, `remove`, or `upgrade`, list each conflicted file with the number of conflict blocks, and print the command to see the incoming version of a file (the target render) for manual comparison.
-- **macOS in CI:** a generated-project job on `macos-latest`, like the Windows one, so all three platforms are tested.
-- **Upgrade summary:** print the release notes headings of every Starter release between the project's version and the target, so the developer knows what changed before reviewing `git diff`.
+- **Incoming version of a conflicted file:** after `add`, `remove`, or `upgrade`, offer the Starter's version of each conflicted file (the target render) next to yours, for comparing by hand.
+- **Interactive several-module changes:** let the `add` menu pick more than one module before applying them together.

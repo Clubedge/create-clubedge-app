@@ -177,7 +177,7 @@ pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and p
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.14.1
+create-clubedge-app v0.15.0
         |
         v
 Clubedge Starter v0.13.1
@@ -188,7 +188,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.14.1` | `clubedge-starter@v0.13.1` | The CLI's required, tested default |
+| `create-clubedge-app@0.15.0` | `clubedge-starter@v0.13.1` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -276,7 +276,8 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.12.0 | v0.11.0 | Payments |
 | 0.13.0 | v0.12.0 | Background jobs |
 | 0.14.0 | v0.13.0 | Observability |
-| next | | `status` and `doctor` commands, several modules in one change, macOS CI |
+| 0.15.0 | v0.13.1 | `status` and `doctor`, several modules in one change, conflict and upgrade summaries, macOS CI |
+| next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community
 

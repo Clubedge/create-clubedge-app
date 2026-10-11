@@ -2,6 +2,16 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.15.0
+
+- Add `status`: a project's Starter release, framework, modules, and Git state, whether a newer Starter release exists (from npm, still working offline), and the command to run next.
+- Add `doctor`: checks Node.js and pnpm against the project's versions, installed dependencies, the lockfile, and the env file against the example, then runs `pnpm check:services` (`--no-services` skips it). It exits with an error when a check fails.
+- `add` and `remove` take several modules (`add email resend payments stripe`, `remove storage payments`) and apply them as one change, checking requirements after every change.
+- After a change with conflicts, list each file with its number of conflict blocks.
+- `upgrade` lists the Starter releases it crosses, with the sections of their release notes.
+- Fix a finished command exiting with an error when Windows briefly locked the downloaded Starter's temporary folder.
+- CI: test generated projects on macOS too; the release workflow waits up to 15 minutes for npm.
+
 ## 0.14.1
 
 - Default to Starter `v0.13.1`. In projects with background jobs or observability, a configuration error such as a missing `DATABASE_URL` no longer stops the server at startup; pages that need no database keep working, and the error is reported once.

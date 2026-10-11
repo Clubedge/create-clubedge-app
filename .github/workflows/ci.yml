@@ -28,22 +28,43 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  generated-project:
-    name: generated-project (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  # Windows runs commands through cmd.exe and has drive roots and CRLF checkouts, which have
+  # broken the CLI before; these jobs keep it working there.
+  check-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+
+  generated-project-windows:
+    name: generated-project-windows (${{ matrix.name }})
+    runs-on: windows-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: next-default, framework: next, modules: "" }
-          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory --infra none }
-          - { name: next-better-auth, framework: next, modules: --auth better-auth --storage none }
-          - { name: next-supabase-infra, framework: next, modules: --infra supabase --storage supabase }
-          - { name: start-default, framework: tanstack-start, modules: "" }
-          - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory --infra none }
-          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory }
-          - { name: start-local, framework: tanstack-start, modules: --infra local --auth better-auth }
+          - { name: next-default, framework: next, modules: "", change: add cache memory, final: --cache memory }
+          - {
+              name: start-local,
+              framework: tanstack-start,
+              modules: --infra local --auth better-auth,
+              change: remove storage,
+              final: --infra local --auth better-auth --storage none,
+            }
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -52,52 +73,50 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.12.0
-      - name: Install CLI dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build the CLI and bundle the pinned Starter release
+      - name: Build, bundle, and pack the CLI
         run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
           pnpm build
           pnpm bundle-template
-      - name: Generate a project from the packed CLI, exactly as it would be published
-        shell: bash
+          temp="$(cygpath -u "$RUNNER_TEMP")"
+          npm pack --pack-destination "$temp"
+          mkdir -p "$temp/packed-cli"
+          tar -xzf "$temp"/clubedge-create-clubedge-app-*.tgz -C "$temp/packed-cli"
+          npm install --prefix "$temp/packed-cli/package" --omit=dev --ignore-scripts
+          echo "CLI=$temp/packed-cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+          echo "TEMP_DIR=$temp" >> "$GITHUB_ENV"
+      - name: Generate a project
         run: |
           set -euo pipefail
-          npm pack --pack-destination "$RUNNER_TEMP"
-          mkdir -p "$RUNNER_TEMP/packed-cli"
-          tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
-          npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
-          node "$RUNNER_TEMP/packed-cli/package/bin/create.mjs"             "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-git --no-install --yes
-          # npm strips .gitignore from tarballs; the CLI must restore it.
-          test -f "$RUNNER_TEMP/generated-app/.gitignore"
-      - name: Install generated project dependencies
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm install --frozen-lockfile
-      - name: Lint generated project
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm lint
-      - name: Typecheck generated project
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm typecheck
-      - name: Test generated project
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm test
-      - name: Install Playwright browser
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Run generated project browser checks
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm test:e2e
-      - name: Build generated project
-        working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm build
-      - name: Start app and verify routes
-        working-directory: ${{ runner.temp }}/generated-app
+          node "$CLI" "$TEMP_DIR/changed/my-app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-install --yes
+          cd "$TEMP_DIR/changed/my-app"
+          git config user.email ci@example.com
+          git config user.name CI
+          git add -A
+          git commit -qm "Generated project"
+          echo "Notes of our own." >> README.md
+          git commit -qam "Our change"
+      - name: Change a module and match a project generated with that selection
         run: |
           set -euo pipefail
-          pnpm start > "$RUNNER_TEMP/clubedge-next.log" 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          APP_BASE_URL="http://127.0.0.1:3000" node "$GITHUB_WORKSPACE/scripts/smoke-generated-app.mjs"
+          cd "$TEMP_DIR/changed/my-app"
+          node "$CLI" ${{ matrix.change }} --no-install --yes
+          node "$CLI" "$TEMP_DIR/fresh/my-app" --framework ${{ matrix.framework }} ${{ matrix.final }} --no-install --no-git --yes
+          diff -r -x .git "$TEMP_DIR/changed/my-app" "$TEMP_DIR/fresh/my-app" > "$TEMP_DIR/diff.txt" || true
+          cat "$TEMP_DIR/diff.txt"
+          # Our README line is the only difference.
+          test "$(grep -c '^[<>]' "$TEMP_DIR/diff.txt")" = 1
+          grep -qx '< Notes of our own.' "$TEMP_DIR/diff.txt"
+      - name: Install, lint, typecheck, test, and build the changed project
+        working-directory: ${{ runner.temp }}/changed/my-app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
 
   # add and remove on a project with an edit of its own: after several changes, the project must
   # match one generated with the final selection, apart from that edit, and still build.

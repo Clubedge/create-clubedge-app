@@ -6,6 +6,11 @@ const LINE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/;
 const COMMENT = /^\s*#/;
 
 const keyOf = (line: string) => LINE.exec(line)?.[1];
+
+/** The variable names an env file sets, in order. */
+export function envKeys(text: string): string[] {
+  return text.split(/\r?\n/).flatMap((line) => keyOf(line) ?? []);
+}
 const valueOf = (line: string) => LINE.exec(line)![2]!.replace(/\s+#.*$/, "").trim();
 const find = (lines: string[], key: string) => lines.findIndex((line) => keyOf(line) === key);
 

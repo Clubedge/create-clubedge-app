@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- Let module options set root `package.json` scripts; scripts that only left-out options define are removed. This prepares the local infrastructure module, whose `infra:*` scripts differ by option.
+
 ## 0.5.0
 
 - Default to Starter `v0.5.0`, which adds optional modules, Better Auth, and template schema 3.

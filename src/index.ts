@@ -75,7 +75,7 @@ async function chooseModules(
   if (!interactive || unasked.length === 0) return requested;
 
   const customize = await confirm({
-    message: "Customize the included services (auth, storage, cache)?",
+    message: "Customize the included services (auth, storage, cache, local infrastructure)?",
     initialValue: false,
   });
   if (isCancel(customize)) return null;

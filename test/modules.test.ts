@@ -18,6 +18,7 @@ describe("parsing schema 3 modules", () => {
         "apps/start/src/server/storage.ts": "apps/start/src/server/variants/storage.supabase.ts",
       },
       requires: { auth: ["supabase"] },
+      scripts: {},
     });
     expect(manifest.modules.storage!.options.none).toEqual({
       name: "None",
@@ -25,6 +26,7 @@ describe("parsing schema 3 modules", () => {
       files: [],
       replace: {},
       requires: {},
+      scripts: {},
     });
     expect(manifest.conditional).toEqual([".env.example", "apps/start/.env.example", "README.md"]);
   });
@@ -220,5 +222,35 @@ describe("createPlan with modules", () => {
 
   it("refuses an invalid combination before planning any file", () => {
     expect(() => createPlan({ ...input, modules: { auth: "none", storage: "supabase" } })).toThrow(ModuleError);
+  });
+});
+
+describe("module scripts", () => {
+  const infra = {
+    name: "Local infrastructure",
+    default: "docker",
+    options: {
+      docker: { name: "Docker Compose", scripts: { "infra:up": "docker compose up", "infra:down": "docker compose down" } },
+      supabase: { name: "Supabase CLI", scripts: { "infra:up": "supabase start", "infra:status": "supabase status" } },
+      none: { name: "None" },
+    },
+  };
+  const withInfra = parseTemplateManifest(JSON.stringify({ ...modulesManifest, modules: { ...modulesManifest.modules, infra } }));
+  const rootScripts = (modules: Record<string, string>) => {
+    const plan = createPlan({ ...input, manifest: withInfra, modules });
+    const edit = plan.edits.find(({ path }) => path === "package.json")!;
+    return JSON.parse(edit.apply(JSON.stringify({ name: "x", scripts: { dev: "next dev", "infra:up": "docker compose up", "infra:down": "docker compose down" } }))).scripts;
+  };
+
+  it("keeps the default option's scripts", () => {
+    expect(rootScripts({})).toEqual({ dev: "next dev", "infra:up": "docker compose up", "infra:down": "docker compose down" });
+  });
+
+  it("sets the selected option's scripts and removes the ones only other options define", () => {
+    expect(rootScripts({ infra: "supabase" })).toEqual({ dev: "next dev", "infra:up": "supabase start", "infra:status": "supabase status" });
+  });
+
+  it("removes every option's scripts when the selected option has none", () => {
+    expect(rootScripts({ infra: "none" })).toEqual({ dev: "next dev" });
   });
 });

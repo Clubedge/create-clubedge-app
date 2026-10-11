@@ -92,6 +92,7 @@ Authentication, file storage, and caching are modules. Each has a default, and a
 | `--auth`    | `supabase`, `better-auth`, `none`          | `supabase` |
 | `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
 | `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
+| `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `none` | `docker` |
 
 ```sh
 # Only the monorepo, UI, database, and tooling
@@ -109,6 +110,7 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 --auth <id>             Authentication: supabase (default), better-auth, or none
 --storage <id>          File storage: s3 (default), supabase, or none
 --cache <id>            Cache and rate limits: redis (default) or memory
+--infra <id>            Local services: docker (default), supabase, or none
 --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
 --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
 --dry-run               Show what would be created without writing anything
@@ -145,7 +147,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.
 
-The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. Schema 3 adds `modules`: for each option, the workspace packages it uses, the files it owns, the variant files that replace defaults, and the options it requires. Files listed under `conditional` contain `clubedge:if <condition>` / `clubedge:end` blocks (in `#`, `//`, `<!-- -->`, or JSX comments) that the CLI keeps or drops for the selection, always removing the markers; `clubedge:if starter-repository` marks sections for Starter maintainers only. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
+The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. Schema 3 adds `modules`: for each option, the workspace packages it uses, the files it owns, the variant files that replace defaults, the root `package.json` scripts it sets, and the options it requires. Files listed under `conditional` contain `clubedge:if <condition>` / `clubedge:end` blocks (in `#`, `//`, `<!-- -->`, or JSX comments) that the CLI keeps or drops for the selection, always removing the markers; `clubedge:if starter-repository` marks sections for Starter maintainers only. The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
 
 The CLI first builds a plan (the files to copy and the edits to make), which `--dry-run` prints, and then applies it. The source is organized the same way:
 

@@ -35,11 +35,9 @@ describe("parseCliArgs", () => {
   });
 
   it("collects module flags without judging their values", () => {
-    expect(parseCliArgs(["app", "--auth", "none", "--storage=s3", "--cache", " memory "]).modules).toEqual({
-      auth: "none",
-      storage: "s3",
-      cache: "memory",
-    });
+    expect(
+      parseCliArgs(["app", "--auth", "none", "--storage=s3", "--cache", " memory ", "--infra", "supabase"]).modules,
+    ).toEqual({ auth: "none", storage: "s3", cache: "memory", infra: "supabase" });
     expect(() => parseCliArgs(["--auth", " "])).toThrow("--auth requires an option");
   });
 

@@ -27,6 +27,8 @@ export interface ModuleOption {
   replace: Record<string, string>;
   /** Options that must be selected alongside this one, by module. */
   requires: Record<string, string[]>;
+  /** Root package.json scripts this option sets; left-out options' scripts are removed. */
+  scripts: Record<string, string>;
 }
 
 /** A replaceable part of the app, such as authentication or storage. */
@@ -169,6 +171,7 @@ function parseModules(value: unknown): Record<string, TemplateModule> {
         files: optionalStringArray(option, "files", optionPrefix),
         replace: optionalStringRecord(option, "replace", optionPrefix),
         requires: parseRequires(option.requires, optionPrefix),
+        scripts: optionalStringRecord(option, "scripts", optionPrefix),
       };
     }
 

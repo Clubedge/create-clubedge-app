@@ -92,6 +92,7 @@ Authentication, file storage, and caching are modules. Each has a default, and a
 | `--auth`    | `supabase`, `better-auth`, `none`          | `supabase` |
 | `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
 | `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
+| `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `none` | `docker` |
 
 ```sh
 # Only the monorepo, UI, database, and tooling
@@ -109,6 +110,7 @@ Usage: pnpm dlx @clubedge/create-clubedge-app [project-directory] [options]
 --auth <id>             Authentication: supabase (default), better-auth, or none
 --storage <id>          File storage: s3 (default), supabase, or none
 --cache <id>            Cache and rate limits: redis (default) or memory
+--infra <id>            Local services: docker (default), supabase, or none
 --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
 --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
 --dry-run               Show what would be created without writing anything

@@ -79,6 +79,7 @@ Options:
   --auth <id>             Authentication: supabase (default), better-auth, or none
   --storage <id>          File storage: s3 (default), supabase, or none
   --cache <id>            Cache and rate limits: redis (default) or memory
+  --infra <id>            Local services: docker (default), supabase, or none
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --dry-run               Show what would be created without writing anything

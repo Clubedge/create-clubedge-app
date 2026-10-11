@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 export interface CliArgs {
   projectDirectory?: string;
   framework?: string;
-  /** Module options from --auth, --storage, and --cache, validated against the Starter later. */
+  /** Module options from --auth, --storage, --cache, and --infra, validated against the Starter later. */
   modules: Record<string, string>;
   ref?: string;
   templateDir?: string;
@@ -16,7 +16,7 @@ export interface CliArgs {
 }
 
 /** Module flags the CLI accepts. Which options exist is up to the Starter's manifest. */
-export const MODULE_FLAGS = ["auth", "storage", "cache"] as const;
+export const MODULE_FLAGS = ["auth", "storage", "cache", "infra"] as const;
 
 export class UsageError extends Error {
   override name = "UsageError";
@@ -35,6 +35,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
         auth: { type: "string" },
         storage: { type: "string" },
         cache: { type: "string" },
+        infra: { type: "string" },
         ref: { type: "string" },
         "template-dir": { type: "string" },
         install: { type: "boolean", default: true },

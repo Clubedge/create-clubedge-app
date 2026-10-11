@@ -1,5 +1,6 @@
 // Pure text transforms applied to template files. Keeping them free of I/O makes each one easy
 // to test and lets --dry-run describe them without touching the disk.
+import { pruneOptionalPeers } from "./lockfile-peers.js";
 
 export interface ProjectIdentity {
   packageName: string;
@@ -133,7 +134,9 @@ export interface LockfileChanges {
 /**
  * Keeps pnpm-lock.yaml in step with the selected framework so `pnpm install --frozen-lockfile`
  * works. Importers are keyed by workspace path at two-space indentation; package entries that
- * are no longer used are harmless, and pnpm prunes them on the next lockfile update.
+ * are no longer used are harmless, and pnpm prunes them on the next lockfile update. Optional
+ * peer links to packages that only left-out importers installed are removed, so those packages
+ * are not installed either.
  */
 export function customizeLockfile(
   source: string,
@@ -195,7 +198,7 @@ export function customizeLockfile(
     skippingDependency = false;
     output.push(line);
   }
-  return output.join("\n");
+  return pruneOptionalPeers(output.join("\n"));
 }
 
 /** The selected framework and module options, as `{ framework: "next", auth: "none", ... }`. */

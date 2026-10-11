@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- Remove optional peer links to packages that only left-out modules installed, so generated projects no longer install them. For example, a project without `--infra local` no longer installs PGlite through drizzle-orm, and a project without Better Auth no longer installs its optional peers.
+
 ## 0.6.0
 
 - Default to Starter `v0.6.0`, which adds the local infrastructure module and `pnpm check:services`.

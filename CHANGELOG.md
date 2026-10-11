@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.14.1
+
+- Default to Starter `v0.13.1`. In projects with background jobs or observability, a configuration error such as a missing `DATABASE_URL` no longer stops the server at startup; pages that need no database keep working, and the error is reported once.
+
 ## 0.14.0
 
 - Default to Starter `v0.13.0`, which adds observability (`--observability otel|sentry`): request tracing and server error reporting through OpenTelemetry, to any OTLP collector, or Sentry, behind provider-neutral hooks in `@clubedge/core`. `--observability` needs no CLI code: it comes from the Starter's manifest.

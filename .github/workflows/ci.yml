@@ -173,6 +173,79 @@ jobs:
           pnpm test
           pnpm build
 
+  # upgrade from an earlier Starter release to the pinned one on a project with an edit of its
+  # own: the result must match a project generated from the pinned release, apart from that edit.
+  upgrade-project:
+    name: upgrade-project (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: next-from-v0.6.0, framework: next, from: v0.6.0, modules: "", final: "" }
+          # v0.5.0 predates the infra module, so the upgrade adds it as none.
+          - {
+              name: start-from-v0.5.0,
+              framework: tanstack-start,
+              from: v0.5.0,
+              modules: --auth better-auth,
+              final: --auth better-auth --infra none,
+            }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Build, bundle, and pack the CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm bundle-template
+          npm pack --pack-destination "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/packed-cli"
+          tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
+          npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
+          echo "CLI=$RUNNER_TEMP/packed-cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+      - name: Generate a project from ${{ matrix.from }} and change it
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$CLI" "$RUNNER_TEMP/upgraded/my-app" --ref ${{ matrix.from }} --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-install --yes
+          cd "$RUNNER_TEMP/upgraded/my-app"
+          git config user.email ci@example.com
+          git config user.name CI
+          git add -A
+          git commit -qm "Generated project"
+          echo "Notes of our own." >> README.md
+          git commit -qam "Our change"
+      - name: Upgrade to the pinned Starter
+        working-directory: ${{ runner.temp }}/upgraded/my-app
+        run: node "$CLI" upgrade --no-install --yes
+      - name: Match a project generated from the pinned Starter
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$CLI" "$RUNNER_TEMP/fresh/my-app" --framework ${{ matrix.framework }} ${{ matrix.final }} --no-install --no-git --yes
+          diff -r -x .git -x node_modules "$RUNNER_TEMP/upgraded/my-app" "$RUNNER_TEMP/fresh/my-app" > "$RUNNER_TEMP/diff.txt" || true
+          cat "$RUNNER_TEMP/diff.txt"
+          # Our README line is the only difference.
+          test "$(grep -c '^[<>]' "$RUNNER_TEMP/diff.txt")" = 1
+          grep -qx '< Notes of our own.' "$RUNNER_TEMP/diff.txt"
+      - name: Install, lint, typecheck, test, and build the upgraded project
+        working-directory: ${{ runner.temp }}/upgraded/my-app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
   latest-starter-compatibility:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest

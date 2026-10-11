@@ -145,15 +145,17 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 ## Change an existing project
 
-Inside a project created by the CLI, `add` and `remove` change one module at a time:
+Inside a project created by the CLI, `add` and `remove` change one module at a time, and `upgrade` moves the project to a newer Starter release:
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app add cache redis      # or switch: add auth better-auth
 pnpm dlx @clubedge/create-clubedge-app remove storage
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
+pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.8.0  # or a specific tag, branch, or commit
 ```
 
-The CLI renders the Starter commit recorded in your `package.json` twice, with your current modules and with the new selection, and merges the difference into your project:
+The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
 
 - Files you never changed are updated, added, or deleted.
 - Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve.

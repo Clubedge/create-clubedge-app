@@ -93,6 +93,19 @@ export function pickTagCommit(output: string, tag: string): string | undefined {
   return refs.get(`refs/tags/${tag}^{}`) ?? refs.get(`refs/tags/${tag}`);
 }
 
+/** Resolves a tag, branch, or full commit SHA to a commit with `git ls-remote`. */
+export async function resolveRefCommit(repository: string, ref: string): Promise<string | undefined> {
+  if (/^[0-9a-f]{40}$/i.test(ref)) return ref.toLowerCase();
+  const output = await runCapture("git", ["ls-remote", `https://github.com/${repository}.git`]);
+  return pickTagCommit(output, ref) ?? pickBranchCommit(output, ref);
+}
+
+/** Picks a branch's commit from `git ls-remote` output. */
+export function pickBranchCommit(output: string, branch: string): string | undefined {
+  const line = output.split("\n").find((entry) => entry.trim().split(/\s+/)[1] === `refs/heads/${branch}`);
+  return line?.trim().split(/\s+/)[0];
+}
+
 export async function downloadGitHubTemplate(
   ref: string,
   { repository = starterPin.starterRepository, expectedCommit }: { repository?: string; expectedCommit?: string } = {},
@@ -116,7 +129,8 @@ export async function downloadGitHubTemplate(
       files: files.map((file) => ({ from: file, to: file })),
       repository,
       ref,
-      commit: expectedCommit,
+      // Recorded in the project's provenance so later add, remove, and upgrade find this revision.
+      commit: expectedCommit ?? (await resolveRefCommit(repository, ref).catch(() => undefined)),
       cleanup,
     };
   } catch (error) {

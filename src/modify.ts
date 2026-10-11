@@ -1,6 +1,6 @@
-// `add` and `remove`: change one module of an existing project. The project's recorded Starter
-// commit is rendered twice, with the current and the new selection, and the difference is
-// merged into the project (see core/update.ts).
+// `add`, `remove`, and `upgrade` change an existing project. The project's recorded Starter
+// commit and modules (base) and the new state (target: other modules, or a newer Starter) are
+// rendered in memory, and the difference is merged into the project (see core/update.ts).
 import { confirm, isCancel, log, outro, spinner } from "@clack/prompts";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
@@ -15,10 +15,12 @@ import {
   resolveTemplateSource,
   type TemplateSource,
 } from "./core/source.js";
-import { applyUpdate, planUpdate, type UpdatePlan } from "./core/update.js";
+import { applyUpdate, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
 import { cliVersion, starterPin } from "./package-info.js";
 import { installDependencies, resolvePnpm } from "./steps/install.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
+
+type ChangeCommand = Exclude<CliArgs["command"], { name: "create" }>;
 
 /** The Starter revision the project was generated from. */
 async function projectSource(project: Project, templateDir: string | undefined): Promise<TemplateSource> {
@@ -30,6 +32,20 @@ async function projectSource(project: Project, templateDir: string | undefined):
   }
   if (project.starterCommit === starterPin.starterCommit) return resolveTemplateSource({});
   return downloadGitHubTemplate(project.starterCommit, { repository: project.starterRepository });
+}
+
+/** The Starter to upgrade to: --template-dir, --ref, or the release this CLI is pinned to. */
+async function upgradeSource(args: CliArgs): Promise<TemplateSource> {
+  if (args.templateDir) return readDirectoryTemplate(args.templateDir);
+  return resolveTemplateSource({ ref: args.ref });
+}
+
+/**
+ * Renders the project's own revision with the provenance it recorded, so the generated
+ * package.json and README match the project even when the revision was fetched by commit.
+ */
+function asRecorded(source: TemplateSource, project: Project): UpdateSide["source"] {
+  return { ...source, ref: project.starterRef, commit: project.starterCommit };
 }
 
 /**
@@ -58,9 +74,8 @@ async function assertSafeToChange(project: Project, args: CliArgs, interactive: 
   if (isCancel(proceed) || !proceed) throw new UsageError("Cancelled; nothing was changed.");
 }
 
-/** The selection after the command, validated against the Starter's manifest. */
-function targetModules(manifest: TemplateManifest, project: Project, command: CliArgs["command"]) {
-  if (command.name === "create") throw new Error("Not a module command.");
+/** The selection after add or remove, validated against the Starter's manifest. */
+function changedModules(manifest: TemplateManifest, project: Project, command: Exclude<ChangeCommand, { name: "upgrade" }>) {
   const module = manifest.modules[command.module];
   if (!module) {
     throw new UsageError(`Unknown module "${command.module}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
@@ -82,6 +97,30 @@ function targetModules(manifest: TemplateManifest, project: Project, command: Cl
   }
   // Validates requirements between modules, such as Supabase Storage needing Supabase Auth.
   return selectModules(manifest, { ...project.modules, [command.module]: option });
+}
+
+/**
+ * The project's selection in a newer Starter. Modules the project predates get their "none"
+ * option where there is one, so an upgrade never adds a service on its own.
+ */
+export function upgradedModules(manifest: TemplateManifest, project: Project) {
+  const requested: Record<string, string> = {};
+  const introduced: string[] = [];
+  for (const [id, module] of Object.entries(manifest.modules)) {
+    const recorded = project.modules[id];
+    if (recorded === undefined) {
+      requested[id] = module.options.none ? "none" : module.default;
+      introduced.push(id);
+    } else if (!module.options[recorded]) {
+      throw new UsageError(
+        `The new Starter no longer offers ${module.name} "${recorded}". Choose one of: ${Object.keys(module.options).join(", ")}, with add ${id} <option>, before upgrading.`,
+      );
+    } else {
+      requested[id] = recorded;
+    }
+  }
+  const dropped = Object.keys(project.modules).filter((id) => !manifest.modules[id]);
+  return { modules: selectModules(manifest, requested), introduced, dropped };
 }
 
 const verbs: Record<MergeAction["kind"], string> = {
@@ -126,7 +165,7 @@ function report(plan: UpdatePlan) {
   const env = plan.env?.update;
   if (plan.env && env?.customized.length) {
     log.info(
-      `You set your own ${env.customized.join(", ")} in ${plan.env.path}; the example's value changed with this selection, so check whether yours still fits.`,
+      `You set your own ${env.customized.join(", ")} in ${plan.env.path}; the example's value changed, so check whether yours still fits.`,
     );
   }
   if (plan.env && env?.unused.length) {
@@ -134,42 +173,93 @@ function report(plan: UpdatePlan) {
   }
 }
 
-export async function changeModules(args: CliArgs): Promise<void> {
+interface Change {
+  base: UpdateSide;
+  target: UpdateSide;
+  /** One line describing the change, such as "Starter v0.6.0 -> v0.7.0". */
+  summary: string;
+  notes: string[];
+}
+
+/** Works out what the command changes; resolves null when the project is already there. */
+async function planChange(
+  project: Project,
+  command: ChangeCommand,
+  base: TemplateSource,
+  target: TemplateSource | null,
+): Promise<Change | null> {
+  const baseManifest = await readTemplateManifest(base.root);
+  const baseSide = { source: asRecorded(base, project), manifest: baseManifest, modules: project.modules, cliVersion: project.cliVersion };
+
+  if (command.name !== "upgrade") {
+    const modules = changedModules(baseManifest, project, command);
+    const changed = Object.keys(modules).filter((id) => modules[id] !== project.modules[id]);
+    if (!changed.length) return null;
+    return {
+      base: baseSide,
+      target: { ...baseSide, modules, cliVersion },
+      summary: changed.map((id) => `${baseManifest.modules[id]!.name}: ${project.modules[id]} -> ${modules[id]}`).join(", "),
+      notes: [],
+    };
+  }
+
+  if (!target) throw new Error("upgrade needs a target Starter.");
+  if (!target.commit && target.kind === "github") {
+    throw new UsageError(`Could not resolve Starter "${target.ref}" to a commit. Use a tag, a branch, or a full commit SHA.`);
+  }
+  if (target.commit && target.commit === project.starterCommit) return null;
+  const targetManifest = await readTemplateManifest(target.root);
+  const { modules, introduced, dropped } = upgradedModules(targetManifest, project);
+  const notes = [
+    ...introduced.map((id) => {
+      const module = targetManifest.modules[id]!;
+      return `Starter ${target.ref} adds ${module.name}; the project uses "${modules[id]}". Choose another option with: add ${id} <option>`;
+    }),
+    ...dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`),
+  ];
+  if (/^v\d/.test(target.ref)) {
+    notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
+  }
+  return {
+    base: baseSide,
+    target: { source: target, manifest: targetManifest, modules, cliVersion },
+    summary: `Starter ${project.starterRef} -> ${target.ref}`,
+    notes,
+  };
+}
+
+export async function changeProject(args: CliArgs): Promise<void> {
+  const command = args.command;
+  if (command.name === "create") throw new Error("Not a project change.");
   const interactive = Boolean(process.stdin.isTTY) && !args.yes;
   const project = await readProject(process.cwd());
   await assertSafeToChange(project, args, interactive);
 
+  const upgrading = command.name === "upgrade";
   const progress = spinner();
-  progress.start(`Preparing Starter ${project.starterRef}`);
-  let source: TemplateSource;
+  progress.start(upgrading ? "Preparing both Starter revisions" : `Preparing Starter ${project.starterRef}`);
+  const sources: TemplateSource[] = [];
+  let spinning = true;
   try {
-    source = await projectSource(project, args.templateDir);
-  } catch (error) {
-    progress.stop("Could not prepare the Starter");
-    throw error;
-  }
+    // For upgrade, --template-dir names the new Starter; the project's own comes from GitHub.
+    const base = await projectSource(project, upgrading ? undefined : args.templateDir);
+    sources.push(base);
+    const target = upgrading ? await upgradeSource(args) : null;
+    if (target) sources.push(target);
 
-  try {
-    const manifest = await readTemplateManifest(source.root);
-    const modules = targetModules(manifest, project, args.command);
-    const changed = Object.keys(modules).filter((id) => modules[id] !== project.modules[id]);
-    if (!changed.length) {
-      progress.stop(`Starter ${project.starterRef} ready`);
-      outro("The project already uses that selection; nothing to change.");
+    const change = await planChange(project, command, base, target);
+    spinning = false;
+    if (!change) {
+      progress.stop("Starter ready");
+      outro(upgrading ? `The project is already on Starter ${project.starterRef}.` : "The project already uses that selection; nothing to change.");
       return;
     }
-    const plan = await planUpdate(
-      project,
-      { source, manifest, modules: project.modules, cliVersion: project.cliVersion },
-      { source, manifest, modules, cliVersion },
-    );
-    progress.stop(`Starter ${project.starterRef} ready`);
+    progress.stop("Starter ready");
+    const plan = await planUpdate(project, change.base, change.target);
 
-    const summary = changed
-      .map((id) => `${manifest.modules[id]!.name}: ${project.modules[id]} -> ${modules[id]}`)
-      .join(", ");
-    log.message(`${summary}\n\n${describe(plan) || "No file changes."}`);
+    log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
     if (args.dryRun) {
+      for (const note of change.notes) log.info(note);
       outro("Dry run: nothing was changed. Run again without --dry-run to apply.");
       return;
     }
@@ -189,8 +279,16 @@ export async function changeModules(args: CliArgs): Promise<void> {
     }
 
     report(plan);
-    outro(`Review the changes with \`git diff\`, then run \`pnpm check:services\` and \`pnpm db:migrate\` if the change added services or tables.`);
+    for (const note of change.notes) log.info(note);
+    outro(
+      upgrading
+        ? "Review the changes with `git diff`, then run `pnpm db:migrate` for new migrations and your tests."
+        : "Review the changes with `git diff`, then run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.",
+    );
+  } catch (error) {
+    if (spinning) progress.stop("Could not prepare the Starter");
+    throw error;
   } finally {
-    await source.cleanup();
+    for (const source of sources) await source.cleanup();
   }
 }

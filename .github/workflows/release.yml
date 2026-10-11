@@ -154,5 +154,17 @@ jobs:
             echo "SITE_DEPLOY_HOOK is not configured; skipping the site rebuild."
             exit 0
           fi
-          curl --fail --silent --show-error --request POST "$SITE_DEPLOY_HOOK" > /dev/null
-          echo "Site rebuild triggered."
+          # The hook fails now and then; retry before failing the release run.
+          for attempt in 1 2 3 4 5; do
+            status=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --request POST "$SITE_DEPLOY_HOOK") || status="no response"
+            case "$status" in
+              2??)
+                echo "Site rebuild triggered."
+                exit 0
+                ;;
+            esac
+            echo "Attempt $attempt: the deploy hook answered $status."
+            [ "$attempt" -lt 5 ] && sleep 30
+          done
+          echo "The deploy hook kept failing; trigger the site rebuild from the hosting dashboard."
+          exit 1

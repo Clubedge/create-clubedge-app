@@ -115,8 +115,23 @@ describe("pruneOptionalPeers", () => {
       .replace("  drizzle-orm@0.45.4:\n    optionalDependencies:\n      kysely: 0.29.6\n\n", "");
     const result = pruneOptionalPeers(onlyPglite);
 
-    expect(result).toContain("  drizzle-orm@0.45.4:\n\n");
+    // pnpm rejects an entry without a body, so it is written the way pnpm writes one.
+    expect(result).toContain("  drizzle-orm@0.45.4: {}\n\n");
     expect(result).not.toContain("'@electric-sql/pglite': 0.5.8");
+  });
+
+  it("closes a snapshot whose only dependency was the removed peer, at the end of the file too", () => {
+    // pg-pool depends only on pg here; with pg pruned, its snapshot keeps no dependencies.
+    const withPool = `${lockfile}
+  pg-pool@3.14.0(@electric-sql/pglite@0.5.8):
+    dependencies:
+      '@electric-sql/pglite': 0.5.8
+`;
+    const result = pruneOptionalPeers(withPool);
+
+    expect(result).toContain("  pg-pool@3.14.0: {}\n");
+    expect(result).toContain("  kysely@0.29.6: {}\n");
+    expect(result).not.toContain("{} {}");
   });
 
   it("leaves a lockfile without unneeded optional peers unchanged", () => {

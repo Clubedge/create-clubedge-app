@@ -145,9 +145,10 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 ## Change an existing project
 
-Inside a project created by the CLI, `add` and `remove` change one module at a time, and `upgrade` moves the project to a newer Starter release:
+Inside a project created by the CLI, `add` and `remove` change one module at a time, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them:
 
 ```sh
+pnpm clubedge add                                            # choose a module and option from a list
 pnpm dlx @clubedge/create-clubedge-app add cache redis      # or switch: add auth better-auth
 pnpm dlx @clubedge/create-clubedge-app remove storage
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run

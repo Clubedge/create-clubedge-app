@@ -7,7 +7,7 @@ import { createPlan } from "../src/core/plan.js";
 import { readProject } from "../src/core/project.js";
 import { readDirectoryTemplate } from "../src/core/source.js";
 import { applyUpdate, planUpdate } from "../src/core/update.js";
-import { upgradedModules } from "../src/modify.js";
+import { completeCommand, upgradedModules } from "../src/modify.js";
 import { pathExists } from "../src/utils/fs.js";
 import { moduleStarterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
 
@@ -230,5 +230,28 @@ describe("upgrading to a newer Starter", () => {
     const manifest = await readTemplateManifest(v2.root);
     const project = { modules: { auth: "magic-link", storage: "s3" } } as unknown as Parameters<typeof upgradedModules>[1];
     expect(() => upgradedModules(manifest, project)).toThrow('no longer offers Authentication "magic-link"');
+  });
+});
+
+describe("completeCommand", () => {
+  it("passes complete commands through and explains missing arguments without a terminal", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, moduleStarterFiles());
+    const manifest = await readTemplateManifest(starter);
+    const project = { modules: { auth: "supabase", storage: "s3" } } as unknown as Parameters<typeof completeCommand>[1];
+
+    await expect(completeCommand(manifest, project, { name: "add", module: "auth", option: "none" }, false)).resolves.toEqual({
+      name: "add",
+      module: "auth",
+      option: "none",
+    });
+    await expect(completeCommand(manifest, project, { name: "remove", module: "storage" }, false)).resolves.toEqual({
+      name: "remove",
+      module: "storage",
+    });
+    await expect(completeCommand(manifest, project, { name: "add", module: "auth" }, false)).rejects.toThrow(
+      "Run it in a terminal to choose from a list",
+    );
+    await expect(completeCommand(manifest, project, { name: "remove" }, false)).rejects.toThrow("Usage: remove <module>");
   });
 });

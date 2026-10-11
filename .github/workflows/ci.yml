@@ -127,11 +127,11 @@ jobs:
       matrix:
         include:
           - { name: next-default, framework: next, modules: "" }
-          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory --infra none }
-          - { name: next-better-auth, framework: next, modules: --auth better-auth --storage none }
+          - { name: next-minimal, framework: next, modules: --auth none --storage none --cache memory --infra none --email none }
+          - { name: next-better-auth, framework: next, modules: --auth better-auth --storage none --email resend }
           - { name: next-supabase-infra, framework: next, modules: --infra supabase --storage supabase }
           - { name: start-default, framework: tanstack-start, modules: "" }
-          - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory --infra none }
+          - { name: start-minimal, framework: tanstack-start, modules: --auth none --storage none --cache memory --infra none --email none }
           - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory }
           - { name: start-local, framework: tanstack-start, modules: --infra local --auth better-auth }
     steps:
@@ -236,7 +236,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for change in "add auth better-auth" "remove storage" "add cache memory" "add infra local"; do
+          for change in "add auth better-auth" "remove storage" "add cache memory" "add infra local" "add email resend"; do
             echo "::group::$change"
             node "$CLI" $change --no-install --yes
             git add -A
@@ -248,7 +248,7 @@ jobs:
         run: |
           set -euo pipefail
           node "$CLI" "$RUNNER_TEMP/fresh/my-app" --framework ${{ matrix.framework }} \
-            --auth better-auth --storage none --cache memory --infra local --no-install --no-git --yes
+            --auth better-auth --storage none --cache memory --infra local --email resend --no-install --no-git --yes
           diff -r -x .git -x node_modules "$RUNNER_TEMP/changed/my-app" "$RUNNER_TEMP/fresh/my-app" > "$RUNNER_TEMP/diff.txt" || true
           cat "$RUNNER_TEMP/diff.txt"
           # Our README line is the only difference.
@@ -273,14 +273,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: next-from-v0.6.0, framework: next, from: v0.6.0, modules: "", final: "" }
+          # Both predate the email module, so the upgrade adds it as none.
+          - { name: next-from-v0.6.0, framework: next, from: v0.6.0, modules: "", final: --email none }
           # v0.5.0 predates the infra module, so the upgrade adds it as none.
           - {
               name: start-from-v0.5.0,
               framework: tanstack-start,
               from: v0.5.0,
               modules: --auth better-auth,
-              final: --auth better-auth --infra none,
+              final: --auth better-auth --infra none --email none,
             }
     steps:
       - uses: actions/checkout@v4

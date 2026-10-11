@@ -1,6 +1,6 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Create a Next.js or TanStack Start application from the Clubedge Starter reference implementation.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",

@@ -2,7 +2,7 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
-## Unreleased
+## 0.8.0
 
 - Add `add <module> <option>` and `remove <module>` to change the modules of an existing project. The CLI renders the project's recorded Starter commit with the current and the new selection and merges the difference into the project. Files you never changed are updated, your edits are kept, and lines both sides changed get conflict markers. The local env file keeps your values: only generated values follow the new selection, and new variables are added. A Git repository without uncommitted changes is required unless `--force` is passed, so the result can be reviewed and undone.
 - Add `upgrade [--ref <ref>]`, which moves an existing project to a newer Starter (this CLI's release by default) with the same merge as `add` and `remove`, and records the new revision. Modules the project predates start as `none` where the Starter offers it, and options the new Starter no longer offers are refused before anything changes.

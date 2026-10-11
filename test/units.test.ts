@@ -21,6 +21,7 @@ describe("project naming", () => {
 describe("parseCliArgs", () => {
   it("applies defaults", () => {
     expect(parseCliArgs(["my-app"])).toEqual({
+      command: { name: "create" },
       projectDirectory: "my-app",
       framework: undefined,
       modules: {},
@@ -30,9 +31,32 @@ describe("parseCliArgs", () => {
       git: true,
       yes: false,
       dryRun: false,
+      force: false,
       help: false,
       version: false,
     });
+  });
+
+  it("reads add and remove commands", () => {
+    expect(parseCliArgs(["add", "cache", "redis", "--dry-run"])).toMatchObject({
+      command: { name: "add", module: "cache", option: "redis" },
+      projectDirectory: undefined,
+      dryRun: true,
+    });
+    expect(parseCliArgs(["remove", "storage", "--force", "--no-install"])).toMatchObject({
+      command: { name: "remove", module: "storage" },
+      force: true,
+      install: false,
+    });
+    expect(parseCliArgs(["./add"]).command).toEqual({ name: "create" });
+  });
+
+  it("explains malformed add and remove commands", () => {
+    expect(() => parseCliArgs(["add", "cache"])).toThrow("Usage: add <module> <option>");
+    expect(() => parseCliArgs(["add", "cache", "redis", "extra"])).toThrow("Usage: add <module> <option>");
+    expect(() => parseCliArgs(["remove"])).toThrow("Usage: remove <module>");
+    expect(() => parseCliArgs(["remove", "storage", "s3"])).toThrow("Usage: remove <module>");
+    expect(() => parseCliArgs(["add", "cache", "redis", "--auth", "none"])).toThrow("only apply when creating");
   });
 
   it("collects module flags without judging their values", () => {

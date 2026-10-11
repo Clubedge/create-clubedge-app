@@ -143,6 +143,26 @@ pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 ```
 
+## Change an existing project
+
+Inside a project created by the CLI, `add` and `remove` change one module at a time:
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app add cache redis      # or switch: add auth better-auth
+pnpm dlx @clubedge/create-clubedge-app remove storage
+pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
+```
+
+The CLI renders the Starter commit recorded in your `package.json` twice, with your current modules and with the new selection, and merges the difference into your project:
+
+- Files you never changed are updated, added, or deleted.
+- Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve.
+- Your own files are never touched.
+- `apps/web/.env.local` keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
+- `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.
+
+The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
+
 ## How it works
 
 Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.

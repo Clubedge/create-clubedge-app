@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.17.0
+
+- Default to Starter `v0.15.0`, whose dashboard has the docs' layout and colors in both frameworks: a collapsible sidebar with a section switcher, the dashboard's sections, resources, and an account card with Settings and Sign out; the page in a rounded card that scrolls on its own; a top bar with Home, GitHub, and a light and dark switch; and a drawer on phones.
+- None of this needs CLI code: it all comes from the Starter.
+
 ## 0.16.0
 
 - Default to Starter `v0.14.0`, which adds:

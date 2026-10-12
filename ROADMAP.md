@@ -18,6 +18,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 10.1 | 0.13.0 | `--jobs`, and a fix for lockfile entries left empty when an optional peer is pruned |
 | 10.2 | 0.14.0 | `--observability` |
 | 11 | 0.15.0 | `status` and `doctor`, several modules in one change, conflict and upgrade summaries, macOS CI, a 15-minute npm wait in the release workflow |
+| 13 | 0.16.0 | Starter v0.14.0: account settings page, browser error reporting and Sentry source maps, auth emails through the jobs queue |
 
 ## CLI improvements
 

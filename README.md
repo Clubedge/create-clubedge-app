@@ -127,7 +127,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.13.1
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.14.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -146,7 +146,7 @@ pnpm clubedge add email resend payments stripe              # several modules as
 pnpm clubedge remove storage payments
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
-pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.13.1 # or a specific tag, branch, or commit
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.14.0 # or a specific tag, branch, or commit
 ```
 
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
@@ -177,27 +177,27 @@ pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and p
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.15.0
+create-clubedge-app v0.16.0
         |
         v
-Clubedge Starter v0.13.1
-commit 28bfbf98c85ae500ace6a062dd10d67746e1a330
+Clubedge Starter v0.14.0
+commit 2219a21c2eb237b7d8ee004ea8bbeb098b70106e
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.15.0` | `clubedge-starter@v0.13.1` | The CLI's required, tested default |
+| `create-clubedge-app@0.16.0` | `clubedge-starter@v0.14.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.13.1` tag is expected to resolve to commit
-`28bfbf98c85ae500ace6a062dd10d67746e1a330`. The CLI verifies this before
+The `v0.14.0` tag is expected to resolve to commit
+`2219a21c2eb237b7d8ee004ea8bbeb098b70106e`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.13.1`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.14.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
@@ -252,7 +252,7 @@ CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarba
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.13.1`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.14.0`, and publish the Starter release.
 
 ### CLI maintainers
 
@@ -277,6 +277,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.13.0 | v0.12.0 | Background jobs |
 | 0.14.0 | v0.13.0 | Observability |
 | 0.15.0 | v0.13.1 | `status` and `doctor`, several modules in one change, conflict and upgrade summaries, macOS CI |
+| 0.16.0 | v0.14.0 | Account settings page, browser error reporting and Sentry source maps, auth emails through the jobs queue |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

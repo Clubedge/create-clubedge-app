@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.16.0
+
+- Default to Starter `v0.14.0`, which adds:
+  - An account settings page at `/settings` when an auth provider is selected: display name, password change (signing out other sessions), and account deletion. Supabase projects set `SUPABASE_SECRET_KEY` to allow deletion.
+  - Browser error reporting with observability on: uncaught errors, unhandled rejections, and render errors caught by the new error pages, through `/api/client-errors` (`otel`) or Sentry's browser SDK (`sentry`). Sentry builds with `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` upload source maps and then delete them.
+  - Auth emails sent through the background-jobs queue, with retries, when both email and jobs are selected.
+- None of this needs CLI code: it all comes from the Starter's manifest.
+
 ## 0.15.0
 
 - Add `status`: a project's Starter release, framework, modules, and Git state, whether a newer Starter release exists (from npm, still working offline), and the command to run next.

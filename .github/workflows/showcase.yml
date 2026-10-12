@@ -1,0 +1,143 @@
+name: Showcase
+
+# Generates the showcase example from the published CLI, verifies it, and captures screenshots of
+# its production server for starter.clubedge.live. Run it by hand after a release; the artifact
+# holds the screenshots, showcase.json (versions, command, checks) and the file tree.
+on:
+  workflow_dispatch:
+    inputs:
+      cli-version:
+        description: Published CLI version to generate with
+        default: latest
+  pull_request:
+    paths:
+      - .github/workflows/showcase.yml
+      - scripts/capture-showcase.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  default-project:
+    name: showcase (default project)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CLI_VERSION: ${{ inputs.cli-version || 'latest' }}
+      # The default modules, with Supabase (the default auth) and storage running locally, so the
+      # whole app, sign-in included, works on the runner. CI tests the same selection as
+      # generated-project (next-supabase-infra).
+      FLAGS: --infra supabase --storage supabase
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Generate the project with the published CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          version="$(npm view "@clubedge/create-clubedge-app@$CLI_VERSION" version)"
+          echo "CLI_RESOLVED=$version" >> "$GITHUB_ENV"
+          echo "APP=$RUNNER_TEMP/my-app" >> "$GITHUB_ENV"
+          pnpm dlx "@clubedge/create-clubedge-app@$version" my-app $FLAGS --no-install --yes
+      - name: Install
+        working-directory: ${{ env.APP }}
+        run: pnpm install --frozen-lockfile
+      - name: Lint, typecheck, and test
+        working-directory: ${{ env.APP }}
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+      - name: Start local Supabase
+        working-directory: ${{ env.APP }}
+        run: pnpm infra:up
+      - name: Use the local Supabase keys and database
+        working-directory: ${{ env.APP }}
+        run: |
+          set -euo pipefail
+          eval "$(npx --yes supabase@2 status -o env)"
+          key="${PUBLISHABLE_KEY:-$ANON_KEY}"
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_PUBLISHABLE_KEY=$key"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$key"
+            echo "SUPABASE_SECRET_KEY=${SECRET_KEY:-${SERVICE_ROLE_KEY:-}}"
+            echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          } >> "$GITHUB_ENV"
+      - name: Migrate and check every service
+        working-directory: ${{ env.APP }}
+        run: |
+          pnpm db:migrate
+          pnpm check:services
+      - name: Browser checks (sign up, out and in, password reset, settings, readiness)
+        working-directory: ${{ env.APP }}
+        env:
+          E2E_AUTH_FLOW: "1"
+          E2E_DATABASE: "1"
+          E2E_MAIL_API: http://127.0.0.1:54324
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e e2e/auth-flow.spec.ts e2e/password-reset.spec.ts e2e/ready.spec.ts e2e/settings.spec.ts
+      - name: Production build
+        working-directory: ${{ env.APP }}
+        env:
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+        run: pnpm build
+      - name: Capture screenshots of the production server
+        working-directory: ${{ env.APP }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/showcase"
+          pnpm start > "$RUNNER_TEMP/app.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/app.log"' EXIT
+          timeout 60 bash -c 'until curl -fs http://127.0.0.1:3000 > /dev/null; do sleep 1; done'
+          cp "$GITHUB_WORKSPACE/scripts/capture-showcase.mjs" scripts/
+          node scripts/capture-showcase.mjs "$out/screenshots"
+          rm scripts/capture-showcase.mjs
+      - name: Record versions, command, checks, and file tree
+        working-directory: ${{ env.APP }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/showcase"
+          find . -path ./node_modules -prune -o -path '*/node_modules' -prune -o -path '*/.next' -prune \
+            -o -path ./.turbo -prune -o -path '*/.turbo' -prune -o -path ./test-results -prune \
+            -o -type f -print | sed 's|^\./||' | sort > "$out/files.txt"
+          node -e '
+            const pkg = require("./package.json");
+            const out = {
+              example: "default",
+              cliVersion: process.env.CLI_RESOLVED,
+              starter: pkg.clubedge,
+              command: `pnpm dlx @clubedge/create-clubedge-app my-app ${process.env.FLAGS}`,
+              checks: ["pnpm install --frozen-lockfile", "pnpm lint", "pnpm typecheck", "pnpm test",
+                "pnpm check:services", "browser: sign up, sign out and in, password reset, settings, readiness",
+                "pnpm build", "production server screenshots"],
+              capturedAt: new Date().toISOString(),
+              run: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            };
+            require("fs").writeFileSync(process.argv[1], JSON.stringify(out, null, 2) + "\n");
+          ' "$out/showcase.json"
+          cat "$out/showcase.json"
+      - name: Stop local Supabase
+        if: always()
+        working-directory: ${{ env.APP }}
+        run: pnpm infra:down || true
+      - name: Upload the showcase
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-default
+          path: ${{ runner.temp }}/showcase
+      - name: Upload browser test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-playwright
+          path: ${{ env.APP }}/test-results
+          if-no-files-found: ignore

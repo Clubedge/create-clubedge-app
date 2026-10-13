@@ -71,12 +71,17 @@ async function payOnStripeCheckout(a) {
   await page.waitForLoadState("networkidle").catch(() => {});
   await a.pause(1500);
   const visible = async (locator) => (await locator.count()) > 0 && (await locator.first().isVisible());
+  // The app passes the signed-in user's email, which Checkout then shows read-only.
   const email = page.locator("#email");
-  if (await visible(email)) await a.type(email, "ada@example.com");
-  // Some accounts list several payment methods: pick the card.
+  if ((await visible(email)) && (await email.isEditable())) await a.type(email, "ada@example.com");
+  // With several payment methods, Checkout lists them as radio buttons or an accordion: pick the card.
+  const cardRadio = page.getByRole("radio", { name: /^card$/i });
   const cardTab = page.locator('[data-testid="card-accordion-item-button"]');
-  if (await visible(cardTab)) await a.click(cardTab, 600);
-  await a.type(page.locator("#cardNumber"), "4242424242424242");
+  if (await visible(cardRadio)) await a.click(cardRadio, 800);
+  else if (await visible(cardTab)) await a.click(cardTab, 800);
+  const cardNumber = page.locator("#cardNumber");
+  if (!(await visible(cardNumber))) await a.click(page.getByText("Card", { exact: true }).first(), 800);
+  await a.type(cardNumber, "4242424242424242");
   await a.type(page.locator("#cardExpiry"), "1234");
   await a.type(page.locator("#cardCvc"), "123");
   const name = page.locator("#billingName");

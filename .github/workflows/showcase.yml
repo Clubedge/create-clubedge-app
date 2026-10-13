@@ -202,7 +202,9 @@ jobs:
           secret="$("$RUNNER_TEMP/bin/stripe" listen --print-secret)"
           echo "::add-mask::$secret"
           echo "STRIPE_LISTEN_SECRET=$secret" >> "$GITHUB_ENV"
-          nohup "$RUNNER_TEMP/bin/stripe" listen --forward-to http://localhost:3000/api/webhooks/payments \
+          # The events the Starter's webhook handles (packages/payments-stripe).
+          events=customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,customer.subscription.paused,customer.subscription.resumed,checkout.session.completed
+          nohup "$RUNNER_TEMP/bin/stripe" listen --events "$events" --forward-to http://localhost:3000/api/webhooks/payments \
             > "$RUNNER_TEMP/stripe-listen.log" 2>&1 &
       - name: Record the walkthrough
         run: |

@@ -21,6 +21,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 13 | 0.16.0 | Starter v0.14.0: account settings page, browser error reporting and Sentry source maps, auth emails through the jobs queue |
 | 14 | 0.17.0 | Starter v0.15.0: docs-style dashboard with a sidebar, account card, and phone drawer |
 | 15 | 0.18.0 | `try` on a free Railway VM (experimental), on Starter v0.15.0 |
+| 16 | 0.19.0 | `try` inside a project uploads it; the preview opens in the browser |
 
 ## CLI improvements
 

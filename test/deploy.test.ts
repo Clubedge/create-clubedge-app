@@ -3,12 +3,15 @@ import { parseCliArgs } from "../src/cli/args.js";
 import {
   databasesFor,
   deploymentStatus,
+  meetsMinimumCli,
   exampleKeys,
   parseDeploymentId,
   parseEnvFile,
   parseRailwayDomain,
   parseVariables,
   planVariables,
+  railwayCliVersion,
+  railwayIacSource,
   serviceName,
   serviceNames,
 } from "../src/core/deploy.js";
@@ -136,6 +139,31 @@ describe("Railway CLI output", () => {
     expect(parseVariables('{"A":"1","B":2}')).toEqual({ A: "1", B: "2" });
     expect(parseVariables('[{"name":"A","value":"1"}]')).toEqual({ A: "1" });
     expect(parseVariables("not json")).toEqual({});
+  });
+});
+
+describe("Railway configuration as code", () => {
+  it("reads the CLI version and checks the 5.42.1 minimum", () => {
+    expect(railwayCliVersion("railway 5.67.1\n")).toEqual([5, 67, 1]);
+    expect(railwayCliVersion("timeout (GNU coreutils) 8.32")).toBeNull();
+    expect(meetsMinimumCli([5, 67, 1])).toBe(true);
+    expect(meetsMinimumCli([5, 42, 1])).toBe(true);
+    expect(meetsMinimumCli([5, 42, 0])).toBe(false);
+    expect(meetsMinimumCli([4, 99, 9])).toBe(false);
+    expect(meetsMinimumCli([6, 0, 0])).toBe(true);
+  });
+
+  it("writes the settings railway.json had, for the project's own service", () => {
+    const source = railwayIacSource("edge-notes");
+    expect(source).toContain('import { defineRailway, project, service } from "railway/iac";');
+    expect(source).toContain('export const partial = "edge-notes";');
+    expect(source).toContain('service("edge-notes", {');
+    expect(source).toContain('preDeploy: "node /app/migrate.mjs"');
+    expect(source).toContain('healthcheck: "/api/health"');
+    expect(source).toContain("healthcheckTimeout: 60");
+    // Variables stay with deploy and the dashboard; no region, so Railway's default applies.
+    expect(source).toContain("variables: { managed: false }");
+    expect(source).not.toContain("replicas");
   });
 });
 

@@ -152,3 +152,52 @@ export function deploymentStatus(output: string, id: string | null, since: Date)
     : deployments.find((deployment) => deployment.createdAt && new Date(deployment.createdAt).getTime() >= since.getTime() - 5_000);
   return found ? { id: found.id, status: found.status } : null;
 }
+
+/** The oldest Railway CLI that applies `.railway/railway.ts`: its IaC engine ships in the CLI. */
+export const minimumRailwayCli = [5, 42, 1] as const;
+
+/** The version in `railway --version` output, such as "railway 5.67.1". */
+export function railwayCliVersion(output: string): [number, number, number] | null {
+  const match = /\b(\d+)\.(\d+)\.(\d+)\b/.exec(output);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+export function meetsMinimumCli(version: readonly number[]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if (version[i]! !== minimumRailwayCli[i]) return version[i]! > minimumRailwayCli[i]!;
+  }
+  return true;
+}
+
+export const railwayIacPath = ".railway/railway.ts";
+
+/**
+ * The project's Railway configuration as code (`.railway/railway.ts`), which replaces railway.json:
+ * Railway stops reading railway.json on 2026-12-01. Railway builds the root Dockerfile by itself,
+ * the variables stay managed by `deploy` and the dashboard, and the region is Railway's default.
+ */
+export function railwayIacSource(service: string): string {
+  const name = JSON.stringify(service);
+  return `// Railway's configuration for this project, applied with \`railway config apply\` (pnpm clubedge
+// deploy does it before each release). It replaces railway.json, which Railway stops reading on
+// 2026-12-01. Railway builds the root Dockerfile; variables are set with \`railway variable set\`.
+import { defineRailway, project, service } from "railway/iac";
+
+// This repository manages only its own resources in the Railway project.
+export const partial = ${name};
+
+export default defineRailway(() => {
+  const app = service(${name}, {
+    // Migrations run before each release; a failed migration stops it.
+    preDeploy: "node /app/migrate.mjs",
+    healthcheck: "/api/health",
+    healthcheckTimeout: 60,
+  });
+
+  return project(${name}, {
+    variables: { managed: false },
+    resources: [app],
+  });
+});
+`;
+}

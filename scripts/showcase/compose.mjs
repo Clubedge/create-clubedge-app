@@ -46,6 +46,13 @@ writeFileSync(join(out, "segments.txt"), segments.map((s) => `file '${s}'`).join
 const video = join(out, "walkthrough.mp4");
 run("ffmpeg", ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", join(out, "segments.txt"), "-c", "copy", "-movflags", "+faststart", video]);
 
+// Stripe's Checkout and portal URLs carry session ids and secrets: keep only where the page is.
+const shownUrl = (url) => {
+  const u = new URL(url);
+  if (!u.hostname.endsWith("stripe.com")) return url;
+  return `${u.origin}${u.pathname.split("/").slice(0, 3).join("/")}/…`;
+};
+
 let start = 0;
 const scenes = recorded.scenes.map((scene, i) => {
   const length = duration(segments[i]);
@@ -58,7 +65,7 @@ const scenes = recorded.scenes.map((scene, i) => {
       ? {
           urls: scene.urls.map(({ t, url }) => ({
             t: Number(Math.min(start + length, Math.max(start, start + t - scene.trim)).toFixed(2)),
-            url,
+            url: shownUrl(url),
           })),
         }
       : {}),

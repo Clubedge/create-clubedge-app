@@ -2,6 +2,15 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.19.0
+
+- `try` inside a project: `pnpm clubedge try` uploads the project to a free Railway VM and runs it there, to share work in progress without deploying.
+  - It uploads what Git would commit (tracked files, plus untracked ones that are not ignored), and never `.env` files other than examples, `node_modules`, or build output. If Git cannot list a repository's files, nothing is uploaded. `--dry-run` lists the files.
+  - On the VM, the env file is made from `.env.example` as `create` does, then the database (infra `local`), migrations, and the app start as for a new project.
+  - Projects that need Docker or Supabase Auth are refused, with the `pnpm clubedge add` command that switches them.
+- `try` opens the preview in the browser when it is ready, at a terminal; `--no-open` turns that off.
+- Still on Starter `v0.15.0`.
+
 ## 0.18.0
 
 - Add `try` (experimental): `pnpm dlx @clubedge/create-clubedge-app try` creates a new project on a free, temporary [Railway VM](https://railway.com/free-vm) instead of your machine, and prints its preview URL and the link to claim the VM. No Railway account, database, or Docker needed.

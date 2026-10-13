@@ -13,6 +13,8 @@ on:
     paths:
       - .github/workflows/showcase.yml
       - scripts/capture-showcase.mjs
+      - scripts/record-session.py
+      - scripts/showcase-evolution.sh
 
 permissions:
   contents: read
@@ -140,4 +142,69 @@ jobs:
         with:
           name: showcase-playwright
           path: ${{ env.APP }}/test-results
+          if-no-files-found: ignore
+
+  project-evolution:
+    name: showcase (project evolution)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLI_VERSION: ${{ inputs.cli-version || 'latest' }}
+      FROM_STARTER: v0.14.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Record create, edit, upgrade, add, and remove in a terminal
+        run: |
+          set -euo pipefail
+          # The session runs `pnpm dlx @clubedge/create-clubedge-app` and `pnpm clubedge`, which
+          # resolve the latest published CLI; record which version that was.
+          echo "CLI_RESOLVED=$(npm view "@clubedge/create-clubedge-app@$CLI_VERSION" version)" >> "$GITHUB_ENV"
+          git config --global user.name "Clubedge Showcase"
+          git config --global user.email showcase@clubedge.live
+          git config --global init.defaultBranch main
+          mkdir -p "$RUNNER_TEMP/session" "$RUNNER_TEMP/showcase"
+          python3 scripts/record-session.py 100 30 "$RUNNER_TEMP/showcase/project-evolution.cast" \
+            bash scripts/showcase-evolution.sh "$RUNNER_TEMP/session" "$FROM_STARTER"
+      - name: Install, lint, typecheck, test, and build the evolved project
+        working-directory: ${{ runner.temp }}/session/my-app
+        run: |
+          pnpm install
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+      - name: Record versions, chapters, and checks
+        working-directory: ${{ runner.temp }}/session/my-app
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const pkg = require("./package.json");
+            const cast = fs.readFileSync(process.argv[1], "utf8").trim().split(/\n/).slice(1).map((l) => JSON.parse(l));
+            const out = {
+              example: "project-evolution",
+              cliVersion: process.env.CLI_RESOLVED,
+              from: process.env.FROM_STARTER,
+              starter: pkg.clubedge,
+              chapters: cast.filter((e) => e[1] === "m").map(([time, , label]) => ({ time, label })),
+              duration: cast.at(-1)[0],
+              checks: ["pnpm install", "pnpm lint", "pnpm typecheck", "pnpm test", "pnpm build"],
+              capturedAt: new Date().toISOString(),
+              run: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            };
+            fs.writeFileSync(process.argv[2], JSON.stringify(out, null, 2));
+          ' "$RUNNER_TEMP/showcase/project-evolution.cast" "$RUNNER_TEMP/showcase/project-evolution.json"
+          cat "$RUNNER_TEMP/showcase/project-evolution.json"
+      - name: Upload the recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-evolution
+          path: ${{ runner.temp }}/showcase
           if-no-files-found: ignore

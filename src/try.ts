@@ -9,13 +9,16 @@ import { bold, dim } from "./cli/ui.js";
 import {
   hostKeyFingerprint,
   parseRailwayStatus,
+  projectTryProblem,
   proxySource,
   railwayFreeVmUrl,
   railwayHost,
   railwayKeyPath,
   railwayTermsUrl,
+  remoteArchivePath,
   remoteDevLog,
   remoteLog,
+  remoteName,
   remoteProxyPath,
   remoteScriptPath,
   shellQuote,
@@ -24,8 +27,13 @@ import {
   tryModules,
   tryScript,
   type RailwayVm,
+  type TrySource,
 } from "./core/railway.js";
+import { ProjectError, readProject, type Project } from "./core/project.js";
+import { uploadableFiles } from "./core/upload.js";
 import { cliVersion } from "./package-info.js";
+import { openUrl } from "./utils/open.js";
+import { createTarGz } from "./utils/tar.js";
 
 const { Client, utils } = ssh2;
 type Connection = InstanceType<typeof Client>;
@@ -94,7 +102,7 @@ interface ExecResult {
 async function exec(
   connection: Connection,
   command: string,
-  { input, onLine }: { input?: string; onLine?: (line: string) => void } = {},
+  { input, onLine }: { input?: string | Buffer; onLine?: (line: string) => void } = {},
 ): Promise<ExecResult> {
   return await new Promise<ExecResult>((resolve, reject) => {
     connection.exec(command, (error, stream) => {
@@ -126,7 +134,7 @@ async function exec(
 }
 
 /** Writes a file on the VM through the command's stdin. */
-async function upload(connection: Connection, path: string, content: string): Promise<void> {
+async function upload(connection: Connection, path: string, content: string | Buffer): Promise<void> {
   const { code } = await exec(connection, `cat > ${shellQuote(path)}`, { input: content });
   if (code !== 0) throw new Error(`Could not write ${path} on the VM.`);
 }
@@ -141,11 +149,60 @@ function minutesLeft(until: Date): number {
   return Math.max(0, Math.round((until.getTime() - Date.now()) / 60_000));
 }
 
-async function agree(args: CliArgs, keyPath: string): Promise<boolean> {
+const megabytes = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
+
+/** The project this command runs in, or null outside one. A project too old to read is an error. */
+async function currentProject(): Promise<Project | null> {
+  try {
+    return await readProject(process.cwd());
+  } catch (error) {
+    if (error instanceof ProjectError && /No Clubedge project found/.test(error.message)) return null;
+    throw error;
+  }
+}
+
+/** What goes to the VM: a new project's selection, or this project's files. */
+type Plan =
+  | { kind: "create"; modules: Record<string, string>; summary: string }
+  | { kind: "upload"; modules: Record<string, string>; summary: string; project: Project; paths: string[] };
+
+async function plan(args: CliArgs): Promise<Plan> {
+  const project = await currentProject();
+  if (!project) {
+    const modules = tryModules(args.modules);
+    const flags = tryCreateArgs({ framework: args.framework, modules, ref: args.ref }).join(" ");
+    return { kind: "create", modules, summary: `Create a new project on the VM: create-clubedge-app@${cliVersion} my-app ${flags}` };
+  }
+  if (args.framework !== undefined || Object.keys(args.modules).length || args.ref !== undefined) {
+    throw new UsageError(
+      "--framework, module flags, and --ref choose a new project. Inside a project, try uploads the project as it is; run try outside it to create a new one.",
+    );
+  }
+  const problem = projectTryProblem(project.modules);
+  if (problem) throw new UsageError(problem);
+  const paths = await uploadableFiles(project.root);
+  if (!paths.includes("package.json")) throw new UsageError(`Nothing to upload from ${project.root}.`);
+  return {
+    kind: "upload",
+    modules: project.modules,
+    project,
+    paths,
+    summary: `Upload ${project.identity.packageName} (${paths.length} files from ${project.root}): what Git would commit, without .env files or node_modules`,
+  };
+}
+
+async function agree(args: CliArgs, keyPath: string, what: Plan): Promise<boolean> {
   note(
     [
-      "This creates a free, temporary Linux VM on Railway and runs a new project there.",
+      what.kind === "create"
+        ? "This creates a free, temporary Linux VM on Railway and runs a new project there."
+        : "This creates a free, temporary Linux VM on Railway, uploads this project, and runs it there.",
       "",
+      ...(what.kind === "upload"
+        ? [
+            `• Uploads ${what.paths.length} files: what Git would commit. .env files (other than examples) and node_modules stay here; the VM makes its env files from .env.example.`,
+          ]
+        : []),
       `• No Railway account is needed. You get 60 minutes, then 24 hours to claim the VM to keep it.`,
       `• The preview opens only from your network until you claim the VM.`,
       `• Railway allows 3 free VMs per network per day.`,
@@ -165,23 +222,25 @@ async function agree(args: CliArgs, keyPath: string): Promise<boolean> {
 }
 
 export async function tryOnRailway(args: CliArgs): Promise<void> {
-  const modules = tryModules(args.modules);
+  const what = await plan(args);
   const keyPath = railwayKeyPath();
-  const createArgs = tryCreateArgs({ framework: args.framework, modules, ref: args.ref });
 
   if (args.dryRun) {
     log.message(
       [
         `• Connect to ${railwayHost} with the key in ${keyPath}`,
-        `• Create the project: create-clubedge-app@${cliVersion} my-app ${createArgs.join(" ")}`,
-        "• Start the local database (PGlite), migrate, and start the app behind the preview URL",
+        `• ${what.summary}`,
+        what.modules.infra === "local"
+          ? "• Start the local database (PGlite), migrate, and start the app behind the preview URL"
+          : "• Start the app behind the preview URL",
+        ...(what.kind === "upload" ? ["", dim(what.paths.join("\n"))] : []),
       ].join("\n"),
     );
     outro("Dry run: no VM was created. Run again without --dry-run to try it.");
     return;
   }
 
-  if (!(await agree(args, keyPath))) {
+  if (!(await agree(args, keyPath, what))) {
     cancel("No VM was created.");
     return;
   }
@@ -200,20 +259,30 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
     progress.stop(`VM ready, ${minutesLeft(vm.expiresAt)} minutes to try it`);
 
     spinning = "setup";
-    progress.start("Preparing the VM");
+    let source: TrySource;
+    if (what.kind === "upload") {
+      progress.start(`Uploading ${what.paths.length} files`);
+      const { archive, bytes } = await createTarGz(what.project.root, what.paths);
+      await upload(connection, remoteArchivePath, archive);
+      progress.message(`Uploaded ${megabytes(bytes)} (${megabytes(archive.length)} compressed)`);
+      source = { kind: "upload", name: remoteName(what.project.identity.packageName) };
+    } else {
+      progress.start("Preparing the VM");
+      source = { kind: "create", cliVersion, framework: args.framework, ref: args.ref };
+    }
     await upload(connection, remoteProxyPath, proxySource);
-    await upload(connection, remoteScriptPath, tryScript({ cliVersion, framework: args.framework, modules, ref: args.ref, previewUrl: vm.previewUrl }));
+    await upload(connection, remoteScriptPath, tryScript({ source, modules: what.modules, previewUrl: vm.previewUrl }));
 
     const tail: string[] = [];
     let failure = "";
-    let directory = "my-app";
+    let directory = "";
     const started = Date.now();
     const { code } = await exec(connection, `bash ${remoteScriptPath}`, {
       onLine: (line) => {
         if (line.startsWith("@@step ")) progress.message(fit(`${line.slice(7)} (${Math.round((Date.now() - started) / 1000)}s)`));
         else if (line.startsWith("@@log ")) tail.push(line.slice(6));
         else if (line.startsWith("@@fail ")) failure = line.slice(7);
-        else if (line.startsWith("@@ready")) directory = line.slice(8).trim() || directory;
+        else if (line.startsWith("@@ready")) directory = line.slice(8).trim();
       },
     });
     if (code !== 0 || failure) {
@@ -234,6 +303,8 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
       "Your app on Railway",
     );
     log.warn("Keep the claim link private: whoever opens it takes over the VM, its files, and its URL.");
+    // Only for a person at a terminal: scripts and CI get the URL above, and nothing opens.
+    if (args.open && process.stdout.isTTY && (await openUrl(vm.previewUrl))) log.info("Opened the preview in your browser.");
     outro(
       [
         "The preview opens only from your network until you claim the VM. Claiming moves it to your Railway account.",

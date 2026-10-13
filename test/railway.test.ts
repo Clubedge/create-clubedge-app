@@ -106,7 +106,16 @@ describe("try selection", () => {
 });
 
 describe("try script", () => {
-  const options = { cliVersion: "1.2.3", modules: tryModules({}), previewUrl: "https://preview-x.up.railway.app" };
+  const options = {
+    source: { kind: "create", cliVersion: "1.2.3" } as const,
+    modules: tryModules({}),
+    previewUrl: "https://preview-x.up.railway.app",
+  };
+  const uploaded = {
+    source: { kind: "upload", name: "acme-web" } as const,
+    modules: { infra: "local", auth: "better-auth" },
+    previewUrl: "https://preview-x.up.railway.app",
+  };
 
   it("creates the project with this CLI version and quoted flags", () => {
     const script = tryScript(options);
@@ -114,6 +123,22 @@ describe("try script", () => {
     expect(script).toContain("BETTER_AUTH_SECRET");
     expect(script).toContain("'https://preview-x.up.railway.app'");
     expect(script).toContain("@@ready");
+  });
+
+  it("unpacks and installs an uploaded project, then makes its env files", () => {
+    const script = tryScript(uploaded);
+    expect(script).toContain("base='acme-web'");
+    expect(script).toContain("tar xzf /app/clubedge-upload.tgz");
+    expect(script).toContain("pnpm install");
+    expect(script).toContain('cp "$example" "$target"');
+    // A generated project keeps its example at the root and its env file in apps/web.
+    expect(script).toContain("cp .env.example apps/web/.env.local");
+    expect(script).not.toContain("create-clubedge-app@");
+  });
+
+  it("starts the local database only with infra local", () => {
+    expect(tryScript(uploaded)).toContain("pnpm infra:up");
+    expect(tryScript({ ...uploaded, modules: { infra: "none", auth: "none" } })).not.toContain("pnpm infra:up");
   });
 
   it("only sets a Better Auth secret when Better Auth is used", () => {
@@ -126,9 +151,11 @@ describe("try script", () => {
 
   const hasBash = spawnSync("bash", ["--version"]).status === 0;
   it.skipIf(!hasBash)("is valid bash", () => {
-    const result = spawnSync("bash", ["-n"], { input: tryScript(options), encoding: "utf8" });
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
+    for (const script of [tryScript(options), tryScript(uploaded), tryScript({ ...uploaded, modules: { infra: "none" } })]) {
+      const result = spawnSync("bash", ["-n"], { input: script, encoding: "utf8" });
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+    }
   });
 
   it("ships a proxy that is valid JavaScript", () => {

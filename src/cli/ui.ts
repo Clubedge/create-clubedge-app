@@ -111,7 +111,8 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app try [options]           (experimental)
 
   Inside a project with the clubedge script, use pnpm clubedge add, remove,
-  upgrade, status, or doctor. Without a module or option, add and remove ask for them.
+  upgrade, status, doctor, or try. Without a module or option, add and remove ask
+  for them.
 
   add and remove change modules of an existing project, several at once as one
   change, and upgrade moves it to a newer Starter (this CLI's release unless --ref
@@ -125,9 +126,11 @@ Usage:
 
   try creates a new project on a free, temporary Railway VM (no account, 60 minutes)
   and prints its preview URL and the link to claim the VM. The VM has no Docker, so
-  it uses --infra local (PGlite) and Better Auth, with email off. It asks first, and
-  keeps its own SSH key apart from ~/.ssh. Experimental: Railway can change or pause
-  its free VM.
+  it uses --infra local (PGlite) and Better Auth, with email off. Inside a project,
+  try uploads that project instead (what Git would commit, never .env files or
+  node_modules); it needs infra local or none. It asks first, keeps its own SSH key
+  apart from ~/.ssh, and opens the preview when ready. Experimental: Railway can
+  change or pause its free VM.
 
 Options:
 ${selectionHelp(manifest)}
@@ -137,6 +140,7 @@ ${selectionHelp(manifest)}
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove: change a project with uncommitted changes or without Git
   --no-services           doctor: skip pnpm check:services
+  --no-open               try: do not open the preview in the browser
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
   --no-git                Skip Git repository initialization

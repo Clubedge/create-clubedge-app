@@ -33,6 +33,7 @@ describe("parseCliArgs", () => {
       dryRun: false,
       force: false,
       services: true,
+      open: true,
       help: false,
       version: false,
     });

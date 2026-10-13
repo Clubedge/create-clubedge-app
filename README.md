@@ -181,7 +181,7 @@ pnpm dlx @clubedge/create-clubedge-app try
 pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start --auth none
 ```
 
-The VM needs no Railway account and lasts 60 minutes; to keep it, open the claim link the CLI prints within 24 hours after, which moves the VM, its files, and its URL into a Railway account. Keep that link private. Until the VM is claimed, the preview opens only from your network. Railway allows 3 free VMs per network per day.
+The VM needs no Railway account and lasts 60 minutes; to keep it, open the claim link the CLI prints within 24 hours after, which moves the VM, its files, and its URL into a Railway account. Keep that link private. Until the VM is claimed, the preview opens only from the IP address that created it (not from another device on mobile data, or through a VPN); claiming makes the URL shareable. Railway allows 3 free VMs per network per day.
 
 The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth unless you choose `--auth none`, with email off; other module flags apply as usual.
 

@@ -204,7 +204,7 @@ async function agree(args: CliArgs, keyPath: string, what: Plan): Promise<boolea
           ]
         : []),
       `• No Railway account is needed. You get 60 minutes, then 24 hours to claim the VM to keep it.`,
-      `• The preview opens only from your network until you claim the VM.`,
+      `• Until you claim the VM, only you can open the preview: from the IP address that created it (this connection). Your phone on mobile data, a VPN, or anyone else get Access denied.`,
       `• Railway allows 3 free VMs per network per day.`,
       `• The CLI uses its own SSH key, ${keyPath}; your ~/.ssh is not used.`,
       `• Railway's terms apply: ${railwayTermsUrl}`,
@@ -307,7 +307,7 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
     if (args.open && process.stdout.isTTY && (await openUrl(vm.previewUrl))) log.info("Opened the preview in your browser.");
     outro(
       [
-        "The preview opens only from your network until you claim the VM. Claiming moves it to your Railway account.",
+        "Until you claim the VM, the preview opens only from the IP address that created it. Claiming moves it to your Railway account and makes the URL shareable.",
         "",
         `${dim("Shell")}  ssh -i "${keyPath}" ${railwayHost}`,
         `${dim("Logs")}   ssh -i "${keyPath}" ${railwayHost} tail -f ${remoteDevLog}`,

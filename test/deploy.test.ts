@@ -39,6 +39,13 @@ describe("deploy plan", () => {
     });
   });
 
+  it("drops a comment after a quoted value, and keeps # inside the quotes", () => {
+    expect(parseEnvFile('STRIPE_SECRET_KEY="sk_live_abc" # production key\nSMTP_URL=\'smtps://u:p#1@mail\'  # mail\n')).toEqual({
+      STRIPE_SECRET_KEY: "sk_live_abc",
+      SMTP_URL: "smtps://u:p#1@mail",
+    });
+  });
+
   const base = {
     modules: { auth: "better-auth", cache: "redis" },
     keys: ["NODE_ENV", "NEXT_PUBLIC_APP_URL", "DATABASE_URL", "BETTER_AUTH_SECRET", "REDIS_URL", "SMTP_URL", "STRIPE_SECRET_KEY"],

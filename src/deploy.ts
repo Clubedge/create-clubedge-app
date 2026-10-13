@@ -57,11 +57,16 @@ async function railway(cli: string[], args: string[], options: RunOptions = {}):
     child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.once("error", reject);
-    child.once("exit", (code) => {
+    // close, not exit: it fires once stdout and stderr are fully read, so JSON output is never cut off.
+    child.once("close", (code) => {
       if (code === 0) resolvePromise(stdout.trim());
       else reject(new Error(`railway ${args[0]} failed${stderr.trim() ? `: ${stderr.trim().split("\n").slice(-3).join(" ")}` : "."}`));
     });
-    if (child.stdin) child.stdin.end(options.input ?? "");
+    if (child.stdin) {
+      // A command that exits before reading its input must not crash the CLI with EPIPE.
+      child.stdin.on("error", () => {});
+      child.stdin.end(options.input ?? "");
+    }
   });
 }
 

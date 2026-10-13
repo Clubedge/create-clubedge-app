@@ -33,10 +33,10 @@ export function parseEnvFile(text: string): Record<string, string> {
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
     if (!match) continue;
-    let value = match[2]!.trim();
-    if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1);
-    else value = value.replace(/\s+#.*$/, "");
-    values[match[1]!] = value;
+    const raw = match[2]!.trim();
+    // A quoted value keeps everything inside the quotes, and may still have a comment after them.
+    const quoted = /^(["'])(.*?)\1\s*(?:#.*)?$/.exec(raw);
+    values[match[1]!] = quoted ? quoted[2]! : raw.replace(/\s+#.*$/, "");
   }
   return values;
 }

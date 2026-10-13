@@ -2,6 +2,8 @@
 # A scene runs inside record-session.py; commands are typed out for the viewer, then run exactly
 # as shown. Anything not shown (secrets, file edits) is done by plain commands between them.
 export GIT_PAGER=cat
+# Turborepo streams its tasks' output (rather than its TUI) and skips its one-time telemetry notice.
+export TURBO_UI=stream TURBO_TELEMETRY_DISABLED=1
 
 type_out() {
   local text="$1"
@@ -30,10 +32,11 @@ note() {
 }
 
 # Starts a long-running command (a dev server, a local database) detached from the terminal, shows
-# its output until it prints the ready pattern, and leaves it running for the next scenes.
-#   serve "<command>" "<ready regex>" <name>
+# its output until it is ready, and leaves it running for the next scenes. Ready is a URL that
+# answers (which also compiles a dev server's first page) or a pattern in the output.
+#   serve "<command>" "<url or regex>" <name>
 serve() {
-  local log="$SHOWCASE_STATE/$3.log"
+  local log="$SHOWCASE_STATE/$3.log" check
   prompt
   type_out "$1"
   : > "$log"
@@ -41,9 +44,15 @@ serve() {
   echo $! > "$SHOWCASE_STATE/$3.pid"
   tail -n +1 -f "$log" &
   local tail=$!
-  if ! timeout 300 bash -c "until grep -qE '$2' '$log'; do sleep 0.5; done"; then
+  if [[ "$2" == http* ]]; then
+    check="until curl -s -o /dev/null --max-time 120 '$2'; do sleep 1; done"
+  else
+    check="until grep -qE '$2' '$log'; do sleep 0.5; done"
+  fi
+  if ! timeout 420 bash -c "$check"; then
     kill "$tail"
-    echo "$1 did not become ready" >&2
+    echo "$1 did not become ready; the end of its output:" >&2
+    tail -n 40 "$log" >&2
     exit 1
   fi
   sleep 2

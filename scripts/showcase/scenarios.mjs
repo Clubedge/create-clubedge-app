@@ -92,7 +92,7 @@ export const scenarios = {
   async default({ terminal, browser, sh }) {
     await terminal("Create the project", `run "${create("--infra supabase --storage supabase")}"\nrun "cd my-app"`);
     // Pull Supabase's images off camera, so the recording shows an ordinary start.
-    sh("pnpm infra:up && pnpm infra:down");
+    sh("for i in 1 2 3 4; do pnpm infra:up && break; sleep 45; done && pnpm infra:down");
     await terminal(
       "Start Supabase, migrate, run the app",
       `run "pnpm infra:up"
@@ -102,7 +102,7 @@ setenv "$f" NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY "\${PUBLISHABLE_KEY:-$ANON_KEY}
 setenv "$f" SUPABASE_SECRET_KEY "\${SECRET_KEY:-$SERVICE_ROLE_KEY}"
 note "Local Supabase keys copied into $f"
 run "pnpm db:migrate"
-serve "pnpm dev" "Ready in" dev`,
+serve "pnpm dev" "http://localhost:3000/" dev`,
     );
     await browser("Sign up and look around", async (a) => {
       await a.goto("/", 2500);
@@ -121,7 +121,7 @@ serve "pnpm dev" "Ready in" dev`,
   async saas({ terminal, browser, sh, app }) {
     const flags = "--auth better-auth --payments stripe --jobs pg-boss";
     await terminal("Create the project", `run "${create(flags)}"\nrun "cd my-app"`);
-    sh("docker compose -f docker-compose.dev.yml pull --quiet");
+    sh("for i in 1 2 3 4; do docker compose -f docker-compose.dev.yml pull --quiet && break; sleep 45; done");
     await terminal(
       "Start the services, migrate, run the app",
       `run "pnpm infra:up"
@@ -131,7 +131,7 @@ ${stripeEnv}
 note "BETTER_AUTH_SECRET set and email confirmation required in $(envfile)"
 ${stripeNote}
 run "pnpm db:migrate"
-serve "pnpm dev" "Ready in" dev`,
+serve "pnpm dev" "http://localhost:3000/" dev`,
     );
 
     const email = "ada@example.com";
@@ -198,7 +198,7 @@ serve "pnpm dev" "Ready in" dev`,
 ${secretEnv}
 note "BETTER_AUTH_SECRET set in $(envfile)"
 run "pnpm db:migrate"
-serve "pnpm dev" "Local:|ready in|Ready in" dev`,
+serve "pnpm dev" "http://localhost:3000/" dev`,
     );
     await browser("Sign up and look around", async (a) => {
       await a.goto("/", 2500);
@@ -216,7 +216,7 @@ serve "pnpm dev" "Local:|ready in|Ready in" dev`,
   async minimal({ terminal, browser }) {
     const flags = "--auth none --storage none --cache memory --infra none --email none";
     await terminal("Create the project", `run "${create(flags)}"\nrun "cd my-app"\nrun "ls packages"`);
-    await terminal("Run the app", `serve "pnpm dev" "Ready in" dev`);
+    await terminal("Run the app", `serve "pnpm dev" "http://localhost:3000/" dev`);
     await browser("The app, with nothing to configure", async (a) => {
       await a.goto("/", 3000);
       await a.goto("/dashboard", 3000);
@@ -250,14 +250,14 @@ node -e '
 run "git diff"
 run "git commit -qam 'Our description and verify script'"`,
     );
-    sh("docker compose -f docker-compose.dev.yml pull --quiet");
+    sh("for i in 1 2 3 4; do docker compose -f docker-compose.dev.yml pull --quiet && break; sleep 45; done");
     await terminal(
       "Start it",
       `run "pnpm infra:up"
 ${secretEnv}
 note "BETTER_AUTH_SECRET set in $(envfile)"
 run "pnpm db:migrate"
-serve "pnpm dev" "Ready in" dev`,
+serve "pnpm dev" "http://localhost:3000/" dev`,
     );
     await browser(`Starter ${from} in the browser`, async (a) => {
       await a.goto("/", 2000);
@@ -274,7 +274,7 @@ note "package.json was merged: the Starter's changes came in, and our script sta
 run "git diff package.json"
 run "grep '\\"verify\\"' package.json"
 run "git add -A && git commit -qm 'Upgrade the Starter'"
-serve "pnpm dev" "Ready in" dev`,
+serve "pnpm dev" "http://localhost:3000/" dev`,
     );
     await browser("After the upgrade: the new dashboard", async (a) => {
       await a.goto("/dashboard", 3500);
@@ -289,7 +289,7 @@ ${stripeEnv}
 ${stripeNote}
 run "pnpm db:migrate"
 run "git add -A && git commit -qm 'Add Stripe payments'"
-serve "pnpm dev" "Ready in" dev`,
+serve "pnpm dev" "http://localhost:3000/" dev`,
     );
     await browser("Billing is now in the dashboard", async (a) => {
       await a.goto("/dashboard", 1500);

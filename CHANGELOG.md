@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.23.0
+
+- `deploy` moves Railway projects to `.railway/railway.ts`, Railway's configuration as code, which replaces `railway.json`: Railway stops reading `railway.json` on 2026-12-01 (#59).
+  - When the project has no Railway configuration file, it writes one with the project's own names: the migrations before each release and the `/api/health` check, as in `railway.json`. Variables stay as `deploy` set them.
+  - It adds Railway's TypeScript SDK (`railway`) as a dev dependency, and applies the file with `railway config apply` before each release. Commit `.railway/railway.ts`, `package.json`, and `pnpm-lock.yaml`.
+  - It needs Railway CLI 5.42.1 or newer: an installed `railway`, else one npx already downloaded, and only then a download.
+- Still on Starter `v0.16.1`.
+
 ## 0.22.0
 
 - Add `deploy`: `pnpm clubedge deploy` does the first deploy of a project that uses `deploy railway`, with Railway's CLI and your Railway login (#55).

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 /*
@@ -49,6 +49,19 @@ async function walk(root: string, directory = ""): Promise<string[]> {
   return paths;
 }
 
+/** Whether `root` or a folder above it is a Git repository (a .git directory, or a .git file in a worktree). */
+async function insideGit(root: string): Promise<boolean> {
+  for (let current = resolve(root); ; current = dirname(current)) {
+    try {
+      await stat(join(current, ".git"));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (dirname(current) === current) return false;
+  }
+}
+
 /**
  * The project's files to upload. In a Git repository: tracked files plus untracked ones that are
  * not ignored, so .gitignore decides as it does for a commit. Elsewhere: every file outside the
@@ -63,7 +76,13 @@ export async function uploadableFiles(root: string): Promise<string[]> {
       maxBuffer: 64 * 1024 * 1024,
     });
     paths = [...new Set(stdout.split("\0").filter(Boolean))];
-  } catch {
+  } catch (error) {
+    // Inside a repository, only Git knows what .gitignore keeps out; walking instead could upload
+    // ignored files. So fall back only where there is no repository at all.
+    if (await insideGit(root)) {
+      const reason = error instanceof Error ? (error.message.split(/\r?\n/)[0] ?? error.message) : String(error);
+      throw new Error(`Could not list the project's files with Git, so nothing was uploaded: ${reason}`);
+    }
     paths = await walk(root);
   }
   return paths.filter(isUploadable).sort();

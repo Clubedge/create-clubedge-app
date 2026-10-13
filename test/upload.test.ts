@@ -61,6 +61,12 @@ describe("what try uploads", () => {
     spawnSync("git", ["init", "-q"], { cwd: root });
     expect(await uploadableFiles(root)).toEqual([".gitignore", "kept.txt", "package.json"]);
   });
+
+  it("never falls back to walking a repository Git cannot list", async () => {
+    // A .git that Git rejects stands in for safe.directory refusals or a missing git binary.
+    const root = folder({ ".git": "gitdir: /nowhere", "package.json": "{}", "ignored-secret.json": "{}" });
+    await expect(uploadableFiles(root)).rejects.toThrow(/nothing was uploaded/);
+  });
 });
 
 describe("upload archive", () => {

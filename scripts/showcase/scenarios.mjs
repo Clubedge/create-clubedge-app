@@ -77,13 +77,24 @@ async function payOnStripeCheckout(a) {
   // With several payment methods, Checkout lists them as radio buttons or an accordion: pick the card.
   // The card row is opened by a transparent "Pay with card" button laid over it, which Playwright
   // counts as invisible: the pointer goes to the row's label, and the button is clicked by name.
+  // A real mouse click on the row's "Card" label opens it, as it does for a person; the button
+  // itself is the fallback. Each attempt runs only if the card form is still closed.
   const cardNumber = page.locator("#cardNumber");
-  if (!(await visible(cardNumber))) {
-    const cardButton = page.getByRole("button", { name: "Pay with card" });
-    await a.point(page.getByText("Card", { exact: true }).first());
-    await cardButton.click({ force: true });
-    await a.pause(800);
-    if (!(await visible(cardNumber))) await cardButton.dispatchEvent("click");
+  const label = page.locator("#payment-method-label-card");
+  const cardButton = page.locator('[data-testid="card-accordion-item-button"]');
+  const attempts = [
+    async () => {
+      await a.point(label);
+      const box = await label.boundingBox();
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    },
+    () => cardButton.dispatchEvent("click"),
+    () => cardButton.click({ force: true, timeout: 5_000 }),
+  ];
+  for (const attempt of attempts) {
+    if (await visible(cardNumber)) break;
+    await attempt().catch((error) => console.error(`Opening the card form: ${error.message.split("\n")[0]}`));
+    await cardNumber.waitFor({ state: "visible", timeout: 4_000 }).catch(() => {});
   }
   await cardNumber.waitFor({ state: "visible", timeout: 20_000 });
   await a.type(cardNumber, "4242424242424242");

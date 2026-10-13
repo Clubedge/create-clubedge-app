@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.24.0
+
+- Default to Starter `v0.17.0` (#61).
+
 ## 0.23.0
 
 - `deploy` moves Railway projects to `.railway/railway.ts`, Railway's configuration as code, which replaces `railway.json`: Railway stops reading `railway.json` on 2026-12-01 (#59).

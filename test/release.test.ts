@@ -76,6 +76,18 @@ describe("changelog draft", () => {
     ]);
   });
 
+  it("lists a Starter pin pull request once, instead of a second Starter line", () => {
+    const pinned = [
+      { number: 50, title: "ci: name the failing check" },
+      { number: 52, title: "feat: default to Starter v0.16.0" },
+    ];
+    expect(changelogEntry("0.21.0", pinned, "v0.16.0", true)).toBe(
+      "## 0.21.0\n\n- Name the failing check (#50).\n- Default to Starter `v0.16.0` (#52).\n",
+    );
+    // A pin pull request for another release does not stand in for this one.
+    expect(changelogEntry("0.21.0", pinned, "v0.17.0", true)).toContain("- Default to Starter `v0.17.0`.");
+  });
+
   it("turns conventional titles into changelog lines", () => {
     expect(changelogLine("feat(cli)!: add try")).toBe("Add try");
     expect(changelogLine("Plain title")).toBe("Plain title");

@@ -79,8 +79,15 @@ export function changelogLine(title) {
 
 /** The draft entry for a release: one line per pull request, then the Starter it uses. */
 export function changelogEntry(version, pullRequests, starterRef, pinChanged) {
-  const lines = pullRequests.map((pr) => `- ${changelogLine(pr.title)} (#${pr.number}).`);
-  lines.push(pinChanged ? `- Default to Starter \`${starterRef}\`.` : `- Still on Starter \`${starterRef}\`.`);
+  // The Starter pin pull request ("feat: default to Starter vX") already says what the pin line would.
+  const pinRequest = (pr) => pinChanged && /\bdefault to starter\b/i.test(pr.title) && pr.title.includes(starterRef);
+  const lines = pullRequests.map((pr) => {
+    const line = changelogLine(pr.title);
+    return `- ${pinRequest(pr) ? line.replace(starterRef, `\`${starterRef}\``) : line} (#${pr.number}).`;
+  });
+  if (!pullRequests.some(pinRequest)) {
+    lines.push(pinChanged ? `- Default to Starter \`${starterRef}\`.` : `- Still on Starter \`${starterRef}\`.`);
+  }
   return `## ${version}\n\n${lines.join("\n")}\n`;
 }
 

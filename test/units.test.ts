@@ -34,6 +34,8 @@ describe("parseCliArgs", () => {
       force: false,
       services: true,
       open: true,
+      claim: false,
+      status: false,
       help: false,
       version: false,
     });

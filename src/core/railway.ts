@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import { UsageError } from "../cli/args.js";
 
@@ -77,6 +77,41 @@ export function railwayKeyPath(env: NodeJS.ProcessEnv = process.env, platform = 
   const configHome =
     env.XDG_CONFIG_HOME || (platform === "win32" && env.APPDATA ? env.APPDATA : join(homedir(), ".config"));
   return join(configHome, "clubedge", "railway_ed25519");
+}
+
+/** What the CLI remembers about the last VM it set up, so `try --status` can answer without connecting. */
+export interface LastVm {
+  previewUrl: string;
+  claimUrl: string;
+  /** When the 60-minute build window ends (ISO). */
+  expiresAt: string;
+  /** The project's directory on the VM, such as /app/my-app. */
+  directory: string;
+}
+
+/** Saved next to the CLI's key, in its config directory. */
+export function lastVmPath(env: NodeJS.ProcessEnv = process.env, platform = process.platform): string {
+  return join(dirname(railwayKeyPath(env, platform)), "railway-vm.json");
+}
+
+/** Railway keeps an unclaimed VM claimable for 24 hours after its build window. */
+export const claimWindowMs = 24 * 60 * 60 * 1000;
+
+/**
+ * Where a VM stands: running (inside its 60 minutes), claimable (past them, still claimable), or
+ * gone. Connecting to a VM that is gone would create a new one, so status never does.
+ */
+export function vmPhase(vm: LastVm, now = new Date()): { phase: "running" | "claimable" | "gone"; minutesLeft: number; claimUntil: Date } {
+  const expires = new Date(vm.expiresAt).getTime();
+  const claimUntil = new Date(expires + claimWindowMs);
+  const minutesLeft = Math.max(0, Math.round((expires - now.getTime()) / 60_000));
+  const phase = now.getTime() < expires ? "running" : now.getTime() < claimUntil.getTime() ? "claimable" : "gone";
+  return { phase, minutesLeft, claimUntil };
+}
+
+/** A local port forward to the app on the VM: works from this machine whatever its IP, nothing shared. */
+export function portForwardCommand(keyPath: string): string {
+  return `ssh -i "${keyPath}" -N -L 3000:127.0.0.1:3000 ${railwayHost}`;
 }
 
 /**

@@ -7,7 +7,9 @@ import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import {
   hostKeyFingerprint,
+  lastVmPath,
   parseRailwayStatus,
+  portForwardCommand,
   proxySource,
   railwayKeyPath,
   shellQuote,
@@ -15,6 +17,7 @@ import {
   tryCreateArgs,
   tryModules,
   tryScript,
+  vmPhase,
 } from "../src/core/railway.js";
 
 // The status line as railway.new prints it on stderr (claim code replaced).
@@ -184,5 +187,38 @@ describe("parseCliArgs try", () => {
   it("rejects a directory and --template-dir", () => {
     expect(() => parseCliArgs(["try", "my-app"])).toThrow(/Usage: try/);
     expect(() => parseCliArgs(["try", "--template-dir", "../starter"])).toThrow(/--template-dir/);
+  });
+
+  it("takes --claim and --status, for try only", () => {
+    expect(parseCliArgs(["try", "--claim"])).toMatchObject({ claim: true, status: false });
+    expect(parseCliArgs(["try", "--status"])).toMatchObject({ claim: false, status: true });
+    expect(() => parseCliArgs(["my-app", "--claim"])).toThrow(/only apply to try/);
+    expect(() => parseCliArgs(["doctor", "--status"])).toThrow(/only apply to try/);
+  });
+});
+
+describe("the last VM", () => {
+  const vm = {
+    previewUrl: "https://preview-x.up.railway.app",
+    claimUrl: "https://railway.com/ssh-signup?code=example",
+    expiresAt: "2026-10-13T12:00:00Z",
+    directory: "/app/my-app",
+  };
+
+  it("runs for its 60 minutes, stays claimable for 24 hours after, then is gone", () => {
+    expect(vmPhase(vm, new Date("2026-10-13T11:20:00Z"))).toMatchObject({ phase: "running", minutesLeft: 40 });
+    expect(vmPhase(vm, new Date("2026-10-13T18:00:00Z"))).toMatchObject({ phase: "claimable", minutesLeft: 0 });
+    expect(vmPhase(vm, new Date("2026-10-14T12:00:01Z")).phase).toBe("gone");
+    expect(vmPhase(vm).claimUntil.toISOString()).toBe("2026-10-14T12:00:00.000Z");
+  });
+
+  it("is saved next to the CLI's key", () => {
+    expect(lastVmPath({ XDG_CONFIG_HOME: "/cfg" }, "linux")).toBe(join("/cfg", "clubedge", "railway-vm.json"));
+  });
+
+  it("forwards the app to localhost with the CLI's own key", () => {
+    expect(portForwardCommand("/cfg/clubedge/railway_ed25519")).toBe(
+      'ssh -i "/cfg/clubedge/railway_ed25519" -N -L 3000:127.0.0.1:3000 railway.new',
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { cancel, confirm, isCancel, log, note, outro, spinner } from "@clack/prompts";
+import { cancel, confirm, isCancel, log, note, outro, select, spinner } from "@clack/prompts";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname } from "node:path";
@@ -8,6 +8,8 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   hostKeyFingerprint,
+  lastVmPath,
+  portForwardCommand,
   parseRailwayStatus,
   projectTryProblem,
   proxySource,
@@ -26,6 +28,8 @@ import {
   tryCreateArgs,
   tryModules,
   tryScript,
+  vmPhase,
+  type LastVm,
   type RailwayVm,
   type TrySource,
 } from "./core/railway.js";
@@ -221,7 +225,96 @@ async function agree(args: CliArgs, keyPath: string, what: Plan): Promise<boolea
   return !isCancel(answer) && answer;
 }
 
+async function saveLastVm(vm: LastVm) {
+  const path = lastVmPath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(vm, null, 2)}\n`);
+}
+
+async function readLastVm(): Promise<LastVm | null> {
+  try {
+    return JSON.parse(await readFile(lastVmPath(), "utf8")) as LastVm;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Claiming moves the VM into a Railway account, which is what makes the preview shareable: offer
+ * it at a terminal, or open it straight away with --claim. Nothing happens in scripts without it.
+ */
+async function offerClaim(args: CliArgs, atTerminal: boolean, claimUrl: string) {
+  let claim = args.claim;
+  if (!claim && atTerminal && !args.yes) {
+    const answer = await select({
+      message: "Share the preview with others?",
+      initialValue: "later",
+      options: [
+        { value: "later", label: "Not now", hint: "only you can open it, from this connection" },
+        { value: "claim", label: "Claim the VM", hint: "free Railway sign-up; then the URL works for anyone" },
+      ],
+    });
+    claim = !isCancel(answer) && answer === "claim";
+  }
+  if (!claim) return;
+  if (atTerminal && (await openUrl(claimUrl))) log.info("Opened the claim page. Sign up, pick a workspace, and the VM, its files, and its URL move to your account.");
+  else log.info(`Claim the VM here: ${claimUrl}`);
+}
+
+/**
+ * The last VM, from what the CLI saved: its preview, time left, and claim link. It connects only
+ * while the VM is inside its 60 minutes, since connecting to a VM that is gone creates a new one.
+ */
+async function showStatus(keyPath: string) {
+  const last = await readLastVm();
+  if (!last) {
+    outro("No VM yet. Run try to create one.");
+    return;
+  }
+  const { phase, minutesLeft: left, claimUntil } = vmPhase(last);
+  if (phase === "gone") {
+    outro(`The last VM is gone: its claim window ended ${claimUntil.toLocaleString()}. Run try to create a new one.`);
+    return;
+  }
+  let app = dim("not checked");
+  if (phase === "running") {
+    const progress = spinner();
+    progress.start("Checking the app on the VM");
+    try {
+      const connection = await connect(await readFile(keyPath, "utf8"));
+      try {
+        const { stdout } = await exec(connection, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true");
+        app = /^[1-4]\d\d$/.test(stdout.trim()) ? "running" : "not answering";
+      } finally {
+        connection.end();
+      }
+      progress.stop("Checked the app");
+    } catch (error) {
+      progress.stop("Could not reach the VM");
+      app = dim(error instanceof Error ? error.message : String(error));
+    }
+  }
+  note(
+    [
+      `${bold("Preview")}  ${last.previewUrl}`,
+      `${bold("Project")}  ${last.directory}`,
+      `${bold("App")}      ${phase === "running" ? app : "stopped: the 60 minutes are over"}`,
+      phase === "running"
+        ? `${bold("Time")}     ${left} minutes left (until ${new Date(last.expiresAt).toLocaleTimeString()})`
+        : `${bold("Time")}     claimable until ${claimUntil.toLocaleString()}`,
+      `${bold("Claim")}    ${last.claimUrl}`,
+    ].join("\n"),
+    "Your VM on Railway",
+  );
+  outro(
+    phase === "running"
+      ? "Until you claim the VM, only this IP address can open the preview. Claim it to share the URL."
+      : "Claim the VM to keep it: its files and URL move to your Railway account.",
+  );
+}
+
 export async function tryOnRailway(args: CliArgs): Promise<void> {
+  if (args.status) return await showStatus(railwayKeyPath());
   const what = await plan(args);
   const keyPath = railwayKeyPath();
 
@@ -303,14 +396,20 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
       "Your app on Railway",
     );
     log.warn("Keep the claim link private: whoever opens it takes over the VM, its files, and its URL.");
-    // Only for a person at a terminal: scripts and CI get the URL above, and nothing opens.
-    if (args.open && process.stdout.isTTY && (await openUrl(vm.previewUrl))) log.info("Opened the preview in your browser.");
+    await saveLastVm({ previewUrl: vm.previewUrl, claimUrl: vm.claimUrl, expiresAt: vm.expiresAt.toISOString(), directory: `/app/${directory}` });
+
+    // Only for a person at a terminal: scripts and CI get the URLs above, and nothing opens.
+    const atTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    if (args.open && atTerminal && (await openUrl(vm.previewUrl))) log.info("Opened the preview in your browser.");
+    await offerClaim(args, atTerminal, vm.claimUrl);
     outro(
       [
-        "Until you claim the VM, the preview opens only from the IP address that created it. Claiming moves it to your Railway account and makes the URL shareable.",
+        "Until you claim the VM, only you can open the preview, from the IP address that created it. Another device on mobile data, a VPN, or anyone you send it to gets Railway's \"Access denied\" page. Claiming makes the URL shareable.",
         "",
-        `${dim("Shell")}  ssh -i "${keyPath}" ${railwayHost}`,
-        `${dim("Logs")}   ssh -i "${keyPath}" ${railwayHost} tail -f ${remoteDevLog}`,
+        `${dim("Status")}   ${dim("pnpm dlx @clubedge/create-clubedge-app try --status")}`,
+        `${dim("Local")}    ${portForwardCommand(keyPath)}  ${dim("then http://localhost:3000, from any network")}`,
+        `${dim("Shell")}    ssh -i "${keyPath}" ${railwayHost}`,
+        `${dim("Logs")}     ssh -i "${keyPath}" ${railwayHost} tail -f ${remoteDevLog}`,
       ].join("\n"),
     );
   } catch (error) {

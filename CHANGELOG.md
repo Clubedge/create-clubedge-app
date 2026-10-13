@@ -2,6 +2,16 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.22.0
+
+- Add `deploy`: `pnpm clubedge deploy` does the first deploy of a project that uses `deploy railway`, with Railway's CLI and your Railway login (#55).
+  - It asks first, then creates or reuses the Railway project, Postgres (and Redis with `cache redis`), the app's service, and a `*.up.railway.app` domain.
+  - It sets the variables it can: the database references, `APP_URL` and `NEXT_PUBLIC_APP_URL`, `PORT`, and a generated `BETTER_AUTH_SECRET` that later runs keep. `--env-file .env.production` adds your provider keys; the ones still unset are listed.
+  - It follows the deployment until Railway's final status: the migrations run before the release and `/api/health` is checked. On a failure it names the logs commands. Running it again reuses everything.
+  - Railway only for now; `--dry-run` shows the plan.
+- Default to Starter `v0.16.1` (#57): both Dockerfiles install dependencies in the build stage, so `node_modules` is no longer copied between stages, which made builds slow and timed out a first build on Railway.
+- Release drafts list a Starter pin pull request once (#54).
+
 ## 0.21.0
 
 - Default to Starter `v0.16.0` (#52), which adds:

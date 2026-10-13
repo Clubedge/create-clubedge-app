@@ -4,8 +4,9 @@
 import { cancel, confirm, isCancel, log, note, outro, spinner } from "@clack/prompts";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
@@ -15,44 +16,121 @@ import {
   deploymentStatus,
   exampleKeys,
   finalStatuses,
+  meetsMinimumCli,
+  minimumRailwayCli,
   parseDeploymentId,
   parseEnvFile,
   parseRailwayDomain,
   parseVariables,
   planVariables,
+  railwayCliVersion,
   railwayDatabases,
+  railwayIacPath,
+  railwayIacSource,
   serviceName,
   serviceNames,
 } from "./core/deploy.js";
 import { readProject } from "./core/project.js";
 import { cliCommand } from "./modify.js";
-import { commandSucceeds } from "./utils/process.js";
+import { resolvePnpm } from "./steps/install.js";
+import { pathExists } from "./utils/fs.js";
+import { run } from "./utils/process.js";
 
 const railwayTermsUrl = "https://railway.com/legal/terms";
 const deployDocsUrl = "https://starter.clubedge.live/docs/starter/deploy";
 
-// Package manager shims (npx.cmd, railway.cmd) need a shell on Windows. Every argument passed
-// here is a plain word; values go through stdin, so the shell never sees them.
-const useShell = process.platform === "win32";
+/** A Railway CLI to run, and the executable Railway's TypeScript SDK runs to check its version. */
+interface RailwayCli {
+  command: string[];
+  /** Set as `_` for every Railway command: railway/iac checks the CLI's version with `$_ --version`,
+   * falling back to `railway` on PATH, which fails in PowerShell and behind npm's .cmd shims. */
+  executable: string;
+  /** npm's .cmd shims need a shell on Windows; a binary does not. */
+  shell: boolean;
+}
 
-/** The Railway CLI: the installed `railway`, or the npm package through npx. */
-async function railwayCli(): Promise<string[]> {
-  if (await commandSucceeds("railway", ["--version"])) return ["railway"];
-  return ["npx", "--yes", "@railway/cli"];
+const windows = process.platform === "win32";
+const binaryName = windows ? "railway.exe" : "railway";
+
+async function cliVersion(command: string[], shell: boolean): Promise<[number, number, number] | null> {
+  return await new Promise((resolveVersion) => {
+    const [file, ...args] = command;
+    const child = spawn(file!, [...args, "--version"], { shell, stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString()));
+    child.once("error", () => resolveVersion(null));
+    child.once("close", (code) => resolveVersion(code === 0 ? railwayCliVersion(out) : null));
+  });
+}
+
+/** The railway.exe behind `railway` on PATH (npm installs a railway.cmd shim next to its package). */
+async function installedBinary(): Promise<string | null> {
+  if (!windows) return (await cliVersion(["railway"], false)) ? "railway" : null;
+  const found = await new Promise<string>((resolveWhere) => {
+    const child = spawn("where", ["railway"], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString()));
+    child.once("error", () => resolveWhere(""));
+    child.once("close", () => resolveWhere(out));
+  });
+  for (const line of found.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)) {
+    if (line.toLowerCase().endsWith(".exe")) return line;
+    const shimmed = join(dirname(line), "node_modules", "@railway", "cli", "bin", binaryName);
+    if (await pathExists(shimmed)) return shimmed;
+  }
+  return null;
+}
+
+/** Railway CLI binaries npx already downloaded, newest first: no download on a slow connection. */
+async function cachedBinaries(): Promise<string[]> {
+  const cache =
+    process.env.npm_config_cache ||
+    (windows && process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "npm-cache") : join(homedir(), ".npm"));
+  const found: Array<{ path: string; time: number }> = [];
+  for (const entry of await readdir(join(cache, "_npx")).catch(() => [] as string[])) {
+    const path = join(cache, "_npx", entry, "node_modules", "@railway", "cli", "bin", binaryName);
+    const stats = await stat(path).catch(() => null);
+    if (stats?.isFile()) found.push({ path, time: stats.mtimeMs });
+  }
+  return found.sort((a, b) => b.time - a.time).map((entry) => entry.path);
+}
+
+/**
+ * A Railway CLI new enough for `.railway/railway.ts`: the installed one, then one npx already
+ * downloaded, and only then a download through npx.
+ */
+async function railwayCli(): Promise<RailwayCli> {
+  const usable = async (binary: string) => {
+    const version = await cliVersion([binary], false);
+    return version !== null && meetsMinimumCli(version);
+  };
+  const installed = await installedBinary();
+  if (installed && (await usable(installed))) return { command: [installed], executable: installed, shell: false };
+  for (const binary of await cachedBinaries()) {
+    if (await usable(binary)) return { command: [binary], executable: binary, shell: false };
+  }
+  await cliVersion(["npx", "--yes", "@railway/cli@latest"], windows);
+  for (const binary of await cachedBinaries()) {
+    if (await usable(binary)) return { command: [binary], executable: binary, shell: false };
+  }
+  throw new UsageError(
+    `deploy needs Railway CLI ${minimumRailwayCli.join(".")} or newer. Install it with \`npm install -g @railway/cli\`, then run deploy again.`,
+  );
 }
 
 interface RunOptions {
   /** Written to the command's stdin. */
   input?: string;
-  /** Show the command's output and let it prompt (login, the deploy's build logs). */
+  /** Show the command's output and let it prompt (login). */
   inherit?: boolean;
 }
 
-async function railway(cli: string[], args: string[], options: RunOptions = {}): Promise<string> {
-  const [command, ...prefix] = cli;
+async function railway(cli: RailwayCli, args: string[], options: RunOptions = {}): Promise<string> {
+  const [command, ...prefix] = cli.command;
   return await new Promise<string>((resolvePromise, reject) => {
     const child = spawn(command!, [...prefix, ...args], {
-      shell: useShell,
+      shell: cli.shell,
+      env: { ...process.env, _: cli.executable },
       stdio: options.inherit ? "inherit" : ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -83,6 +161,7 @@ async function agree(args: CliArgs, service: string, databases: string[]): Promi
       `• A project with ${databases.map((db) => railwayDatabases[db as keyof typeof railwayDatabases]).join(" and ")}, and a service "${service}" with a public *.up.railway.app domain.`,
       "• The production variables Railway can provide; your provider keys come from --env-file.",
       "• Railway builds the Dockerfile, runs the migrations before the release, and checks /api/health; the first build takes several minutes.",
+      `• The service's settings go in ${railwayIacPath}, which replaces railway.json; the railway package is added to read it.`,
       "",
       `Railway bills usage on your plan. Running deploy again reuses all of it. Railway's terms: ${railwayTermsUrl}`,
     ].join("\n"),
@@ -116,6 +195,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
       [
         `• Railway project "${service}" with ${databases.join(" and ")}, and the service "${service}"`,
         `• A *.up.railway.app domain for port ${appPort}`,
+        `• ${railwayIacPath} (written if missing, with Railway's SDK added), applied with railway config apply`,
         `• Variables: ${Object.keys(preview.set).join(", ")}`,
         ...(preview.unset.length ? [`• Not set: ${preview.unset.join(", ")}`] : []),
         `• railway up: build, migrations, health check`,
@@ -181,7 +261,37 @@ export async function deployProject(args: CliArgs): Promise<void> {
     if (current[key] === value) continue;
     await railway(rw, ["variable", "set", key, "--stdin", "--service", service, "--skip-deploys"], { input: value });
   }
+  // The service's settings as code: .railway/railway.ts replaces railway.json, which Railway stops
+  // reading on 2026-12-01. It needs Railway's TypeScript SDK, and applies before each release.
+  const iacFiles = [railwayIacPath, ".railway/railway.py", ".railway/railway.go"];
+  const changed: string[] = [];
+  let hasIac = false;
+  for (const file of iacFiles) if (await pathExists(join(project.root, file))) hasIac = true;
+  if (!hasIac) {
+    await mkdir(join(project.root, ".railway"), { recursive: true });
+    await writeFile(join(project.root, railwayIacPath), railwayIacSource(service));
+    changed.push(railwayIacPath);
+  }
+  if (await pathExists(join(project.root, railwayIacPath))) {
+    const manifest = JSON.parse(await readFile(join(project.root, "package.json"), "utf8"));
+    if (!manifest.devDependencies?.railway && !manifest.dependencies?.railway) {
+      const pnpm = await resolvePnpm();
+      if (!pnpm) throw new UsageError("pnpm was not found. Enable it with `corepack enable`, then run deploy again.");
+      progress.stop("Adding Railway's TypeScript SDK (railway), which .railway/railway.ts imports");
+      const [command, ...prefix] = pnpm;
+      await run(command!, [...prefix, "add", "--save-dev", "--workspace-root", "railway"], project.root);
+      changed.push("package.json", "pnpm-lock.yaml");
+      progress.start("Applying .railway/railway.ts");
+    }
+  }
+  progress.message(`Applying ${railwayIacPath}`);
+  await railway(rw, ["config", "apply", "--yes"]);
   progress.stop(`Railway is ready: ${url}`);
+  if (changed.length) {
+    log.info(
+      `Commit ${changed.join(", ")}: Railway reads the service's settings from ${railwayIacPath} now. railway.json is no longer needed (Railway stops reading it on 2026-12-01).`,
+    );
+  }
 
   // Start the deploy detached, then follow its status: `railway up` can return before the build
   // ends, and only Railway's final status says whether the release went live.

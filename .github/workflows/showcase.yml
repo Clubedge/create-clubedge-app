@@ -261,7 +261,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: walkthrough-${{ matrix.example }}-raw
-          path: |
-            ${{ runner.temp }}/out
-            ${{ runner.temp }}/stripe-listen.log
+          # Not the Stripe CLI's log: it prints the webhook signing secret.
+          path: ${{ runner.temp }}/out
           if-no-files-found: ignore

@@ -149,6 +149,12 @@ async function browser(label, steps) {
     await steps(actions(page));
     await page.waitForTimeout(1200);
     storageState = await context.storageState();
+  } catch (error) {
+    // Keep what the page looked like, for the failure artifact.
+    await page.screenshot({ path: join(state, `scene-${index}-failure.png`) }).catch(() => {});
+    writeFileSync(join(state, `scene-${index}-failure.html`), await page.content().catch(() => ""));
+    console.error(`Browser scene "${label}" failed at ${page.url()}`);
+    throw error;
   } finally {
     await context.close();
     await instance.close();

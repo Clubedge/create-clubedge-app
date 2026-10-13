@@ -194,7 +194,7 @@ When the app is ready, the CLI opens the preview in your browser (`--no-open` tu
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.20.0
+create-clubedge-app v0.21.0
         |
         v
 Clubedge Starter v0.16.0
@@ -205,7 +205,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.20.0` | `clubedge-starter@v0.16.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.21.0` | `clubedge-starter@v0.16.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -299,6 +299,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.18.0 | v0.15.0 | `try`: a new project on a free, temporary Railway VM, with a preview URL and a claim link (experimental) |
 | 0.19.0 | v0.15.0 | `pnpm clubedge try` uploads an existing project to the VM; the preview opens in the browser |
 | 0.20.0 | v0.15.0 | The Starter's version of each conflicted file in `.clubedge/incoming/`, several modules at once, sharing a `try` preview by claiming the VM, `try --status` |
+| 0.21.0 | v0.16.0 | Name the generated project's failing check; One-command releases and an automatic Starter pin pull request; Default to Starter v0.16.0 |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

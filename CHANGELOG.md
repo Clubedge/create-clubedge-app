@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.21.0
+
+- Name the generated project's failing check (#50).
+- One-command releases and an automatic Starter pin pull request (#51).
+- Default to Starter v0.16.0 (#52).
+- Default to Starter `v0.16.0`.
+
 ## 0.20.0
 
 - Conflicts are easier to resolve after `add`, `remove`, and `upgrade`:

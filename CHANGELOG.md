@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.23.0
+
+- Deploy writes and applies .railway/railway.ts instead of railway.json (#59).
+- Still on Starter `v0.16.1`.
+
 ## 0.22.0
 
 - Add `deploy`: `pnpm clubedge deploy` does the first deploy of a project that uses `deploy railway`, with Railway's CLI and your Railway login (#55).

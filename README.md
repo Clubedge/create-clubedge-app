@@ -312,7 +312,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.19.0 | v0.15.0 | `pnpm clubedge try` uploads an existing project to the VM; the preview opens in the browser |
 | 0.20.0 | v0.15.0 | The Starter's version of each conflicted file in `.clubedge/incoming/`, several modules at once, sharing a `try` preview by claiming the VM, `try --status` |
 | 0.21.0 | v0.16.0 | Starter v0.16.0: upgrades delivered as pull requests, Node 24 actions; release tooling for maintainers |
-| 0.22.0 | v0.16.1 | List a Starter pin pull request once in the release draft; Deploy a project to Railway with one command; Default to Starter v0.16.1 |
+| 0.22.0 | v0.16.1 | `pnpm clubedge deploy`: a guided first deploy to Railway; faster Docker builds |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

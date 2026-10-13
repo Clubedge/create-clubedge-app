@@ -104,6 +104,13 @@ async function payOnStripeCheckout(a) {
   if (await visible(name)) await a.type(name, "Ada Lovelace");
   const postal = page.locator("#billingPostalCode");
   if (await visible(postal)) await a.type(postal, "10001");
+  // "Save my information with Link" starts ticked and then asks for a phone number: untick it.
+  const saveWithLink = page.getByRole("checkbox", { name: /save my information/i }).or(page.locator("#enableStripePass"));
+  if ((await visible(saveWithLink)) && (await saveWithLink.first().isChecked())) {
+    await a.point(saveWithLink.first());
+    await saveWithLink.first().uncheck({ force: true });
+    await a.pause(700);
+  }
   await a.click(page.locator('[data-testid="hosted-payment-submit-button"]'), 0);
   await page.waitForURL(/localhost:3000\/dashboard/, { timeout: 90_000 });
 }

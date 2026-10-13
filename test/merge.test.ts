@@ -48,6 +48,22 @@ describe("planMerge", () => {
     ]);
   });
 
+  it("carries the Starter's whole new version of a conflicted file", () => {
+    const [action] = planMerge(
+      files({ "page.tsx": "title\nbody\n" }),
+      files({ "page.tsx": "new title\nbody\nfooter\n" }),
+      files({ "page.tsx": "my title\r\nbody\r\n" }),
+    );
+    expect(action?.kind).toBe("conflict");
+    // In the project's line endings, like the merged file.
+    expect(action?.kind === "conflict" && action.incoming.toString()).toBe("new title\r\nbody\r\nfooter\r\n");
+  });
+
+  it("carries the Starter's version of a file the project deleted", () => {
+    const [action] = planMerge(files({ "a.ts": "v1\n" }), files({ "a.ts": "v2\n" }), files({}));
+    expect(action?.kind === "keep" && action.incoming?.toString()).toBe("v2\n");
+  });
+
   it("does nothing when the project already matches the target", () => {
     const base = files({ "a.ts": "one\n" });
     const target = files({ "a.ts": "two\n", "b.ts": "b\n" });

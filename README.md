@@ -136,7 +136,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 ## Change an existing project
 
-Inside a project created by the CLI, `add` and `remove` change modules, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them:
+Inside a project created by the CLI, `add` and `remove` change modules, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them, with a list where you can pick several modules at once:
 
 ```sh
 pnpm clubedge add                                            # choose a module and option from a list
@@ -152,7 +152,7 @@ pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.15.0 # or a specific tag
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
 
 - Files you never changed are updated, added, or deleted.
-- Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve.
+- Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve. The Starter's whole new version of each such file is saved in `.clubedge/incoming/` to compare with yours (`git diff --no-index <file> .clubedge/incoming/<file>`); Git ignores that folder, so delete it when you are done.
 - Your own files are never touched.
 - `apps/web/.env.local` keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
 - `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.

@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { executePlan } from "../src/core/execute.js";
@@ -6,7 +6,7 @@ import { readTemplateManifest } from "../src/core/manifest.js";
 import { createPlan } from "../src/core/plan.js";
 import { readProject } from "../src/core/project.js";
 import { readDirectoryTemplate } from "../src/core/source.js";
-import { applyUpdate, planUpdate } from "../src/core/update.js";
+import { applyUpdate, INCOMING_DIR, incomingFiles, planUpdate, type UpdatePlan } from "../src/core/update.js";
 import { changedModules, completeCommand, upgradedModules } from "../src/modify.js";
 import { pathExists } from "../src/utils/fs.js";
 import { moduleStarterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
@@ -291,5 +291,41 @@ describe("changedModules", () => {
     expect(() =>
       changedModules(manifest, project, { name: "add", changes: [{ module: "auth", option: "magic" }] }, "pnpm clubedge"),
     ).toThrow('Unknown auth option "magic"');
+  });
+});
+
+describe("incoming versions", () => {
+  const plan = (root: string, actions: UpdatePlan["actions"]): UpdatePlan => ({
+    project: { root } as UpdatePlan["project"],
+    actions,
+    lockfile: { kind: "unchanged" },
+    env: null,
+  });
+
+  it("saves the Starter's version of each file left to resolve, in a folder Git ignores", async () => {
+    const root = await temporaryDirectory();
+    await applyUpdate(
+      plan(root, [
+        { path: "src/a.ts", kind: "conflict", content: Buffer.from("<<<<<<< yours\n"), incoming: Buffer.from("theirs\n") },
+        { path: "src/b.ts", kind: "keep", reason: "deleted", incoming: Buffer.from("restored\n") },
+        { path: "src/c.ts", kind: "keep", reason: "removed" },
+        { path: "src/d.ts", kind: "merge", content: Buffer.from("merged\n") },
+      ]),
+    );
+    expect(await readFile(join(root, INCOMING_DIR, "src/a.ts"), "utf8")).toBe("theirs\n");
+    expect(await readFile(join(root, INCOMING_DIR, "src/b.ts"), "utf8")).toBe("restored\n");
+    expect(await pathExists(join(root, INCOMING_DIR, "src/c.ts"))).toBe(false);
+    expect(await pathExists(join(root, INCOMING_DIR, "src/d.ts"))).toBe(false);
+    expect(await readFile(join(root, ".clubedge/.gitignore"), "utf8")).toMatch(/^\*$/m);
+  });
+
+  it("replaces the previous change's files and writes nothing without conflicts", async () => {
+    const root = await temporaryDirectory();
+    await mkdir(join(root, INCOMING_DIR, "old"), { recursive: true });
+    await writeFile(join(root, INCOMING_DIR, "old/stale.ts"), "stale\n");
+    const clean = plan(root, [{ path: "src/d.ts", kind: "update", content: Buffer.from("new\n") }]);
+    expect(incomingFiles(clean)).toEqual([]);
+    await applyUpdate(clean);
+    expect(await pathExists(join(root, INCOMING_DIR))).toBe(false);
   });
 });

@@ -11,6 +11,12 @@ import type { TemplateSource } from "./source.js";
 
 const LOCKFILE = "pnpm-lock.yaml";
 
+/**
+ * Where the Starter's versions of files left to resolve are saved, next to the project's own,
+ * for comparing by hand. The folder ignores itself, so it never shows in git status or a commit.
+ */
+export const INCOMING_DIR = ".clubedge/incoming";
+
 /** One side of an update: the Starter revision and the selection to render. */
 export interface UpdateSide {
   source: Pick<TemplateSource, "root" | "files" | "repository" | "ref" | "commit">;
@@ -95,8 +101,34 @@ async function removeEmptyFolders(root: string, path: string) {
   }
 }
 
+/** The Starter's version of each file left for you: conflicts, and kept files it has a version of. */
+export function incomingFiles(plan: UpdatePlan): Array<{ path: string; content: Buffer }> {
+  return plan.actions.flatMap((action) =>
+    (action.kind === "conflict" || action.kind === "keep") && action.incoming ? [{ path: action.path, content: action.incoming }] : [],
+  );
+}
+
+/** Replaces the previous change's incoming files with this change's. */
+async function writeIncoming(plan: UpdatePlan) {
+  const folder = join(plan.project.root, INCOMING_DIR);
+  await rm(folder, { recursive: true, force: true });
+  const files = incomingFiles(plan);
+  if (!files.length) return;
+  await mkdir(dirname(folder), { recursive: true });
+  await writeFile(
+    join(dirname(folder), ".gitignore"),
+    "# Written by create-clubedge-app: the Starter's versions of files to compare. Delete when done.\n*\n",
+  );
+  for (const file of files) {
+    const path = join(folder, file.path);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, file.content);
+  }
+}
+
 export async function applyUpdate(plan: UpdatePlan): Promise<void> {
   const { root } = plan.project;
+  await writeIncoming(plan);
   for (const action of plan.actions) {
     const path = join(root, action.path);
     if (action.kind === "delete") {

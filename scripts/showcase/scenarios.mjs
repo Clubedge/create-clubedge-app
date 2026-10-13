@@ -199,9 +199,15 @@ serve "pnpm dev" "http://localhost:3000/" dev`,
           await a.click(a.page.locator("#billing").getByRole("button", { name: "Manage billing" }), 0);
           await a.page.waitForURL(/billing\.stripe\.com/, { timeout: 60_000 });
           await a.page.waitForLoadState("networkidle").catch(() => {});
-          // The portal renders its plan after loading: wait for it, then let it be read.
-          await a.page.getByText("Pro", { exact: false }).first().waitFor({ timeout: 20_000 }).catch(() => {});
-          await a.pause(4000);
+          // The portal shows a spinner, then renders the subscription after its own requests: wait
+          // for that content (not just the page load), then let it be read.
+          await a.page
+            .getByText(/current subscription|cancel subscription|payment method/i)
+            .first()
+            .waitFor({ state: "visible", timeout: 45_000 });
+          await a.page.waitForLoadState("networkidle").catch(() => {});
+          await a.pause(4500);
+          await a.scrollTo(a.page.getByText(/payment method/i).first(), 3000).catch(() => {});
         }
       } finally {
         await stripe?.stop();

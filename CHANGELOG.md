@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.22.0
+
+- List a Starter pin pull request once in the release draft (#54).
+- Deploy a project to Railway with one command (#55).
+- Default to Starter `v0.16.1` (#57).
+
 ## 0.21.0
 
 - Default to Starter `v0.16.0` (#52), which adds:

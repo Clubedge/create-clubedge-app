@@ -96,19 +96,43 @@ export function tryModules(requested: Record<string, string>): Record<string, st
   return { ...requested, infra, auth, email: requested.email ?? "none" };
 }
 
+/**
+ * Why an existing project cannot run on the VM, or null when it can. The VM has no Docker, so the
+ * database must be PGlite (infra local) or none, and Supabase Auth is out.
+ */
+export function projectTryProblem(modules: Record<string, string>): string | null {
+  const infra = modules.infra ?? "none";
+  if (infra !== "local" && infra !== "none") {
+    return `This project runs its services with infra ${infra}, which needs Docker; the VM has none. Switch with \`pnpm clubedge add infra local\` (PGlite, no Docker), then run try again.`;
+  }
+  if (modules.auth === "supabase") {
+    return "This project signs in with Supabase Auth, which needs Docker or a Supabase project; the VM has neither. Switch with `pnpm clubedge add auth better-auth`, then run try again.";
+  }
+  return null;
+}
+
+/** A project's package name as a directory name on the VM. */
+export function remoteName(packageName: string): string {
+  const name = packageName.replace(/^@[^/]+\//, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return name || "my-app";
+}
+
 /** A value as one single-quoted shell word. */
 export const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 
+/** Where the project on the VM comes from: created there, or uploaded from this machine. */
+export type TrySource =
+  | { kind: "create"; cliVersion: string; framework?: string; ref?: string }
+  | { kind: "upload"; name: string };
+
 export interface TryScriptOptions {
-  cliVersion: string;
-  framework?: string;
+  source: TrySource;
   modules: Record<string, string>;
-  ref?: string;
   previewUrl: string;
 }
 
-/** The create command run on the VM: this CLI's own version, with the chosen selection. */
-export function tryCreateArgs({ framework, modules, ref }: Omit<TryScriptOptions, "cliVersion" | "previewUrl">): string[] {
+/** The create command's flags on the VM: the chosen selection, without prompts. */
+export function tryCreateArgs({ framework, modules, ref }: { framework?: string; modules: Record<string, string>; ref?: string }): string[] {
   return [
     ...(framework ? ["--framework", framework] : []),
     ...Object.entries(modules).flatMap(([module, option]) => [`--${module}`, option]),
@@ -122,15 +146,28 @@ export const remoteLog = `${remoteDir}/clubedge-try.log`;
 export const remoteDevLog = `${remoteDir}/clubedge-dev.log`;
 export const remoteScriptPath = `${remoteDir}/clubedge-try.sh`;
 export const remoteProxyPath = `${remoteDir}/clubedge-proxy.mjs`;
+export const remoteArchivePath = `${remoteDir}/clubedge-upload.tgz`;
 
 /**
- * The script the VM runs. It reports progress on stdout as "@@step <text>", then "@@ready", or
- * "@@fail <text>" followed by the end of the log as "@@log <line>". The servers it starts keep
+ * The script the VM runs. It reports progress on stdout as "@@step <text>", then "@@ready <dir>",
+ * or "@@fail <text>" followed by the end of the log as "@@log <line>". The servers it starts keep
  * running after the SSH session ends.
  */
-export function tryScript(options: TryScriptOptions): string {
-  const create = ["pnpm", "dlx", `@clubedge/create-clubedge-app@${options.cliVersion}`, '"$dir"', ...tryCreateArgs(options).map(shellQuote)].join(" ");
-  const betterAuth = options.modules.auth === "better-auth";
+export function tryScript({ source, modules, previewUrl }: TryScriptOptions): string {
+  const base = source.kind === "create" ? "my-app" : source.name;
+  const prepare =
+    source.kind === "create"
+      ? `step "Creating the project in ${remoteDir}/$dir"
+${["pnpm", "dlx", `@clubedge/create-clubedge-app@${source.cliVersion}`, '"$dir"', ...tryCreateArgs({ ...source, modules }).map(shellQuote)].join(" ")} >>"$log" 2>&1 || fail "The project could not be created"
+cd "$dir" || fail "The project directory is missing"`
+      : `step "Unpacking the project in ${remoteDir}/$dir"
+mkdir -p "$dir" && tar xzf ${remoteArchivePath} -C "$dir" >>"$log" 2>&1 || fail "The upload could not be unpacked"
+rm -f ${remoteArchivePath}
+cd "$dir" || fail "The project directory is missing"
+step "Installing dependencies"
+pnpm install >>"$log" 2>&1 || fail "pnpm install failed"`;
+  const betterAuth = modules.auth === "better-auth";
+  const localDb = modules.infra === "local";
   return `#!/usr/bin/env bash
 # Written by create-clubedge-app try. Logs: ${remoteLog}, ${remoteDevLog}
 set -uo pipefail
@@ -144,43 +181,60 @@ port="\${PORT:-8080}"
 step "Preparing pnpm"
 command -v pnpm >/dev/null 2>&1 || corepack enable pnpm >>"$log" 2>&1 || npm install -g pnpm@10 >>"$log" 2>&1 || fail "pnpm could not be installed"
 
-# A second run on the same VM replaces the servers of the first, and creates a new directory.
+# A second run on the same VM replaces the servers of the first, and uses a new directory.
 pkill -f clubedge-proxy.mjs >/dev/null 2>&1
 pkill -f "next dev|vite dev|local-db" >/dev/null 2>&1
 
 step "Starting the preview proxy"
-setsid nohup node ${remoteProxyPath} "$port" 3000 ${shellQuote(options.previewUrl)} >>${remoteDir}/clubedge-proxy.log 2>&1 < /dev/null &
+setsid nohup node ${remoteProxyPath} "$port" 3000 ${shellQuote(previewUrl)} >>${remoteDir}/clubedge-proxy.log 2>&1 < /dev/null &
 
-dir=my-app
+base=${shellQuote(base)}
+dir="$base"
 n=2
-while [ -e "$dir" ]; do dir="my-app-$n"; n=$((n + 1)); done
-step "Creating the project in ${remoteDir}/$dir"
-${create} >>"$log" 2>&1 || fail "The project could not be created"
-cd "$dir" || fail "The project directory is missing"
+while [ -e "$dir" ]; do dir="$base-$n"; n=$((n + 1)); done
+${prepare}
+
+# The local env file from the example, as create does (the Starter's env.example and env.target);
+# an uploaded project has none, since env files never leave the user's machine.
+if [ -f .env.example ] && [ -d apps/web ] && [ ! -f apps/web/.env.local ]; then cp .env.example apps/web/.env.local; fi
+for example in apps/*/.env.example; do
+  [ -f "$example" ] || continue
+  target="\${example%.example}.local"
+  [ -f "$target" ] || cp "$example" "$target"
+done
 ${
   betterAuth
     ? `
-envfile=$(ls apps/*/.env.local 2>/dev/null | head -n 1)
-[ -n "$envfile" ] || fail "The project has no apps/*/.env.local"
 secret=$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')
-if grep -q '^BETTER_AUTH_SECRET=' "$envfile"; then
-  sed -i "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$secret/" "$envfile"
-else
-  echo "BETTER_AUTH_SECRET=$secret" >> "$envfile"
-fi
+for envfile in apps/*/.env.local; do
+  [ -f "$envfile" ] || continue
+  if grep -q '^BETTER_AUTH_SECRET=' "$envfile"; then
+    sed -i "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$secret/" "$envfile"
+  else
+    echo "BETTER_AUTH_SECRET=$secret" >> "$envfile"
+  fi
+done
 `
     : ""
-}
+}${
+  localDb
+    ? `
 step "Starting the local database"
-setsid nohup pnpm infra:up >>${remoteDir}/clubedge-db.log 2>&1 < /dev/null &
-for _ in $(seq 120); do grep -q "Local database ready" ${remoteDir}/clubedge-db.log && break; sleep 1; done
-grep -q "Local database ready" ${remoteDir}/clubedge-db.log || { cat ${remoteDir}/clubedge-db.log >> "$log"; fail "The local database did not start"; }
+db=${remoteDir}/clubedge-db.log
+: > "$db"
+setsid nohup pnpm infra:up >>"$db" 2>&1 < /dev/null &
+for _ in $(seq 120); do grep -q "Local database ready" "$db" && break; sleep 1; done
+grep -q "Local database ready" "$db" || { cat "$db" >> "$log"; fail "The local database did not start"; }
 
 step "Migrating the database"
 pnpm run --if-present db:migrate >>"$log" 2>&1 || fail "The database migration failed"
-
+`
+    : ""
+}
 step "Starting the app"
+: > ${remoteDevLog}
 setsid nohup pnpm dev >>${remoteDevLog} 2>&1 < /dev/null &
+code=000
 for _ in $(seq 300); do
   code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
   [ "$code" != "000" ] && break

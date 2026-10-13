@@ -183,7 +183,11 @@ pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start --auth non
 
 The VM needs no Railway account and lasts 60 minutes; to keep it, open the claim link the CLI prints within 24 hours after, which moves the VM, its files, and its URL into a Railway account. Keep that link private. Until the VM is claimed, the preview opens only from your network. Railway allows 3 free VMs per network per day.
 
-The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth unless you choose `--auth none`, with email off; other module flags apply as usual. The CLI asks before creating anything (`--yes` agrees), keeps its own SSH key in your config directory (`~/.config/clubedge`, or `%APPDATA%\clubedge` on Windows) apart from `~/.ssh`, and connects only to Railway's known host key. Railway's [terms](https://railway.com/legal/terms) apply, and Railway can change or pause its free VM.
+The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth unless you choose `--auth none`, with email off; other module flags apply as usual.
+
+Inside a project, `pnpm clubedge try` uploads that project instead, to share work in progress without deploying it. It sends what Git would commit (tracked files, plus untracked ones that are not ignored) and never `.env` files other than examples, `node_modules`, or build output; on the VM, the env file is made from `.env.example` as `create` does. The project must use `infra local` or `none`, and not Supabase Auth; `pnpm clubedge add infra local` switches a Docker project. Add `--dry-run` to list the files without uploading anything.
+
+When the app is ready, the CLI opens the preview in your browser; `--no-open` turns that off. The CLI asks before creating anything (`--yes` agrees), keeps its own SSH key in your config directory (`~/.config/clubedge`, or `%APPDATA%\clubedge` on Windows) apart from `~/.ssh`, and connects only to Railway's known host key. Railway's [terms](https://railway.com/legal/terms) apply, and Railway can change or pause its free VM.
 
 ## Version relationship
 

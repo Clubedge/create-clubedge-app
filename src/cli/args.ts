@@ -38,6 +38,8 @@ export interface CliArgs {
   force: boolean;
   /** doctor: also run `pnpm check:services`. */
   services: boolean;
+  /** try: open the preview in the browser once it is ready. */
+  open: boolean;
   help: boolean;
   version: boolean;
 }
@@ -57,6 +59,7 @@ const OPTIONS = {
   "dry-run": { type: "boolean", default: false },
   force: { type: "boolean", default: false },
   services: { type: "boolean", default: true },
+  open: { type: "boolean", default: true },
   help: { type: "boolean", short: "h", default: false },
   version: { type: "boolean", short: "v", default: false },
 } as const;
@@ -161,6 +164,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     dryRun: values["dry-run"],
     force: values.force,
     services: values.services,
+    open: values.open,
     help: values.help,
     version: values.version,
   };
@@ -201,7 +205,9 @@ function parseCommand(positionals: string[]): Command {
     return { name };
   }
   if (name === "try") {
-    if (module !== undefined) throw new UsageError("Usage: try [--framework <id>] [module flags], for example: try --framework tanstack-start");
+    if (module !== undefined) {
+      throw new UsageError("Usage: try [--framework <id>] [module flags] (a new project), or try inside a project to upload it.");
+    }
     return { name };
   }
   if (name === "upgrade") {

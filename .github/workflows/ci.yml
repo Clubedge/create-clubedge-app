@@ -110,13 +110,8 @@ jobs:
           grep -qx '< Notes of our own.' "$TEMP_DIR/diff.txt"
       - name: Install, lint, typecheck, test, and build the changed project
         working-directory: ${{ runner.temp }}/changed/my-app
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm format:check
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm build
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install format:check lint typecheck test build
 
   generated-project-macos:
     name: generated-project-macos (${{ matrix.name }})
@@ -182,13 +177,8 @@ jobs:
           grep -qx '< Notes of our own.' "$TEMP_DIR/diff.txt"
       - name: Install, lint, typecheck, test, and build the changed project
         working-directory: ${{ runner.temp }}/changed/my-app
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm format:check
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm build
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install format:check lint typecheck test build
 
   generated-project:
     name: generated-project (${{ matrix.name }})
@@ -330,12 +320,8 @@ jobs:
           grep -qx '< Notes of our own.' "$RUNNER_TEMP/diff.txt"
       - name: Install, lint, typecheck, test, and build the changed project
         working-directory: ${{ runner.temp }}/changed/my-app
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm build
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install lint typecheck test build
 
   # upgrade from an earlier Starter release to the pinned one on a project with an edit of its
   # own: the result must match a project generated from the pinned release, apart from that edit.
@@ -404,12 +390,8 @@ jobs:
           grep -qx '< Notes of our own.' "$RUNNER_TEMP/diff.txt"
       - name: Install, lint, typecheck, test, and build the upgraded project
         working-directory: ${{ runner.temp }}/upgraded/my-app
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm build
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install lint typecheck test build
 
   latest-starter-compatibility:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

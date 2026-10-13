@@ -313,7 +313,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.20.0 | v0.15.0 | The Starter's version of each conflicted file in `.clubedge/incoming/`, several modules at once, sharing a `try` preview by claiming the VM, `try --status` |
 | 0.21.0 | v0.16.0 | Starter v0.16.0: upgrades delivered as pull requests, Node 24 actions; release tooling for maintainers |
 | 0.22.0 | v0.16.1 | `pnpm clubedge deploy`: a guided first deploy to Railway; faster Docker builds |
-| 0.23.0 | v0.16.1 | Deploy writes and applies .railway/railway.ts instead of railway.json |
+| 0.23.0 | v0.16.1 | `deploy` moves Railway projects to `.railway/railway.ts` before Railway stops reading `railway.json` |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

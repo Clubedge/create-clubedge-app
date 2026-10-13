@@ -25,7 +25,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 17 | 0.20.0 | Conflicts: the Starter's version of each conflicted file, several modules at once; `try`: claim to share, `--claim`, `--status`; CI on Node 24 actions and Ubuntu 24.04, automatic release pages |
 | 18 | 0.21.0 | Starter v0.16.0 (upgrades as pull requests, Node 24 actions, steadier tests); `pnpm release` and the Starter pin workflow; CI names a generated project's failing check |
 | 19 | 0.22.0 | `deploy` to Railway (project, databases, variables, domain, release); Starter v0.16.1: faster Docker builds |
-| 20 | 0.23.0 | Deploy writes and applies .railway/railway.ts instead of railway.json |
+| 20 | 0.23.0 | `deploy` writes and applies `.railway/railway.ts` (Railway's configuration as code) instead of `railway.json` |
 
 ## CLI improvements
 

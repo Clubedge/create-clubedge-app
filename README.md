@@ -172,6 +172,19 @@ pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and p
 
 `status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that `apps/web/.env.local` has every variable in `.env.example`, then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
 
+## Try it on a Railway VM (experimental)
+
+No Node.js setup, database, or Docker to spare? `try` creates the project on a free, temporary Linux VM from [Railway](https://railway.com/free-vm) instead of your machine, and prints a preview URL:
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app try
+pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start --auth none
+```
+
+The VM needs no Railway account and lasts 60 minutes; to keep it, open the claim link the CLI prints within 24 hours after, which moves the VM, its files, and its URL into a Railway account. Keep that link private. Until the VM is claimed, the preview opens only from your network. Railway allows 3 free VMs per network per day.
+
+The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth unless you choose `--auth none`, with email off; other module flags apply as usual. The CLI asks before creating anything (`--yes` agrees), keeps its own SSH key in your config directory (`~/.config/clubedge`, or `%APPDATA%\clubedge` on Windows) apart from `~/.ssh`, and connects only to Railway's known host key. Railway's [terms](https://railway.com/legal/terms) apply, and Railway can change or pause its free VM.
+
 ## Version relationship
 
 Each CLI release is tested against one specific Starter release:

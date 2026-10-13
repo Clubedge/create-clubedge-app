@@ -11,6 +11,7 @@ import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
 import { runDoctor, showStatus } from "./inspect.js";
 import { changeProject } from "./modify.js";
+import { tryOnRailway } from "./try.js";
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, installDependencies, resolvePnpm } from "./steps/install.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
@@ -251,6 +252,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     } else if (args.command.name === "doctor") {
       intro("Check this project's setup");
       await runDoctor(args);
+    } else if (args.command.name === "try") {
+      intro("Try a project on a free Railway VM");
+      await tryOnRailway(args);
     } else {
       const intros = {
         add: "Add a module to this project",

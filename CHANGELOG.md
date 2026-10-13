@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.24.0
+
+- Default to Starter `v0.17.0` (#61), which adds:
+  - Railway configuration as code: projects that deploy to Railway get `.railway/railway.ts` (the migrations before each release, the `/api/health` check) instead of `railway.json`, which Railway stops reading on 2026-12-01. It names the service after the package, and `pnpm clubedge deploy` applies it before each release.
+  - The deploy workflow on Railway CLI 5.
+- If you deploy to Railway: run `pnpm clubedge upgrade`, then deploy once with `pnpm clubedge deploy` (or run `railway config apply`) before 2026-12-01.
+
 ## 0.23.0
 
 - `deploy` moves Railway projects to `.railway/railway.ts`, Railway's configuration as code, which replaces `railway.json`: Railway stops reading `railway.json` on 2026-12-01 (#59).

@@ -3,7 +3,7 @@
 // Playwright). See director.mjs for terminal(), browser() and sh().
 import { join } from "node:path";
 
-const create = (flags) => `pnpm dlx @clubedge/create-clubedge-app my-app ${flags} --yes`.replace(/s+/g, " ");
+const create = (flags) => `pnpm dlx @clubedge/create-clubedge-app my-app ${flags} --yes`.replace(/\s+/g, " ");
 const password = "correct horse battery";
 
 // Real Stripe test mode when the repository has the test secrets, else the Starter's Stripe API

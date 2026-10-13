@@ -2,6 +2,18 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.20.0
+
+- Conflicts are easier to resolve after `add`, `remove`, and `upgrade`:
+  - The Starter's whole new version of each conflicted file is saved in `.clubedge/incoming/<file>`, and the report prints a `git diff --no-index` command to compare it with yours. Files left for you to check by hand get theirs too, when the Starter has one. Git ignores the folder; each change replaces the previous change's files.
+  - Without a module on the command line, the `add` and `remove` menus pick several modules at once; `add` then asks for each one's option, and the changes apply together.
+- Sharing a `try` preview:
+  - When the app is ready, `try` asks whether to share it. Claiming the VM, a free Railway sign-up, is what makes the URL work for anyone, so it opens the claim page. `--claim` does that without asking; scripts are never asked.
+  - The closing message explains Railway's "Access denied" page and prints a port-forward command that opens the app at http://localhost:3000 from any network.
+  - `try --status` shows the last VM's preview, time left, and claim link. It connects only while the VM is running, so it never creates a new one.
+- Release workflow: GitHub Actions on their Node 24 versions, Linux jobs on Ubuntu 24.04, a sturdier wait for npm in the smoke tests, and GitHub Release pages created from this changelog.
+- Still on Starter `v0.15.0`.
+
 ## 0.19.1
 
 - `try` now says who can open the preview as Railway does: until the VM is claimed, only the IP address that created it. Another device on mobile data, a VPN, or anyone you send the link to gets Railway's "Access denied" page; claiming makes the URL shareable.

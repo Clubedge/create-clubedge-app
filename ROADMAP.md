@@ -22,6 +22,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 14 | 0.17.0 | Starter v0.15.0: docs-style dashboard with a sidebar, account card, and phone drawer |
 | 15 | 0.18.0 | `try` on a free Railway VM (experimental), on Starter v0.15.0 |
 | 16 | 0.19.0 | `try` inside a project uploads it; the preview opens in the browser |
+| 17 | 0.20.0 | Conflicts: the Starter's version of each conflicted file, several modules at once; `try`: claim to share, `--claim`, `--status`; CI on Node 24 actions and Ubuntu 24.04, automatic release pages |
 
 ## CLI improvements
 

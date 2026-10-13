@@ -49,7 +49,8 @@ run("ffmpeg", ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", join(out
 // Stripe's Checkout and portal URLs carry session ids and secrets: keep only where the page is.
 const shownUrl = (url) => {
   const u = new URL(url);
-  if (!u.hostname.endsWith("stripe.com")) return url;
+  const isStripe = u.hostname === "stripe.com" || u.hostname.endsWith(".stripe.com");
+  if (!isStripe) return url;
   return `${u.origin}${u.pathname.split("/").slice(0, 3).join("/")}/…`;
 };
 

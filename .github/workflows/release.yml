@@ -11,15 +11,15 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.9.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.14.0
       - name: Install npm Trusted Publishing client
@@ -38,7 +38,7 @@ jobs:
 
   published-package-smoke:
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -50,11 +50,11 @@ jobs:
           - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth --cache memory --infra supabase --deploy netlify, auth: better-auth, infra: supabase }
           - { name: next-local, framework: next, modules: --infra local --auth better-auth --payments stripe --jobs pg-boss --observability otel, auth: better-auth, infra: local }
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.9.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.14.0
       # npm can take several minutes to serve a new version everywhere.
@@ -73,10 +73,13 @@ jobs:
         shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/generated-app"
-          for attempt in {1..30}; do
+          # The registry can list a new version minutes before its tarball downloads everywhere, and
+          # npm caches a failed lookup: ask the registry each time (--prefer-online) and back off,
+          # for up to about 15 minutes, keeping the last error for the log.
+          for attempt in {1..40}; do
             rm -f "$RUNNER_TEMP/clubedge-create-clubedge-app.tgz"
-            if npm pack "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" \
-              --pack-destination "$RUNNER_TEMP" >/dev/null 2>&1; then
+            if npm pack "@clubedge/create-clubedge-app@${GITHUB_REF_NAME#v}" --prefer-online \
+              --pack-destination "$RUNNER_TEMP" >/dev/null 2>"$RUNNER_TEMP/npm-pack.err"; then
               package_tarball="$RUNNER_TEMP/clubedge-create-clubedge-app-${GITHUB_REF_NAME#v}.tgz"
               if [ -f "$package_tarball" ]; then
                   package_dir="$RUNNER_TEMP/published-cli"
@@ -92,9 +95,10 @@ jobs:
                   exit 0
               fi
             fi
-            sleep 10
+            sleep $(( attempt < 10 ? 10 : 30 ))
           done
-          echo "Published package tarball did not become available on npm."
+          echo "Published package tarball did not become available on npm. Last npm error:"
+          cat "$RUNNER_TEMP/npm-pack.err"
           exit 1
       - name: Verify published package provenance
         working-directory: ${{ runner.temp }}/generated-app
@@ -141,9 +145,43 @@ jobs:
           pnpm test
           pnpm build
 
+  # The GitHub Release page, from the version's CHANGELOG entry. It runs right after the publish, so
+  # a slow smoke test never delays it, and leaves a page that already exists (written by hand) alone.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create the release page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; leaving it as it is."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          awk -v heading="## $version" '$0 == heading { found = 1; next } found && /^## / { exit } found' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no '## $version' entry; write it before tagging."
+            exit 1
+          fi
+          # The greatest vX.Y.Z below this tag: --refs leaves out annotated tags' peeled ^{} entries,
+          # and comparing versions keeps the link right when an older line is released later.
+          previous=$(git ls-remote --tags --refs origin 'v*.*.*' | awk -F/ '{print $3}' |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | { cat; echo "$GITHUB_REF_NAME"; } | sort -uV |
+            awk -v current="$GITHUB_REF_NAME" '$0 == current { print previous; exit } { previous = $0 }')
+          if [ -n "$previous" ]; then
+            printf '\n**Full changelog:** https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$previous" "$GITHUB_REF_NAME" >> notes.md
+          fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --latest
+
   refresh-site:
     needs: published-package-smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # The site also refreshes release data at runtime; the rebuild keeps its static HTML current.
       - name: Trigger site rebuild

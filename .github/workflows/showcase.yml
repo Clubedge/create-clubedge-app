@@ -264,3 +264,77 @@ jobs:
           # Not the Stripe CLI's log: it prints the webhook signing secret.
           path: ${{ runner.temp }}/out
           if-no-files-found: ignore
+
+  # Manual runs publish everything as one GitHub Release, showcase-<run id>, which the site pins
+  # in its showcase.lock.json and downloads at build time, so no video is ever committed. Only the
+  # newest three showcase releases are kept; older ones and their tags are deleted.
+  publish:
+    name: publish the showcase
+    needs: [default-project, walkthrough]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: showcase-${{ github.run_id }}
+      KEEP: 3
+    steps:
+      - name: Download the results
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/artifacts
+      - name: Gather the release files
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/artifacts"
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          # One flat set of files: <example>-walkthrough.mp4, <example>-poster.jpg, <example>.json,
+          # and the default project's screenshots as default-<page>-<theme>.png.
+          for dir in "$src"/walkthrough-*; do
+            name="$(basename "$dir")"
+            case "$name" in *-raw) continue ;; esac
+            example="${name#walkthrough-}"
+            cp "$dir/walkthrough.mp4" "$out/$example-walkthrough.mp4"
+            cp "$dir/poster.jpg" "$out/$example-poster.jpg"
+            cp "$dir/walkthrough.json" "$out/$example.json"
+          done
+          for png in "$src"/showcase-default/screenshots/*.png; do
+            cp "$png" "$out/default-$(basename "$png")"
+          done
+          cp "$src/showcase-default/showcase.json" "$out/screenshots.json"
+          node -e '
+            const fs = require("fs");
+            const dir = process.argv[1];
+            const files = fs.readdirSync(dir).sort();
+            const screenshots = JSON.parse(fs.readFileSync(`${dir}/screenshots.json`, "utf8"));
+            const manifest = {
+              tag: process.env.TAG,
+              cliVersion: screenshots.cliVersion,
+              starterRef: screenshots.starter.starterRef,
+              createdAt: new Date().toISOString(),
+              run: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              files,
+            };
+            fs.writeFileSync(`${dir}/manifest.json`, JSON.stringify(manifest, null, 2) + "\n");
+            console.log(JSON.stringify(manifest, null, 2));
+          ' "$out"
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require(process.argv[1]).cliVersion' "$RUNNER_TEMP/release/manifest.json")"
+          # Never "Latest": that stays the CLI's own release.
+          gh release create "$TAG" "$RUNNER_TEMP"/release/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Showcase ($TAG, CLI v$version)" \
+            --notes "Walkthrough videos and screenshots for starter.clubedge.live, recorded with the published CLI v$version in [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). The site pins a release in showcase.lock.json. Only the newest $KEEP showcase releases are kept."
+      - name: Delete older showcase releases
+        run: |
+          set -euo pipefail
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("showcase-"))] | sort_by(.createdAt) | reverse | .[(env.KEEP | tonumber):] | .[].tagName' |
+            while read -r old; do
+              echo "Deleting $old"
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done

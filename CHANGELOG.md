@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.19.1
+
+- `try` now says who can open the preview as Railway does: until the VM is claimed, only the IP address that created it. Another device on mobile data, a VPN, or anyone you send the link to gets Railway's "Access denied" page; claiming makes the URL shareable.
+- Still on Starter `v0.15.0`.
+
 ## 0.19.0
 
 - `try` inside a project: `pnpm clubedge try` uploads the project to a free Railway VM and runs it there, to share work in progress without deploying.

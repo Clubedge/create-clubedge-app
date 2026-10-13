@@ -190,7 +190,7 @@ The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Au
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.17.0
+create-clubedge-app v0.18.0
         |
         v
 Clubedge Starter v0.15.0
@@ -201,7 +201,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.17.0` | `clubedge-starter@v0.15.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.18.0` | `clubedge-starter@v0.15.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -292,6 +292,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.15.0 | v0.13.1 | `status` and `doctor`, several modules in one change, conflict and upgrade summaries, macOS CI |
 | 0.16.0 | v0.14.0 | Account settings page, browser error reporting and Sentry source maps, auth emails through the jobs queue |
 | 0.17.0 | v0.15.0 | Docs-style dashboard: sidebar with a section switcher and account card, page in a scrolling card, phone drawer |
+| 0.18.0 | v0.15.0 | `try`: a new project on a free, temporary Railway VM, with a preview URL and a claim link (experimental) |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.18.0
+
+- Add `try` (experimental): `pnpm dlx @clubedge/create-clubedge-app try` creates a new project on a free, temporary [Railway VM](https://railway.com/free-vm) instead of your machine, and prints its preview URL and the link to claim the VM. No Railway account, database, or Docker needed.
+  - The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth, with email off; `--framework` and other module flags apply as usual. `--infra` other than `local` and `--auth supabase` are rejected.
+  - It asks before creating anything (`--yes` agrees), keeps its own SSH key in the CLI's config directory apart from `~/.ssh`, and connects only to Railway's known host key (`CLUBEDGE_RAILWAY_HOST_KEY` adds one if Railway rotates it).
+  - The VM lasts 60 minutes and can be claimed for 24 hours after; until then, the preview opens only from your network. Railway allows 3 free VMs per network per day.
+- Still on Starter `v0.15.0`.
+
 ## 0.17.0
 
 - Default to Starter `v0.15.0`, whose dashboard has the docs' layout and colors in both frameworks: a collapsible sidebar with a section switcher, the dashboard's sections, resources, and an account card with Settings and Sign out; the page in a rounded card that scrolls on its own; a top bar with Home, GitHub, and a light and dark switch; and a drawer on phones.

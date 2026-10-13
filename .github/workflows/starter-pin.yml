@@ -1,0 +1,79 @@
+name: Starter pin
+
+# When the Starter publishes a newer release, open a pull request that moves the CLI's pin to it.
+# The generated-project CI on that pull request is the gate; nothing merges or publishes here.
+# Runs daily, by hand (optionally with a tag), or on a "starter-release" dispatch from the Starter.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Starter tag to pin, such as v0.16.0 (default the latest release)
+        required: false
+  repository_dispatch:
+    types: [starter-release]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: starter-pin
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.14.0
+      - name: Open a pull request for a newer Starter release
+        env:
+          # A token of your own (STARTER_PIN_TOKEN) lets the pull request start CI by itself; with
+          # the default token, CI is started below instead.
+          GH_TOKEN: ${{ secrets.STARTER_PIN_TOKEN || github.token }}
+          OWN_TOKEN: ${{ secrets.STARTER_PIN_TOKEN != '' }}
+          REQUESTED: ${{ inputs.ref || github.event.client_payload.ref }}
+        shell: bash
+        run: |
+          repository=$(node -p "require('./package.json').clubedge.starterRepository")
+          current=$(node -p "require('./package.json').clubedge.starterRef")
+          target="${REQUESTED:-$(gh release view --repo "$repository" --json tagName --jq .tagName)}"
+          if ! [[ "$target" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Not a release tag: $target"
+            exit 1
+          fi
+          # Only forward: a newer release than the one pinned.
+          if [ "$target" = "$current" ] || [ "$(printf '%s\n%s\n' "$current" "$target" | sort -V | tail -n 1)" != "$target" ]; then
+            echo "Pinned to Starter $current; $target is not newer."
+            exit 0
+          fi
+          branch="starter/$target"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists; its pull request is open or was closed on purpose."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$branch"
+          node scripts/release.mjs pin "$target"
+          git commit --quiet --all --message "feat: default to Starter $target"
+          git push --quiet --set-upstream origin "$branch"
+
+          gh pr create --base main --head "$branch" --title "feat: default to Starter $target" --body "$(cat <<EOF
+          Starter [\`$target\`](https://github.com/$repository/releases/tag/$target) is out. This moves the CLI's pin from \`$current\` to it, in \`package.json\` and the docs that name the pin (the README's release history stays as it was).
+
+          The generated-project CI on this pull request is the gate. If it passes, merge it, then \`pnpm release minor\` opens the release.
+
+          Opened by the Starter pin workflow.
+          EOF
+          )"
+          # Pull requests opened with the default token start no workflows; start CI on the branch.
+          if [ "$OWN_TOKEN" != "true" ]; then
+            gh workflow run ci.yml --ref "$branch"
+          fi

@@ -48,7 +48,8 @@
     "test": "vitest run",
     "bundle-template": "node scripts/bundle-template.mjs",
     "start": "pnpm build && node ./bin/create.mjs",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",

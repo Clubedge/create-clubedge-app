@@ -273,11 +273,11 @@ CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarba
 
 ### CLI maintainers
 
-1. Set `clubedge.starterRef` and `clubedge.starterCommit` in [`package.json`](package.json) to the new tested Starter tag, and bump `version`.
-2. Update the version relationship table and changelog.
-3. Generate a clean project from that exact tag.
-4. Run install, lint, typecheck, unit tests, browser tests, production build, and runtime smoke checks.
-5. Publish a new CLI version only after the generated-project verification passes.
+1. When the Starter publishes a release, the [Starter pin](.github/workflows/starter-pin.yml) workflow opens a pull request that moves `clubedge.starterRef` and `clubedge.starterCommit` in [`package.json`](package.json), and the docs that name them, to the new tag (daily, or run it by hand; locally: `pnpm release pin vX.Y.Z`). Its CI generates clean projects from that exact tag and runs install, lint, typecheck, unit tests, browser tests, production build, and runtime smoke checks. Merge it once they pass.
+2. `pnpm release patch|minor|major` (from an up-to-date `main`; add `--dry-run` to preview) opens the release pull request: it bumps `version`, updates the version relationship here and in CONTRIBUTING, adds the release table rows for a minor or major release, and drafts the changelog entry from the pull requests merged since the last tag. Edit the draft in that pull request: it becomes the GitHub Release page.
+3. After it is merged, `pnpm release tag` tags `main`. The Release workflow checks and publishes it to npm, creates the GitHub Release page from the changelog entry, and smoke-tests the published package.
+
+The pin workflow needs **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**, or a `STARTER_PIN_TOKEN` secret (a fine-grained token with contents and pull requests write), which also lets its pull request start CI by itself.
 
 The required CI job always tests the pinned default. The scheduled compatibility job tests Starter `main` early, but unreleased Starter changes must not change the stable CLI default.
 

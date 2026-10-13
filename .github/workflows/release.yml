@@ -179,6 +179,19 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --latest
 
+  # Re-record the showcase with the version just published, once it has proven itself on npm. The
+  # Showcase workflow publishes a new showcase release, which the site picks up daily.
+  showcase:
+    needs: published-package-smoke
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Start the Showcase workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run showcase.yml --repo "$GITHUB_REPOSITORY" --ref main -f cli-version="${GITHUB_REF_NAME#v}"
+
   refresh-site:
     needs: published-package-smoke
     runs-on: ubuntu-24.04

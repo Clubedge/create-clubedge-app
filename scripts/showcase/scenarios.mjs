@@ -75,19 +75,15 @@ async function payOnStripeCheckout(a) {
   const email = page.locator("#email");
   if ((await visible(email)) && (await email.isEditable())) await a.type(email, "ada@example.com");
   // With several payment methods, Checkout lists them as radio buttons or an accordion: pick the card.
-  // The radio input itself is visually hidden, so the pointer goes to its label and the input is
-  // checked directly.
+  // The card row is opened by a transparent "Pay with card" button laid over it, which Playwright
+  // counts as invisible: the pointer goes to the row's label, and the button is clicked by name.
   const cardNumber = page.locator("#cardNumber");
   if (!(await visible(cardNumber))) {
-    const cardRadio = page.locator('input[type="radio"][value="card"]');
-    const cardTab = page.locator('[data-testid="card-accordion-item-button"]');
-    if (await visible(cardTab)) {
-      await a.click(cardTab, 800);
-    } else {
-      await a.point(page.getByText("Card", { exact: true }).first());
-      await cardRadio.check({ force: true });
-      await a.pause(800);
-    }
+    const cardButton = page.getByRole("button", { name: "Pay with card" });
+    await a.point(page.getByText("Card", { exact: true }).first());
+    await cardButton.click({ force: true });
+    await a.pause(800);
+    if (!(await visible(cardNumber))) await cardButton.dispatchEvent("click");
   }
   await cardNumber.waitFor({ state: "visible", timeout: 20_000 });
   await a.type(cardNumber, "4242424242424242");

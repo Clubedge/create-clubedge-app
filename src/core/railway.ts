@@ -1,0 +1,255 @@
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
+import { UsageError } from "../cli/args.js";
+
+/*
+ * Railway's free VM (https://railway.com/free-vm): `ssh railway.new` gives a temporary Linux box
+ * with no account. Everything this CLI relies on about it is in this file, so a change on
+ * Railway's side is a change here.
+ */
+
+export const railwayHost = "railway.new";
+export const railwayTermsUrl = "https://railway.com/legal/terms";
+export const railwayFreeVmUrl = "https://railway.com/free-vm";
+
+/**
+ * The host keys railway.new presents, as OpenSSH SHA256 fingerprints. Connecting to anything
+ * else fails. CLUBEDGE_RAILWAY_HOST_KEY adds one (comma-separated), for when Railway rotates its
+ * key before a CLI release catches up.
+ */
+const pinnedHostKeys = ["SHA256:+S1xg92FrnHz6pY3bpkmh1OGtWQGNANXilPzlxA7B1g"];
+
+export function trustedHostKeys(env: NodeJS.ProcessEnv = process.env): string[] {
+  const extra = (env.CLUBEDGE_RAILWAY_HOST_KEY ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return [...pinnedHostKeys, ...extra];
+}
+
+/** The OpenSSH fingerprint of a raw host key: "SHA256:" and unpadded base64, as ssh prints it. */
+export function hostKeyFingerprint(key: Buffer): string {
+  return `SHA256:${createHash("sha256").update(key).digest("base64").replace(/=+$/, "")}`;
+}
+
+/** What Railway reports about the VM, on stderr, each time a command runs over SSH. */
+export interface RailwayVm {
+  status: string;
+  state: string;
+  previewUrl: string;
+  claimUrl: string;
+  /** When the build window ends; the VM can be claimed for 24 hours after. */
+  expiresAt: Date;
+}
+
+/**
+ * Finds Railway's JSON status line in a command's stderr. Returns null when there is none, and
+ * throws when there is one without the fields this CLI needs.
+ */
+export function parseRailwayStatus(stderr: string): RailwayVm | null {
+  for (const line of stderr.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let value: Record<string, unknown>;
+    try {
+      value = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (typeof value.status !== "string") continue;
+    const previewUrl = value.preview_url;
+    const claimUrl = value.human_claim_url;
+    const expiresAt = new Date(String(value.build_expires_at));
+    if (typeof previewUrl !== "string" || !/^https:\/\//.test(previewUrl) || typeof claimUrl !== "string" || Number.isNaN(expiresAt.getTime())) {
+      throw new Error(
+        `Railway answered, but not as this CLI expects (status "${value.status}"). Railway may have changed its free VM; update the CLI, or see ${railwayFreeVmUrl}.`,
+      );
+    }
+    return { status: value.status, state: String(value.state ?? ""), previewUrl: previewUrl.replace(/\/+$/, ""), claimUrl, expiresAt };
+  }
+  return null;
+}
+
+/** Where the CLI keeps its own SSH key for Railway, apart from the user's ~/.ssh. */
+export function railwayKeyPath(env: NodeJS.ProcessEnv = process.env, platform = process.platform): string {
+  const configHome =
+    env.XDG_CONFIG_HOME || (platform === "win32" && env.APPDATA ? env.APPDATA : join(homedir(), ".config"));
+  return join(configHome, "clubedge", "railway_ed25519");
+}
+
+/**
+ * The modules for a project on the VM. It has no Docker, so the database is PGlite (--infra
+ * local) and sign-in is Better Auth; email is off, since nothing there receives it. Flags the
+ * user passed win, unless the VM cannot run them.
+ */
+export function tryModules(requested: Record<string, string>): Record<string, string> {
+  const infra = requested.infra ?? "local";
+  if (infra !== "local") {
+    throw new UsageError(`try runs on a VM without Docker, so it needs --infra local (not --infra ${infra}).`);
+  }
+  const auth = requested.auth ?? "better-auth";
+  if (auth === "supabase") {
+    throw new UsageError("try cannot run Supabase Auth, which needs Docker or a Supabase project. Use --auth better-auth or --auth none.");
+  }
+  return { ...requested, infra, auth, email: requested.email ?? "none" };
+}
+
+/** A value as one single-quoted shell word. */
+export const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
+
+export interface TryScriptOptions {
+  cliVersion: string;
+  framework?: string;
+  modules: Record<string, string>;
+  ref?: string;
+  previewUrl: string;
+}
+
+/** The create command run on the VM: this CLI's own version, with the chosen selection. */
+export function tryCreateArgs({ framework, modules, ref }: Omit<TryScriptOptions, "cliVersion" | "previewUrl">): string[] {
+  return [
+    ...(framework ? ["--framework", framework] : []),
+    ...Object.entries(modules).flatMap(([module, option]) => [`--${module}`, option]),
+    ...(ref ? ["--ref", ref] : []),
+    "--yes",
+  ];
+}
+
+export const remoteDir = "/app";
+export const remoteLog = `${remoteDir}/clubedge-try.log`;
+export const remoteDevLog = `${remoteDir}/clubedge-dev.log`;
+export const remoteScriptPath = `${remoteDir}/clubedge-try.sh`;
+export const remoteProxyPath = `${remoteDir}/clubedge-proxy.mjs`;
+
+/**
+ * The script the VM runs. It reports progress on stdout as "@@step <text>", then "@@ready", or
+ * "@@fail <text>" followed by the end of the log as "@@log <line>". The servers it starts keep
+ * running after the SSH session ends.
+ */
+export function tryScript(options: TryScriptOptions): string {
+  const create = ["pnpm", "dlx", `@clubedge/create-clubedge-app@${options.cliVersion}`, '"$dir"', ...tryCreateArgs(options).map(shellQuote)].join(" ");
+  const betterAuth = options.modules.auth === "better-auth";
+  return `#!/usr/bin/env bash
+# Written by create-clubedge-app try. Logs: ${remoteLog}, ${remoteDevLog}
+set -uo pipefail
+cd ${remoteDir}
+log=${remoteLog}
+: > "$log"
+step() { echo "@@step $*"; echo "== $*" >> "$log"; }
+fail() { echo "@@fail $*"; tail -n 40 "$log" | sed 's/^/@@log /'; exit 1; }
+port="\${PORT:-8080}"
+
+step "Preparing pnpm"
+command -v pnpm >/dev/null 2>&1 || corepack enable pnpm >>"$log" 2>&1 || npm install -g pnpm@10 >>"$log" 2>&1 || fail "pnpm could not be installed"
+
+# A second run on the same VM replaces the servers of the first, and creates a new directory.
+pkill -f clubedge-proxy.mjs >/dev/null 2>&1
+pkill -f "next dev|vite dev|local-db" >/dev/null 2>&1
+
+step "Starting the preview proxy"
+setsid nohup node ${remoteProxyPath} "$port" 3000 ${shellQuote(options.previewUrl)} >>${remoteDir}/clubedge-proxy.log 2>&1 < /dev/null &
+
+dir=my-app
+n=2
+while [ -e "$dir" ]; do dir="my-app-$n"; n=$((n + 1)); done
+step "Creating the project in ${remoteDir}/$dir"
+${create} >>"$log" 2>&1 || fail "The project could not be created"
+cd "$dir" || fail "The project directory is missing"
+${
+  betterAuth
+    ? `
+envfile=$(ls apps/*/.env.local 2>/dev/null | head -n 1)
+[ -n "$envfile" ] || fail "The project has no apps/*/.env.local"
+secret=$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')
+if grep -q '^BETTER_AUTH_SECRET=' "$envfile"; then
+  sed -i "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$secret/" "$envfile"
+else
+  echo "BETTER_AUTH_SECRET=$secret" >> "$envfile"
+fi
+`
+    : ""
+}
+step "Starting the local database"
+setsid nohup pnpm infra:up >>${remoteDir}/clubedge-db.log 2>&1 < /dev/null &
+for _ in $(seq 120); do grep -q "Local database ready" ${remoteDir}/clubedge-db.log && break; sleep 1; done
+grep -q "Local database ready" ${remoteDir}/clubedge-db.log || { cat ${remoteDir}/clubedge-db.log >> "$log"; fail "The local database did not start"; }
+
+step "Migrating the database"
+pnpm run --if-present db:migrate >>"$log" 2>&1 || fail "The database migration failed"
+
+step "Starting the app"
+setsid nohup pnpm dev >>${remoteDevLog} 2>&1 < /dev/null &
+for _ in $(seq 300); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
+  [ "$code" != "000" ] && break
+  sleep 1
+done
+[ "$code" != "000" ] || { tail -n 40 ${remoteDevLog} >> "$log"; fail "The app did not start"; }
+echo "@@ready $dir"
+`;
+}
+
+/**
+ * A small reverse proxy for the VM: Railway's preview URL reaches it on $PORT, and it forwards to
+ * the dev server on localhost. The Starter's dev servers only serve their scripts to localhost
+ * (Next.js allowedDevOrigins, Vite's host check), and Next.js compares Origin with the forwarded
+ * host for form posts, so requests are made to look local, and redirects to localhost are pointed
+ * back at the preview URL. Until the app answers, it shows a page that reloads itself.
+ */
+export const proxySource = `import http from "node:http";
+import net from "node:net";
+
+const [port = "8080", upstreamPort = "3000", publicOrigin = ""] = process.argv.slice(2);
+const local = "http://localhost:" + upstreamPort;
+
+function toLocal(headers) {
+  const result = { ...headers, host: "localhost:" + upstreamPort };
+  delete result["x-forwarded-host"];
+  delete result.forwarded;
+  if (result.origin) result.origin = local;
+  if (result.referer && publicOrigin) result.referer = result.referer.replace(publicOrigin, local);
+  return result;
+}
+
+const starting = '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>Starting</title>' +
+  '<body style="font:16px system-ui;display:grid;place-items:center;height:90vh;color:#444">' +
+  "<p>Your Clubedge app is starting. This page reloads by itself.</p>";
+
+const server = http.createServer((req, res) => {
+  const upstream = http.request(
+    { host: "127.0.0.1", port: Number(upstreamPort), method: req.method, path: req.url, headers: toLocal(req.headers) },
+    (answer) => {
+      const headers = { ...answer.headers };
+      if (headers.location && publicOrigin) headers.location = headers.location.replace(local, publicOrigin);
+      res.writeHead(answer.statusCode ?? 502, headers);
+      answer.pipe(res);
+    },
+  );
+  upstream.on("error", () => {
+    if (res.headersSent) return res.destroy();
+    res.writeHead(503, { "content-type": "text/html; charset=utf-8", "retry-after": "5" });
+    res.end(starting);
+  });
+  req.pipe(upstream);
+});
+
+// Hot reload: pass WebSocket upgrades through with the same local headers.
+server.on("upgrade", (req, socket, head) => {
+  const upstream = net.connect(Number(upstreamPort), "127.0.0.1", () => {
+    const lines = [req.method + " " + req.url + " HTTP/1.1"];
+    for (const [name, value] of Object.entries(toLocal(req.headers))) {
+      for (const item of [].concat(value)) lines.push(name + ": " + item);
+    }
+    upstream.write(lines.join("\\r\\n") + "\\r\\n\\r\\n");
+    if (head && head.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  upstream.on("error", () => socket.destroy());
+  socket.on("error", () => upstream.destroy());
+});
+
+server.listen(Number(port), "0.0.0.0");
+`;

@@ -15,7 +15,9 @@ export type Command =
   | { name: "upgrade" }
   /** Read-only: where the project stands, and whether it can run. */
   | { name: "status" }
-  | { name: "doctor" };
+  | { name: "doctor" }
+  /** Create a project on a temporary Railway VM instead of this machine. */
+  | { name: "try" };
 
 export interface CliArgs {
   command: Command;
@@ -120,16 +122,21 @@ export function parseCliArgs(argv: string[]): CliArgs {
 
   const { values, positionals } = parsed;
   const command = parseCommand(positionals);
+  // try creates a project too, on a VM, so it takes the same selection flags as create.
+  const creates = command.name === "create" || command.name === "try";
   if (command.name === "create" && positionals.length > 1) {
     throw new UsageError("Only one project directory can be provided.");
   }
-  if (command.name !== "create" && (values.framework !== undefined || Object.keys(modules).length)) {
+  if (!creates && (values.framework !== undefined || Object.keys(modules).length)) {
     throw new UsageError(
       "--framework and module flags only apply when creating a project; use add or remove to change modules.",
     );
   }
-  if (command.name !== "create" && command.name !== "upgrade" && values.ref !== undefined) {
+  if (!creates && command.name !== "upgrade" && values.ref !== undefined) {
     throw new UsageError("--ref only applies when creating or upgrading a project.");
+  }
+  if (command.name === "try" && values["template-dir"] !== undefined) {
+    throw new UsageError("--template-dir does not apply to try: the VM downloads the Starter itself.");
   }
   if (values.framework !== undefined && !values.framework.trim()) {
     throw new UsageError("--framework requires a framework id, such as next or tanstack-start.");
@@ -165,9 +172,9 @@ function assertDistinct(modules: string[]) {
 }
 
 /**
- * `add <module> <option>...`, `remove <module>...`, and `upgrade` change an existing project, and `status`
- * and `doctor` inspect one; anything else is the directory of a new project. Create a project
- * literally named "add" with `./add`.
+ * `add <module> <option>...`, `remove <module>...`, and `upgrade` change an existing project, `status`
+ * and `doctor` inspect one, and `try` creates one on a Railway VM; anything else is the directory
+ * of a new project. Create a project literally named "add" with `./add`.
  */
 function parseCommand(positionals: string[]): Command {
   const [name, ...rest] = positionals;
@@ -191,6 +198,10 @@ function parseCommand(positionals: string[]): Command {
   }
   if (name === "status" || name === "doctor") {
     if (module !== undefined) throw new UsageError(`Usage: ${name}, run inside a project.`);
+    return { name };
+  }
+  if (name === "try") {
+    if (module !== undefined) throw new UsageError("Usage: try [--framework <id>] [module flags], for example: try --framework tanstack-start");
     return { name };
   }
   if (name === "upgrade") {

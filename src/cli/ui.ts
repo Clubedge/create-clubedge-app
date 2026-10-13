@@ -108,6 +108,7 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app upgrade [--ref <tag>]   (inside a project)
   pnpm dlx @clubedge/create-clubedge-app status                  (inside a project)
   pnpm dlx @clubedge/create-clubedge-app doctor                  (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app try [options]           (experimental)
 
   Inside a project with the clubedge script, use pnpm clubedge add, remove,
   upgrade, status, or doctor. Without a module or option, add and remove ask for them.
@@ -121,6 +122,12 @@ Usage:
   status shows the project's Starter release, modules, and Git state, and whether a
   newer Starter is available. doctor checks Node.js, pnpm, the dependencies, the
   lockfile, and the env file, then runs pnpm check:services; it changes nothing.
+
+  try creates a new project on a free, temporary Railway VM (no account, 60 minutes)
+  and prints its preview URL and the link to claim the VM. The VM has no Docker, so
+  it uses --infra local (PGlite) and Better Auth, with email off. It asks first, and
+  keeps its own SSH key apart from ~/.ssh. Experimental: Railway can change or pause
+  its free VM.
 
 Options:
 ${selectionHelp(manifest)}
@@ -149,6 +156,7 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app@latest upgrade
   pnpm clubedge status
   pnpm clubedge doctor --no-services
+  pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start
 
 Learn more:
   CLI      ${cliUrl}

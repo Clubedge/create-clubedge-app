@@ -299,7 +299,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.18.0 | v0.15.0 | `try`: a new project on a free, temporary Railway VM, with a preview URL and a claim link (experimental) |
 | 0.19.0 | v0.15.0 | `pnpm clubedge try` uploads an existing project to the VM; the preview opens in the browser |
 | 0.20.0 | v0.15.0 | The Starter's version of each conflicted file in `.clubedge/incoming/`, several modules at once, sharing a `try` preview by claiming the VM, `try --status` |
-| 0.21.0 | v0.16.0 | Name the generated project's failing check; One-command releases and an automatic Starter pin pull request; Default to Starter v0.16.0 |
+| 0.21.0 | v0.16.0 | Starter v0.16.0: upgrades delivered as pull requests, Node 24 actions; release tooling for maintainers |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

@@ -23,7 +23,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 15 | 0.18.0 | `try` on a free Railway VM (experimental), on Starter v0.15.0 |
 | 16 | 0.19.0 | `try` inside a project uploads it; the preview opens in the browser |
 | 17 | 0.20.0 | Conflicts: the Starter's version of each conflicted file, several modules at once; `try`: claim to share, `--claim`, `--status`; CI on Node 24 actions and Ubuntu 24.04, automatic release pages |
-| 18 | 0.21.0 | Name the generated project's failing check; One-command releases and an automatic Starter pin pull request; Default to Starter v0.16.0 |
+| 18 | 0.21.0 | Starter v0.16.0 (upgrades as pull requests, Node 24 actions, steadier tests); `pnpm release` and the Starter pin workflow; CI names a generated project's failing check |
 
 ## CLI improvements
 

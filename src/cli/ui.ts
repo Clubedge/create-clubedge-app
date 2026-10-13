@@ -109,9 +109,10 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app status                  (inside a project)
   pnpm dlx @clubedge/create-clubedge-app doctor                  (inside a project)
   pnpm dlx @clubedge/create-clubedge-app try [options]           (experimental)
+  pnpm dlx @clubedge/create-clubedge-app deploy [options]        (inside a project)
 
   Inside a project with the clubedge script, use pnpm clubedge add, remove,
-  upgrade, status, doctor, or try. Without a module or option, add and remove ask
+  upgrade, status, doctor, try, or deploy. Without a module or option, add and remove ask
   for them.
 
   add and remove change modules of an existing project, several at once as one
@@ -143,6 +144,7 @@ ${selectionHelp(manifest)}
   --no-open               try: do not open the preview in the browser
   --claim                 try: open the page that claims the VM, to share the preview
   --status                try: the last VM's preview, time left, and claim link
+  --env-file <path>       deploy: production values for the service, such as .env.production
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
   --no-git                Skip Git repository initialization

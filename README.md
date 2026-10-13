@@ -189,6 +189,18 @@ Inside a project, `pnpm clubedge try` uploads that project instead, to share wor
 
 When the app is ready, the CLI opens the preview in your browser (`--no-open` turns that off) and asks whether to share it: claiming the VM, a free Railway sign-up, is what makes the URL work for anyone. `--claim` opens the claim page without asking. `try --status` shows the last VM's preview, time left, and claim link; it connects only while the VM is running, so it never creates a new one. To open the app from another network yourself, forward it: `ssh -i <key> -N -L 3000:127.0.0.1:3000 railway.new`, then http://localhost:3000 (the CLI prints the exact command). The CLI asks before creating anything (`--yes` agrees), keeps its own SSH key in your config directory (`~/.config/clubedge`, or `%APPDATA%\clubedge` on Windows) apart from `~/.ssh`, and connects only to Railway's known host key. Railway's [terms](https://railway.com/legal/terms) apply, and Railway can change or pause its free VM.
 
+## Deploy to Railway
+
+In a project created with `--deploy railway` (or switched with `pnpm clubedge add deploy railway`), one command does the first deploy:
+
+```sh
+pnpm clubedge deploy                              # asks before creating anything
+pnpm clubedge deploy --env-file .env.production   # with your production provider keys
+pnpm clubedge deploy --dry-run                    # show the plan, create nothing
+```
+
+With [Railway's CLI](https://docs.railway.com/cli) (the installed `railway`, or `npx @railway/cli`) and your Railway login, it creates or reuses a project named after the package, Postgres (and Redis with `cache redis`), the app's service, and a `*.up.railway.app` domain. It sets the variables it can: `DATABASE_URL` and `REDIS_URL` as references to those databases, `APP_URL` and `NEXT_PUBLIC_APP_URL`, `PORT`, and a generated `BETTER_AUTH_SECRET` that later runs keep. Values from `--env-file` come on top; the variables `.env.example` lists that nothing sets are reported, for the modules that need them (storage, email, payments). Then `railway up` builds the Dockerfile, Railway runs the migrations before the release and checks `/api/health`, and the URL is printed. Running `deploy` again reuses everything, so it also adds variables and ships a new release. Railway bills usage on your plan.
+
 ## Version relationship
 
 Each CLI release is tested against one specific Starter release:

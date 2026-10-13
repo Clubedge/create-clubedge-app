@@ -1,7 +1,7 @@
 // `add`, `remove`, and `upgrade` change an existing project. The project's recorded Starter
 // commit and modules (base) and the new state (target: other modules, or a newer Starter) are
 // rendered in memory, and the difference is merged into the project (see core/update.ts).
-import { confirm, isCancel, log, outro, select, spinner } from "@clack/prompts";
+import { confirm, isCancel, log, multiselect, outro, select, spinner } from "@clack/prompts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
@@ -19,7 +19,7 @@ import {
   resolveTemplateSource,
   type TemplateSource,
 } from "./core/source.js";
-import { applyUpdate, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
+import { applyUpdate, INCOMING_DIR, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
 import { cliVersion, starterPin } from "./package-info.js";
 import { installDependencies, resolvePnpm } from "./steps/install.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
@@ -121,14 +121,19 @@ export async function completeCommand(
     );
   }
 
-  let moduleId = command.name === "add" ? command.changes[0]?.module : undefined;
-  if (!moduleId) {
+  // The modules: named on the command line, or picked from a list (several at once).
+  let moduleIds = command.name === "add" ? command.changes.map((change) => change.module) : [];
+  if (!moduleIds.length) {
     const choices = Object.entries(manifest.modules).filter(([id, module]) =>
       command.name === "add" ? true : Boolean(module.options.none) && project.modules[id] !== "none",
     );
     if (!choices.length) throw new UsageError("No module can be removed: every removable module is already none.");
-    const value = await select({
-      message: command.name === "add" ? "Which module do you want to add or switch?" : "Which module do you want to remove?",
+    const value = await multiselect({
+      message:
+        command.name === "add"
+          ? "Which modules do you want to add or switch? (space to pick, enter to confirm)"
+          : "Which modules do you want to remove? (space to pick, enter to confirm)",
+      required: true,
       options: choices.map(([id, module]) => ({
         value: id,
         label: module.name,
@@ -136,28 +141,39 @@ export async function completeCommand(
       })),
     });
     if (isCancel(value)) return null;
-    moduleId = value;
+    moduleIds = value;
   }
-  if (command.name === "remove") return { name: "remove", modules: [moduleId] };
+  if (command.name === "remove") return { name: "remove", modules: moduleIds };
 
-  const module = manifest.modules[moduleId];
-  if (!module) {
-    throw new UsageError(`Unknown module "${moduleId}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
+  // Then an option for each module that was not given one. They apply together, so options that
+  // only work together (Supabase Auth with Supabase Storage) can be picked in one go.
+  const changes: Array<{ module: string; option: string }> = [];
+  for (const moduleId of moduleIds) {
+    const given = command.changes.find((change) => change.module === moduleId)?.option;
+    if (given) {
+      changes.push({ module: moduleId, option: given });
+      continue;
+    }
+    const module = manifest.modules[moduleId];
+    if (!module) {
+      throw new UsageError(`Unknown module "${moduleId}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
+    }
+    const options = Object.keys(module.options).filter(
+      (id) => id !== project.modules[moduleId] && (moduleIds.length > 1 || available(manifest, project, moduleId, id)),
+    );
+    if (!options.length) throw new UsageError(`${module.name} has no other option this project can use.`);
+    const option = await select({
+      message: `${module.name}: which option?`,
+      options: options.map((id) => ({
+        value: id,
+        label: module.options[id]!.name,
+        ...(id === module.default ? { hint: "default" } : {}),
+      })),
+    });
+    if (isCancel(option)) return null;
+    changes.push({ module: moduleId, option });
   }
-  const options = Object.keys(module.options).filter(
-    (id) => id !== project.modules[moduleId] && available(manifest, project, moduleId, id),
-  );
-  if (!options.length) throw new UsageError(`${module.name} has no other option this project can use.`);
-  const option = await select({
-    message: `${module.name}: which option?`,
-    options: options.map((id) => ({
-      value: id,
-      label: module.options[id]!.name,
-      ...(id === module.default ? { hint: "default" } : {}),
-    })),
-  });
-  if (isCancel(option)) return null;
-  return { name: "add", changes: [{ module: moduleId, option }] };
+  return { name: "add", changes };
 }
 
 /**
@@ -243,19 +259,28 @@ function report(plan: UpdatePlan) {
     (action): action is Extract<MergeAction, { kind: "conflict" }> => action.kind === "conflict",
   );
   const kept = plan.actions.filter((action): action is Extract<MergeAction, { kind: "keep" }> => action.kind === "keep");
+  const incoming = (path: string) => `${INCOMING_DIR}/${path}`;
   if (conflicts.length) {
     const blocks = conflicts.map((action) => countConflicts(action.content));
     const total = blocks.reduce((sum, count) => sum + count, 0);
+    const first = conflicts[0]!.path;
     log.warn(
       `Resolve ${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}. ` +
         "Each is marked <<<<<<< yours ... ======= ... >>>>>>> clubedge: keep your lines, the Starter's, or a mix, then delete the markers.\n" +
         conflicts
           .map((action, i) => `  ${action.path} ${dim(`(${blocks[i]} ${blocks[i] === 1 ? "block" : "blocks"})`)}`)
-          .join("\n"),
+          .join("\n") +
+        `\n\nThe Starter's whole new version of each is in ${INCOMING_DIR}/, to compare with yours:\n` +
+        `  git diff --no-index ${first} ${incoming(first)}\n` +
+        dim(`Git ignores ${INCOMING_DIR.split("/")[0]}/; delete it when you are done.`),
     );
   }
   if (kept.length) {
-    log.info(`Check these files by hand:\n${kept.map((action) => `  ${action.path}: ${action.reason}`).join("\n")}`);
+    log.info(
+      `Check these files by hand:\n${kept
+        .map((action) => `  ${action.path}: ${action.reason}${action.incoming ? dim(` The Starter's version: ${incoming(action.path)}`) : ""}`)
+        .join("\n")}`,
+    );
   }
   if (plan.env && !plan.env.update) {
     log.info(`${plan.env.path} does not exist yet; create it from the example file.`);

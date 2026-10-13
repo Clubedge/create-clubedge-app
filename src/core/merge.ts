@@ -12,12 +12,18 @@ export type MergeAction =
   | { path: string; kind: "update"; content: Buffer }
   /** Both changed the file in different places; the result combines them. */
   | { path: string; kind: "merge"; content: Buffer }
-  /** Both changed the same lines; the result has conflict markers to resolve. */
-  | { path: string; kind: "conflict"; content: Buffer }
+  /**
+   * Both changed the same lines; the result has conflict markers to resolve. `incoming` is the
+   * Starter's whole new version of the file, to compare with yours.
+   */
+  | { path: string; kind: "conflict"; content: Buffer; incoming: Buffer }
   /** The target drops the file and the project never changed it. */
   | { path: string; kind: "delete" }
-  /** Left as it is; `reason` says why and what to check by hand. */
-  | { path: string; kind: "keep"; reason: string };
+  /**
+   * Left as it is; `reason` says why and what to check by hand. `incoming` is the Starter's new
+   * version, when it has one (a binary file both changed, or a file the project deleted).
+   */
+  | { path: string; kind: "keep"; reason: string; incoming?: Buffer };
 
 export const CONFLICT_LABELS = { yours: "yours", theirs: "clubedge" } as const;
 
@@ -84,9 +90,10 @@ export function mergeText(
 
 function merged(path: string, current: Buffer, base: Buffer, target: Buffer, binaryReason: string): MergeAction {
   const result = mergeText(current, base, target);
-  if (!result) return { path, kind: "keep", reason: binaryReason };
+  if (!result) return { path, kind: "keep", reason: binaryReason, incoming: target };
   const content = withLineEndings(result.text, current);
-  return { path, kind: result.conflict ? "conflict" : "merge", content };
+  if (result.conflict) return { path, kind: "conflict", content, incoming: withLineEndings(normalize(target), current) };
+  return { path, kind: "merge", content };
 }
 
 /**
@@ -120,7 +127,12 @@ export function planMerge(base: FileMap, target: FileMap, current: FileMap): Mer
 
     if (before && after) {
       if (!mine) {
-        actions.push({ path, kind: "keep", reason: "You deleted this file, and the new selection changes it. Restore it if you need the change." });
+        actions.push({
+          path,
+          kind: "keep",
+          reason: "You deleted this file, and the new selection changes it. Restore it if you need the change.",
+          incoming: after,
+        });
       } else if (sameContent(mine, before)) {
         const content = isBinary(after) ? after : withLineEndings(normalize(after), mine);
         actions.push({ path, kind: "update", content });

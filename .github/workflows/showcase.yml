@@ -22,7 +22,7 @@ permissions:
 jobs:
   default-project:
     name: showcase (default project)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       CLI_VERSION: ${{ inputs.cli-version || 'latest' }}
@@ -31,11 +31,11 @@ jobs:
       # generated-project (next-supabase-infra).
       FLAGS: --infra supabase --storage supabase
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.9.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.12.0
       - name: Generate the project with the published CLI
@@ -132,13 +132,13 @@ jobs:
         working-directory: ${{ env.APP }}
         run: pnpm infra:down || true
       - name: Upload the showcase
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: showcase-default
           path: ${{ runner.temp }}/showcase
       - name: Upload browser test results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: showcase-playwright
           path: ${{ env.APP }}/test-results
@@ -146,7 +146,7 @@ jobs:
 
   walkthrough:
     name: walkthrough (${{ matrix.example }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -159,11 +159,11 @@ jobs:
       STRIPE_TEST_PRICE_PRO: ${{ secrets.STRIPE_TEST_PRICE_PRO }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.9.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.12.0
       - name: Install the recording tools
@@ -251,14 +251,14 @@ jobs:
           for pid in "$RUNNER_TEMP"/out/state/*.pid; do [ -f "$pid" ] && kill -INT -- "-$(cat "$pid")" 2>/dev/null || true; done
           pnpm infra:down 2>/dev/null || true
       - name: Upload the walkthrough
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: walkthrough-${{ matrix.example }}
           path: ${{ runner.temp }}/publish
           if-no-files-found: ignore
       - name: Upload the raw recording on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: walkthrough-${{ matrix.example }}-raw
           # Not the Stripe CLI's log: it prints the webhook signing secret.
@@ -272,7 +272,7 @@ jobs:
     name: publish the showcase
     needs: [default-project, walkthrough]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -281,7 +281,7 @@ jobs:
       KEEP: 3
     steps:
       - name: Download the results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/artifacts
       - name: Gather the release files

@@ -192,6 +192,13 @@ jobs:
           set -euo pipefail
           gh release download -R stripe/stripe-cli -p 'stripe_*_linux_x86_64.tar.gz' -O "$RUNNER_TEMP/stripe.tar.gz"
           tar -xzf "$RUNNER_TEMP/stripe.tar.gz" -C "$RUNNER_TEMP/bin" stripe
+          # The price secret may hold the product's id (prod_...): use that product's default price.
+          price="$STRIPE_TEST_PRICE_PRO"
+          if [[ "$price" == prod_* ]]; then
+            price="$(curl -fsS -u "$STRIPE_API_KEY:" "https://api.stripe.com/v1/products/$price" | jq -r '.default_price // empty')"
+            test -n "$price" || { echo "The Stripe product has no default price." >&2; exit 1; }
+          fi
+          echo "STRIPE_PRICE_RESOLVED=$price" >> "$GITHUB_ENV"
           secret="$("$RUNNER_TEMP/bin/stripe" listen --print-secret)"
           echo "::add-mask::$secret"
           echo "STRIPE_LISTEN_SECRET=$secret" >> "$GITHUB_ENV"

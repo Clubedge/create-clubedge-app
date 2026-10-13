@@ -12,7 +12,7 @@ const stripeReal = Boolean(process.env.STRIPE_TEST_SECRET_KEY && process.env.STR
 const stripeEnv = stripeReal
   ? `f=$(envfile)
 setenv "$f" STRIPE_SECRET_KEY "$STRIPE_TEST_SECRET_KEY"
-setenv "$f" STRIPE_PRICE_PRO "$STRIPE_TEST_PRICE_PRO"
+setenv "$f" STRIPE_PRICE_PRO "\${STRIPE_PRICE_RESOLVED:-$STRIPE_TEST_PRICE_PRO}"
 setenv "$f" STRIPE_WEBHOOK_SECRET "$STRIPE_LISTEN_SECRET"`
   : `f=$(envfile)
 setenv "$f" STRIPE_SECRET_KEY sk_test_ci

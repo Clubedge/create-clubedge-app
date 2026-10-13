@@ -17,7 +17,9 @@ export type Command =
   | { name: "status" }
   | { name: "doctor" }
   /** Create a project on a temporary Railway VM instead of this machine. */
-  | { name: "try" };
+  | { name: "try" }
+  /** Deploy the project to Railway: project, databases, variables, domain, and the first release. */
+  | { name: "deploy" };
 
 export interface CliArgs {
   command: Command;
@@ -44,6 +46,8 @@ export interface CliArgs {
   claim: boolean;
   /** try: show the last VM's preview, time left, and claim link, without creating one. */
   status: boolean;
+  /** deploy: production values for the service, from this env file. */
+  envFile?: string;
   help: boolean;
   version: boolean;
 }
@@ -66,6 +70,7 @@ const OPTIONS = {
   open: { type: "boolean", default: true },
   claim: { type: "boolean", default: false },
   status: { type: "boolean", default: false },
+  "env-file": { type: "string" },
   help: { type: "boolean", short: "h", default: false },
   version: { type: "boolean", short: "v", default: false },
 } as const;
@@ -144,6 +149,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (!creates && command.name !== "upgrade" && values.ref !== undefined) {
     throw new UsageError("--ref only applies when creating or upgrading a project.");
   }
+  if (command.name !== "deploy" && values["env-file"] !== undefined) {
+    throw new UsageError("--env-file only applies to deploy.");
+  }
   if (command.name !== "try" && (values.claim || values.status)) {
     throw new UsageError("--claim and --status only apply to try.");
   }
@@ -176,6 +184,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     open: values.open,
     claim: values.claim,
     status: values.status,
+    envFile: values["env-file"],
     help: values.help,
     version: values.version,
   };
@@ -213,6 +222,10 @@ function parseCommand(positionals: string[]): Command {
   }
   if (name === "status" || name === "doctor") {
     if (module !== undefined) throw new UsageError(`Usage: ${name}, run inside a project.`);
+    return { name };
+  }
+  if (name === "deploy") {
+    if (module !== undefined) throw new UsageError("Usage: deploy [--env-file <path>], run inside a project.");
     return { name };
   }
   if (name === "try") {

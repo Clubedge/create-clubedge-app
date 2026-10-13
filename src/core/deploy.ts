@@ -1,0 +1,125 @@
+// What `deploy` sets up on Railway for a project, as pure functions: the service name, the
+// production variables, and reading the Railway CLI's output. src/deploy.ts runs the CLI.
+
+/** The port the production image listens on (the Starter's Dockerfile sets PORT=3000). */
+export const appPort = 3000;
+
+/** Railway's names for the databases `railway add --database` creates, used in references. */
+export const railwayDatabases = { postgres: "Postgres", redis: "Redis" } as const;
+
+/** A Railway service name from the package name: lowercase letters, digits, and dashes. */
+export function serviceName(packageName: string): string {
+  const name = packageName.replace(/^@[^/]+\//, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return name || "web";
+}
+
+/** The databases a project needs on Railway: Postgres always (Drizzle), Redis with the redis cache. */
+export function databasesFor(modules: Record<string, string>): Array<keyof typeof railwayDatabases> {
+  return modules.cache === "redis" ? ["postgres", "redis"] : ["postgres"];
+}
+
+/** The variable names a project's .env.example lists, in order. */
+export function exampleKeys(example: string): string[] {
+  const keys = example
+    .split(/\r?\n/)
+    .map((line) => /^([A-Z][A-Z0-9_]*)=/.exec(line.trim())?.[1])
+    .filter((key): key is string => Boolean(key));
+  return [...new Set(keys)];
+}
+
+/** KEY=value lines of an env file; quotes around a value are removed, comments skipped. */
+export function parseEnvFile(text: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!match) continue;
+    let value = match[2]!.trim();
+    if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1);
+    else value = value.replace(/\s+#.*$/, "");
+    values[match[1]!] = value;
+  }
+  return values;
+}
+
+export interface VariablePlan {
+  /** What `railway variable set` receives, in order. */
+  set: Record<string, string>;
+  /** Variables the example lists that nothing sets: provider keys and optional settings. */
+  unset: string[];
+}
+
+/**
+ * The service's production variables. The CLI provides what it can: references to Railway's
+ * databases, a generated Better Auth secret (unless the service already has one), the public URL,
+ * and the port. Values from --env-file come next and win over those, except the database
+ * references, which must point at Railway's databases. Everything else the example lists is
+ * reported as unset; values the service already has count as set.
+ */
+export function planVariables(input: {
+  modules: Record<string, string>;
+  keys: string[];
+  url: string;
+  existing: Record<string, string>;
+  envFile: Record<string, string>;
+  secret: () => string;
+}): VariablePlan {
+  const { modules, keys, url, existing, envFile, secret } = input;
+  const reference = (database: string, variable: string) => `\${{${database}.${variable}}}`;
+  const provided: Record<string, string> = {
+    NODE_ENV: "production",
+    PORT: String(appPort),
+    DATABASE_URL: reference(railwayDatabases.postgres, "DATABASE_URL"),
+    ...(modules.cache === "redis" ? { REDIS_URL: reference(railwayDatabases.redis, "REDIS_URL") } : {}),
+  };
+  // The public URL under both names: TanStack Start reads APP_URL, Next.js NEXT_PUBLIC_APP_URL.
+  const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
+  if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
+
+  for (const [key, value] of Object.entries(envFile)) {
+    if (key === "DATABASE_URL" || key === "REDIS_URL" || value === "") continue;
+    set[key] = value;
+  }
+  const unset = keys.filter((key) => set[key] === undefined && !existing[key]);
+  return { set, unset };
+}
+
+/** The public domain in `railway domain` output (JSON or text). */
+export function parseRailwayDomain(output: string): string | null {
+  const domain = /([a-z0-9-]+(?:\.[a-z0-9-]+)*\.up\.railway\.app)/i.exec(output)?.[1];
+  return domain ? domain.toLowerCase() : null;
+}
+
+/** The service names in `railway status --json`, wherever the CLI puts them. */
+export function serviceNames(status: unknown): string[] {
+  const names = new Set<string>();
+  const visit = (value: unknown, inServices: boolean) => {
+    if (Array.isArray(value)) return value.forEach((item) => visit(item, inServices));
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (inServices && key === "name" && typeof child === "string") names.add(child);
+      visit(child, inServices || key === "services");
+    }
+  };
+  visit(status, false);
+  return [...names];
+}
+
+/** `railway variable list --json`: a KEY -> value object, or an array of { name, value }. */
+export function parseVariables(output: string): Record<string, string> {
+  try {
+    const value = JSON.parse(output) as unknown;
+    if (Array.isArray(value)) {
+      return Object.fromEntries(
+        value
+          .filter((item): item is { name: string; value: unknown } => typeof item?.name === "string")
+          .map((item) => [item.name, String(item.value ?? "")]),
+      );
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, String(child ?? "")]));
+    }
+  } catch {
+    // Not JSON: no variables known.
+  }
+  return {};
+}

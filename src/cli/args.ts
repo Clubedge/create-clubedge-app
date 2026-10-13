@@ -40,6 +40,10 @@ export interface CliArgs {
   services: boolean;
   /** try: open the preview in the browser once it is ready. */
   open: boolean;
+  /** try: open the page that claims the VM, which makes the preview shareable. */
+  claim: boolean;
+  /** try: show the last VM's preview, time left, and claim link, without creating one. */
+  status: boolean;
   help: boolean;
   version: boolean;
 }
@@ -60,6 +64,8 @@ const OPTIONS = {
   force: { type: "boolean", default: false },
   services: { type: "boolean", default: true },
   open: { type: "boolean", default: true },
+  claim: { type: "boolean", default: false },
+  status: { type: "boolean", default: false },
   help: { type: "boolean", short: "h", default: false },
   version: { type: "boolean", short: "v", default: false },
 } as const;
@@ -138,6 +144,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (!creates && command.name !== "upgrade" && values.ref !== undefined) {
     throw new UsageError("--ref only applies when creating or upgrading a project.");
   }
+  if (command.name !== "try" && (values.claim || values.status)) {
+    throw new UsageError("--claim and --status only apply to try.");
+  }
   if (command.name === "try" && values["template-dir"] !== undefined) {
     throw new UsageError("--template-dir does not apply to try: the VM downloads the Starter itself.");
   }
@@ -165,6 +174,8 @@ export function parseCliArgs(argv: string[]): CliArgs {
     force: values.force,
     services: values.services,
     open: values.open,
+    claim: values.claim,
+    status: values.status,
     help: values.help,
     version: values.version,
   };

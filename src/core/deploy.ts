@@ -123,3 +123,32 @@ export function parseVariables(output: string): Record<string, string> {
   }
   return {};
 }
+
+/** Deployment statuses Railway does not move on from. */
+export const finalStatuses = ["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"] as const;
+
+/** The deployment `railway up` started, from the dashboard link it prints (`...?id=<uuid>`). */
+export function parseDeploymentId(output: string): string | null {
+  return /[?&]id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(output)?.[1] ?? null;
+}
+
+/**
+ * A deployment's status from `railway deployment list --json` (newest first): the one with `id`,
+ * or else the newest created at or after `since`. Null while Railway does not list it yet.
+ */
+export function deploymentStatus(output: string, id: string | null, since: Date): { id: string; status: string } | null {
+  let list: unknown;
+  try {
+    list = JSON.parse(output);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(list)) return null;
+  const deployments = list.filter(
+    (item): item is { id: string; status: string; createdAt?: string } => typeof item?.id === "string" && typeof item?.status === "string",
+  );
+  const found = id
+    ? deployments.find((deployment) => deployment.id === id)
+    : deployments.find((deployment) => deployment.createdAt && new Date(deployment.createdAt).getTime() >= since.getTime() - 5_000);
+  return found ? { id: found.id, status: found.status } : null;
+}

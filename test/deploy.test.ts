@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import {
   databasesFor,
+  deploymentStatus,
   exampleKeys,
+  parseDeploymentId,
   parseEnvFile,
   parseRailwayDomain,
   parseVariables,
@@ -105,6 +107,29 @@ describe("Railway CLI output", () => {
     };
     expect(serviceNames(status).sort()).toEqual(["Postgres", "my-app"]);
     expect(serviceNames({ name: "project only" })).toEqual([]);
+  });
+
+  it("finds the deployment railway up started", () => {
+    const output =
+      "Indexing...\nUploading...\n  Deployment: https://railway.com/project/54fc3711-029a-4c04-96ff-90cee90497ab/service/5f49d436-3a6b-4c5b-a456-8c0ffb2461e6?id=8a3c507c-d1a0-4bd9-9cab-5b66f1e2b568\n";
+    expect(parseDeploymentId(output)).toBe("8a3c507c-d1a0-4bd9-9cab-5b66f1e2b568");
+    expect(parseDeploymentId("Uploading...")).toBeNull();
+  });
+
+  it("reads a deployment's status by id, or the newest since the upload", () => {
+    // The shape `railway deployment list --json` returned in a live run, newest first.
+    const list = JSON.stringify([
+      { id: "0118e860-8f28-4e31-b31c-3f9bdf5f1580", status: "BUILDING", createdAt: "2026-10-13T17:39:10.396Z", meta: {} },
+      { id: "8a3c507c-d1a0-4bd9-9cab-5b66f1e2b568", status: "FAILED", createdAt: "2026-10-13T17:27:34.000Z" },
+    ]);
+    expect(deploymentStatus(list, "8a3c507c-d1a0-4bd9-9cab-5b66f1e2b568", new Date())).toEqual({
+      id: "8a3c507c-d1a0-4bd9-9cab-5b66f1e2b568",
+      status: "FAILED",
+    });
+    expect(deploymentStatus(list, null, new Date("2026-10-13T17:39:08Z"))?.status).toBe("BUILDING");
+    // Not listed yet, or not JSON: no status, so the caller keeps waiting.
+    expect(deploymentStatus(list, null, new Date("2026-10-13T18:00:00Z"))).toBeNull();
+    expect(deploymentStatus("Recent Deployments", null, new Date())).toBeNull();
   });
 
   it("reads variables as an object or a list", () => {

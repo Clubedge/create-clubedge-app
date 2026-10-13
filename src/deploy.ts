@@ -12,7 +12,10 @@ import { bold, dim } from "./cli/ui.js";
 import {
   appPort,
   databasesFor,
+  deploymentStatus,
   exampleKeys,
+  finalStatuses,
+  parseDeploymentId,
   parseEnvFile,
   parseRailwayDomain,
   parseVariables,
@@ -79,7 +82,7 @@ async function agree(args: CliArgs, service: string, databases: string[]): Promi
       "",
       `• A project with ${databases.map((db) => railwayDatabases[db as keyof typeof railwayDatabases]).join(" and ")}, and a service "${service}" with a public *.up.railway.app domain.`,
       "• The production variables Railway can provide; your provider keys come from --env-file.",
-      "• Railway builds the Dockerfile, runs the migrations before the release, and checks /api/health.",
+      "• Railway builds the Dockerfile, runs the migrations before the release, and checks /api/health; the first build takes several minutes.",
       "",
       `Railway bills usage on your plan. Running deploy again reuses all of it. Railway's terms: ${railwayTermsUrl}`,
     ].join("\n"),
@@ -180,14 +183,33 @@ export async function deployProject(args: CliArgs): Promise<void> {
   }
   progress.stop(`Railway is ready: ${url}`);
 
-  log.step("Deploying with railway up (build logs follow; Railway runs the migrations, then checks /api/health)");
-  try {
-    await railway(rw, ["up", "--service", service], { inherit: true });
-  } catch {
+  // Start the deploy detached, then follow its status: `railway up` can return before the build
+  // ends, and only Railway's final status says whether the release went live.
+  const deploying = spinner();
+  deploying.start("Uploading the project");
+  const started = new Date();
+  const upload = await railway(rw, ["up", "--service", service, "--detach"]);
+  const id = parseDeploymentId(upload);
+  let deployment = "QUEUED";
+  const deadline = Date.now() + 45 * 60_000;
+  while (!(finalStatuses as readonly string[]).includes(deployment)) {
+    if (Date.now() > deadline) break;
+    const elapsed = Math.round((Date.now() - started.getTime()) / 1000);
+    deploying.message(`Railway: ${deployment.toLowerCase()} (${Math.floor(elapsed / 60)}m ${elapsed % 60}s; the first build takes several minutes)`);
+    await new Promise((wait) => setTimeout(wait, 10_000));
+    const list = await attempt(() => railway(rw, ["deployment", "list", "--service", service, "--json"]));
+    deployment = deploymentStatus(list ?? "", id, started)?.status ?? deployment;
+  }
+  if (deployment !== "SUCCESS") {
+    deploying.stop(`The deploy ended as ${deployment}`);
     throw new Error(
-      `The deploy did not finish. Read the logs with \`railway logs --service ${service}\` (build: --build), fix the cause, and run deploy again: it reuses what exists.`,
+      [
+        `Railway's deploy ended as ${deployment}. Read why with \`railway logs --build --service ${service}\` (the build) or \`railway logs --service ${service}\` (the app and its health check).`,
+        "A build that ran out of time (DeadlineExceeded) usually passes on a second try. Otherwise fix the cause and run deploy again: it reuses what exists.",
+      ].join("\n"),
     );
   }
+  deploying.stop("Deployed: the migrations ran and /api/health answered");
 
   note(
     [

@@ -2,6 +2,15 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.21.0
+
+- Default to Starter `v0.16.0` (#52), which adds:
+  - Starter upgrades as pull requests: every project gets `.github/workflows/clubedge-upgrade.yml`, which checks every Monday for a newer Starter release and opens a pull request with `pnpm clubedge upgrade`'s result, the release notes, and anything left to resolve, so the project's own CI tests the upgrade before it is merged.
+  - GitHub Actions on their Node 24 versions in `ci.yml` and `deploy.yml`, with Linux jobs on Ubuntu 24.04.
+  - Steadier tests: PGlite starts once per test file, with room for slow CI runners.
+- Release tooling for maintainers (#51): `pnpm release patch|minor|major` opens the release pull request with a drafted changelog, `pnpm release tag` publishes it, and the Starter pin workflow opens a pull request when the Starter publishes a release.
+- CI names the generated project's failing check, in an annotation and the job summary (#50).
+
 ## 0.20.0
 
 - Conflicts are easier to resolve after `add`, `remove`, and `upgrade`:

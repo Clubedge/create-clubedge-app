@@ -87,9 +87,12 @@ describe("changelog draft", () => {
       "## 0.21.0\n\n- Keep CRLF in incoming files (#47).\n- Share a try preview by claiming the VM (#48).\n- Still on Starter `v0.15.0`.\n",
     );
     expect(changelogEntry("0.21.0", [], "v0.16.0", true)).toContain("- Default to Starter `v0.16.0`.");
-    const changelog = insertChangelog(file("CHANGELOG.md"), entry);
-    expect(changelog.indexOf("## 0.21.0")).toBeLessThan(changelog.indexOf(`## ${pkg.version}`));
-    expect(changelogSection(changelog, "0.21.0")).toContain("(#47)");
+
+    // Inserted into the real changelog as the next release, which never has an entry yet.
+    const next = bumpVersion(pkg.version, "major");
+    const changelog = insertChangelog(file("CHANGELOG.md"), changelogEntry(next, mergedPullRequests(log), "v0.15.0", false));
+    expect(changelog.indexOf(`## ${next}`)).toBeLessThan(changelog.indexOf(`## ${pkg.version}`));
+    expect(changelogSection(changelog, next)).toContain("(#47)");
     expect(changelogSection(changelog, "9.9.9")).toBe("");
   });
 });

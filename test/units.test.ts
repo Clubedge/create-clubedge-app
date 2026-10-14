@@ -207,3 +207,14 @@ describe("tag resolution", () => {
     expect(pickBranchCommit(branches, "dev")).toBeUndefined();
   });
 });
+
+describe("quoteForCmd", () => {
+  it("leaves plain words alone and quotes the rest for cmd.exe", async () => {
+    const { quoteForCmd } = await import("../src/utils/process.js");
+    expect(quoteForCmd("--save-dev")).toBe("--save-dev");
+    expect(quoteForCmd("@railway/cli@latest")).toBe("@railway/cli@latest");
+    expect(quoteForCmd("C:\\Users\\Dell\\npm\\railway.exe")).toBe("C:\\Users\\Dell\\npm\\railway.exe");
+    expect(quoteForCmd("two words")).toBe('"two words"');
+    expect(quoteForCmd('say "hi" & exit')).toBe('"say ""hi"" & exit"');
+  });
+});

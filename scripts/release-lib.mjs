@@ -52,9 +52,9 @@ export function updatePinDocs({ readme, contributing }, from, to) {
 }
 
 /**
- * Pull requests merged since the last release, from `git log --merges --first-parent
- * --format=%s%x1f%b%x1e`: GitHub's merge subject has the number, the body's first line the title.
- * Release pull requests are left out.
+ * Pull requests merged since the last release, from `git log --first-parent --format=%s%x1f%b%x1e`:
+ * a merge commit's subject has the number and its body's first line the title; a squash merge's
+ * subject is the title, ending in "(#number)". Release pull requests and direct commits are left out.
  */
 export function mergedPullRequests(log) {
   return log
@@ -63,8 +63,10 @@ export function mergedPullRequests(log) {
     .filter(Boolean)
     .flatMap((entry) => {
       const [subject = "", body = ""] = entry.split("\x1f");
-      const number = /^Merge pull request #(\d+)/.exec(subject)?.[1];
-      const title = body.trim().split("\n")[0]?.trim();
+      const merged = /^Merge pull request #(\d+)/.exec(subject);
+      const squashed = merged ? null : /^(.+?)\s+\(#(\d+)\)$/.exec(subject.trim());
+      const number = merged?.[1] ?? squashed?.[2];
+      const title = merged ? body.trim().split("\n")[0]?.trim() : squashed?.[1];
       if (!number || !title || /^chore: release v/.test(title)) return [];
       return [{ number: Number(number), title }];
     })

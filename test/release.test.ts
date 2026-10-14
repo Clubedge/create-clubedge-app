@@ -64,15 +64,18 @@ describe("Starter pin", () => {
 describe("changelog draft", () => {
   const log = [
     "Merge pull request #49 from Clubedge/release/v0.20.0\x1fchore: release v0.20.0\n\x1e",
+    "deploy: use your own databases (#51)\x1fWith DATABASE_URL in the env file (#3 in the body).\n\x1e",
+    "chore: release v0.19.1 (#50)\x1f\x1e",
     "Merge pull request #48 from Clubedge/feat/try-share\x1ffeat: share a try preview by claiming the VM\n\x1e",
     "Merge pull request #47 from Clubedge/feat/conflict-incoming\x1ffix(merge): keep CRLF in incoming files\n\nDetails.\x1e",
     "Some direct commit\x1f\x1e",
   ].join("\n");
 
-  it("lists merged pull requests oldest first, without releases or direct commits", () => {
+  it("lists merged and squashed pull requests oldest first, without releases or direct commits", () => {
     expect(mergedPullRequests(log)).toEqual([
       { number: 47, title: "fix(merge): keep CRLF in incoming files" },
       { number: 48, title: "feat: share a try preview by claiming the VM" },
+      { number: 51, title: "deploy: use your own databases" },
     ]);
   });
 
@@ -96,7 +99,7 @@ describe("changelog draft", () => {
   it("drafts an entry and puts it above the newest release", () => {
     const entry = changelogEntry("0.21.0", mergedPullRequests(log), "v0.15.0", false);
     expect(entry).toBe(
-      "## 0.21.0\n\n- Keep CRLF in incoming files (#47).\n- Share a try preview by claiming the VM (#48).\n- Still on Starter `v0.15.0`.\n",
+      "## 0.21.0\n\n- Keep CRLF in incoming files (#47).\n- Share a try preview by claiming the VM (#48).\n- Use your own databases (#51).\n- Still on Starter `v0.15.0`.\n",
     );
     expect(changelogEntry("0.21.0", [], "v0.16.0", true)).toContain("- Default to Starter `v0.16.0`.");
 

@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.26.0
+
+- Showcase: try walkthrough on a Railway VM (#73).
+- Use your own databases when the env file has their URLs (#74).
+- Count squash-merged pull requests in the changelog draft (#75).
+- Still on Starter `v0.17.1`.
+
 ## 0.25.0
 
 - `deploy` for Fly.io (experimental) (#71): in a project with `deploy fly`, `pnpm clubedge deploy` uses Fly's CLI and your Fly login.

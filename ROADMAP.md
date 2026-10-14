@@ -28,6 +28,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 20 | 0.23.0 | `deploy` writes and applies `.railway/railway.ts` (Railway's configuration as code) instead of `railway.json` |
 | 21 | 0.24.0 | Starter v0.17.0: `.railway/railway.ts` instead of `railway.json`, ahead of Railway's 2026-12-01 cutoff |
 | 22 | 0.25.0 | `deploy` for Fly.io (experimental); Dependabot for the CLI and the Starter |
+| 23 | 0.26.0 | Showcase: try walkthrough on a Railway VM; Use your own databases when the env file has their URLs; Count squash-merged pull requests in the changelog draft |
 
 ## CLI improvements
 

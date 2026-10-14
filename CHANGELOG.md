@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.29.0
+
+- Deploy to Netlify and Render (experimental) (#82).
+- Still on Starter `v0.18.0`.
+
 ## 0.28.0
 
 - `pnpm clubedge deploy` deploys to Vercel (experimental) (#80), in projects created with `--deploy vercel`:

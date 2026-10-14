@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/Clubedge/create-clubedge-app/main/.github/assets/cover.png" alt="Terminal running pnpm dlx @clubedge/create-clubedge-app my-app and printing the CLUBEDGE STARTER banner" width="100%">
+
 # create-clubedge-app
 
 **Create a production-ready Next.js or TanStack Start app with one command, and keep it up to date.**

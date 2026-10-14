@@ -78,7 +78,7 @@ function prepare(kind) {
 
   const previousTag = `v${current}`;
   const range = git("tag", "--list", previousTag) ? `${previousTag}..HEAD` : "HEAD";
-  const pullRequests = mergedPullRequests(git("log", range, "--merges", "--first-parent", "--format=%s%x1f%b%x1e"));
+  const pullRequests = mergedPullRequests(git("log", range, "--first-parent", "--format=%s%x1f%b%x1e"));
   if (!pullRequests.length) fail(`Nothing merged since ${previousTag}.`);
 
   const starterRef = pkg.clubedge.starterRef;

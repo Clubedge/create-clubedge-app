@@ -34,7 +34,7 @@ import { readProject } from "./core/project.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
 import { pathExists } from "./utils/fs.js";
-import { run } from "./utils/process.js";
+import { run, spawnCommand } from "./utils/process.js";
 
 const railwayTermsUrl = "https://railway.com/legal/terms";
 const deployDocsUrl = "https://starter.clubedge.live/docs/starter/deploy";
@@ -55,7 +55,7 @@ const binaryName = windows ? "railway.exe" : "railway";
 async function cliVersion(command: string[], shell: boolean): Promise<[number, number, number] | null> {
   return await new Promise((resolveVersion) => {
     const [file, ...args] = command;
-    const child = spawn(file!, [...args, "--version"], { shell, stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawnCommand(file!, [...args, "--version"], { stdio: ["ignore", "pipe", "ignore"] }, shell);
     let out = "";
     child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString()));
     child.once("error", () => resolveVersion(null));
@@ -128,11 +128,12 @@ interface RunOptions {
 async function railway(cli: RailwayCli, args: string[], options: RunOptions = {}): Promise<string> {
   const [command, ...prefix] = cli.command;
   return await new Promise<string>((resolvePromise, reject) => {
-    const child = spawn(command!, [...prefix, ...args], {
-      shell: cli.shell,
-      env: { ...process.env, _: cli.executable },
-      stdio: options.inherit ? "inherit" : ["pipe", "pipe", "pipe"],
-    });
+    const child = spawnCommand(
+      command!,
+      [...prefix, ...args],
+      { env: { ...process.env, _: cli.executable }, stdio: options.inherit ? "inherit" : ["pipe", "pipe", "pipe"] },
+      cli.shell,
+    );
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
@@ -291,6 +292,21 @@ export async function deployProject(args: CliArgs): Promise<void> {
     log.info(
       `Commit ${changed.join(", ")}: Railway reads the service's settings from ${railwayIacPath} now. railway.json is no longer needed (Railway stops reading it on 2026-12-01).`,
     );
+  }
+
+  // Before the build, not after it: the app starts without these, but the features that use them
+  // fail until they are set, and a build takes minutes.
+  if (plan.unset.length) {
+    log.warn(
+      `Not set on the service: ${plan.unset.join(", ")}. The app starts without them, but the features that use them fail until they are set: pass --env-file, or run railway variable set KEY --stdin --service ${service}.`,
+    );
+    if (process.stdin.isTTY && !args.yes) {
+      const proceed = await confirm({ message: "Deploy anyway?", initialValue: true });
+      if (isCancel(proceed) || !proceed) {
+        cancel("Nothing was deployed. Set them, then run deploy again: it reuses everything.");
+        return;
+      }
+    }
   }
 
   // Start the deploy detached, then follow its status: `railway up` can return before the build

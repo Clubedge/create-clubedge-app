@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.29.0
+
+- `pnpm clubedge deploy` deploys to Netlify and Render (experimental) (#82), so it now covers Railway, Fly.io, Vercel, Netlify, and Render:
+  - Netlify: it signs in with `netlify login`, creates or reuses the site with `apps/web` as its base directory, imports the production variables from `.env.production`, the site URL, and a generated `BETTER_AUTH_SECRET`, then runs `netlify deploy --build --prod`. The build runs on your machine with the site's variables.
+  - Render: it signs in with an API key (`RENDER_API_KEY`, or pasted from the dashboard page it opens) and builds from your pushed Git branch. It creates or reuses a Docker web service that runs the migrations before each release and checks `/api/health`, as `render.yaml` does, on a starter instance, since pre-deploy commands need a paid type. It sets the variables and waits until the deploy is live.
+  - On both, `DATABASE_URL` comes from your provider (Neon, Supabase, ...).
+- Still on Starter `v0.18.0`.
+
 ## 0.28.0
 
 - `pnpm clubedge deploy` deploys to Vercel (experimental) (#80), in projects created with `--deploy vercel`:

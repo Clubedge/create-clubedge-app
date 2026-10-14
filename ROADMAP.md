@@ -31,6 +31,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 23 | 0.26.0 | `deploy` with your own databases from the env file; a `try` walkthrough in the showcase |
 | 24 | 0.27.0 | Starter v0.18.0: `check:env` stops Vercel and Netlify builds on a missing production variable |
 | 25 | 0.28.0 | `deploy` to Vercel (experimental) |
+| 26 | 0.29.0 | `deploy` to Netlify and Render (experimental) |
 
 ## CLI improvements
 

@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.24.1
+
+- Re-record the showcase after each release (#63).
+- Warn about unset settings before deploying, and stop the DEP0190 warning (#64).
+- Default to Starter `v0.17.1` (#65).
+
 ## 0.24.0
 
 - Default to Starter `v0.17.0` (#61), which adds:

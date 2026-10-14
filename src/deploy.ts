@@ -51,7 +51,10 @@ const deployDocsUrl = "https://starter.clubedge.live/docs/starter/deploy";
  */
 async function readDeployEnv(args: CliArgs, project: Project): Promise<Record<string, string>> {
   const path = args.envFile ? resolve(process.cwd(), args.envFile) : join(project.root, ".env.production");
-  if (!args.envFile && !(await pathExists(path))) return {};
+  if (!(await pathExists(path))) {
+    if (args.envFile) throw new UsageError(`The env file ${args.envFile} does not exist.`);
+    return {};
+  }
   if (!args.envFile) log.info("Using .env.production (pass --env-file for another file).");
   const values = parseEnvFile(await readFile(path, "utf8"));
   const local = databasesFor(project.modules)
@@ -267,8 +270,13 @@ export async function deployProject(args: CliArgs): Promise<void> {
   }
 
   // A database URL the service already has without that database in the project points elsewhere
-  // (an earlier --env-file): keep it, rather than create Railway's and switch the app over.
-  const current = parseVariables((await attempt(() => railway(rw, ["variable", "list", "--service", service, "--json"]))) ?? "");
+  // (an earlier --env-file): keep it. A new service has nothing to list yet; an existing one must
+  // list its variables, or deploy could create Railway's database and switch the app over.
+  const variables = await attempt(() => railway(rw, ["variable", "list", "--service", service, "--json"]));
+  if (variables === null && existing.includes(service)) {
+    throw new Error(`Railway didn't list the variables of the service "${service}", so deploy changed nothing. Run deploy again; if it keeps failing, check \`railway variable list --service ${service}\`.`);
+  }
+  const current = parseVariables(variables ?? "");
   const kept = databasesFor(project.modules, external)
     .filter((database) => current[databaseVariables[database]] && !existing.includes(railwayDatabases[database]))
     .map((database) => databaseVariables[database]);

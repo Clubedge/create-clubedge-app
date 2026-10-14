@@ -4,9 +4,14 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.26.0
 
-- Showcase: try walkthrough on a Railway VM (#73).
-- Use your own databases when the env file has their URLs (#74).
-- Count squash-merged pull requests in the changelog draft (#75).
+- `deploy` uses your own databases when the env file has their URLs (#74). The platform hosts everything as before when it doesn't.
+  - With `DATABASE_URL` or `REDIS_URL` in the env file (Supabase, Neon, Upstash), `deploy` creates no Railway or Fly database for it, sets your URL, and the platform only runs the app. Each URL counts on its own, so only `DATABASE_URL` keeps Redis on the platform.
+  - `deploy` reads `.env.production` from the project's root when there is one and no `--env-file` is given. An `--env-file` that doesn't exist is now a clear error.
+  - URLs to `localhost` (a development env file) are ignored with a warning.
+  - A later run without the env file keeps the database URL the service already has, instead of creating the platform's database and switching the app over. On Railway, `deploy` stops before changing anything if it can't list an existing service's variables. On Fly, an existing `DATABASE_URL` secret skips creating `<app>-db`.
+  - When the app moves from Railway's database to its own, `deploy` notes that the old one is unused; it never deletes it.
+- The showcase records a `try` walkthrough on a free Railway VM (#73).
+- `pnpm release` counts squash-merged pull requests in the changelog draft (#75).
 - Still on Starter `v0.17.1`.
 
 ## 0.25.0

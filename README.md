@@ -320,7 +320,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.23.0 | v0.16.1 | `deploy` moves Railway projects to `.railway/railway.ts` before Railway stops reading `railway.json` |
 | 0.24.0 | v0.17.0 | Starter v0.17.0: Railway configuration as code (`.railway/railway.ts`) instead of `railway.json` |
 | 0.25.0 | v0.17.1 | `deploy` to Fly.io (experimental); weekly Dependabot updates |
-| 0.26.0 | v0.17.1 | Showcase: try walkthrough on a Railway VM; Use your own databases when the env file has their URLs; Count squash-merged pull requests in the changelog draft |
+| 0.26.0 | v0.17.1 | `deploy` uses your own databases (Supabase, Neon, Upstash) when the env file has their URLs, and reads `.env.production` |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

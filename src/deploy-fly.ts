@@ -1,20 +1,21 @@
 // `deploy` for Fly.io (experimental): creates or reuses the app (written to fly.toml), an
-// unmanaged Postgres attached as DATABASE_URL, Upstash Redis with cache redis, sets the secrets,
-// and runs `fly deploy`, which waits for the release command (migrations) and the health checks.
+// unmanaged Postgres attached as DATABASE_URL, Upstash Redis with cache redis (each unless the env
+// file points it elsewhere), sets the secrets, and runs `fly deploy`, which waits for the release
+// command (migrations) and the health checks.
 import { cancel, confirm, isCancel, log, note, outro, spinner } from "@clack/prompts";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   exampleKeys,
+  externalDatabaseUrls,
   flyAppUrl,
   flySecretNames,
   flySecretsInput,
   flyTomlValue,
-  parseEnvFile,
   parseRedisUrl,
   planVariables,
   serviceName,
@@ -60,7 +61,7 @@ async function flyCli(cwd: string): Promise<string> {
   throw new UsageError(`deploy to Fly.io needs Fly's CLI. Install it (${flyInstallUrl}), then run deploy again.`);
 }
 
-export async function deployToFly(args: CliArgs, project: Project, cli: string): Promise<void> {
+export async function deployToFly(args: CliArgs, project: Project, cli: string, envFile: Record<string, string>): Promise<void> {
   const root = project.root;
   const tomlPath = join(root, "fly.toml");
   const toml = await readFile(tomlPath, "utf8").catch(() => "");
@@ -68,18 +69,27 @@ export async function deployToFly(args: CliArgs, project: Project, cli: string):
   const named = flyTomlValue(toml, "app");
   // Fly app names are global: a new app gets a short random suffix.
   const app = named ?? `${serviceName(project.identity.packageName)}-${randomBytes(2).toString("hex")}`;
-  const redis = project.modules.cache === "redis";
   const keys = exampleKeys(await readFile(join(root, ".env.example"), "utf8").catch(() => ""));
-  const envFile = args.envFile ? parseEnvFile(await readFile(resolve(process.cwd(), args.envFile), "utf8")) : {};
+  const external = externalDatabaseUrls(project.modules, envFile);
+  // The databases to create on Fly: the ones the env file doesn't point elsewhere.
+  const postgres = !external.DATABASE_URL;
+  const redis = project.modules.cache === "redis" && !external.REDIS_URL;
+  const elsewhere = Object.keys(external);
+  const hostedLine = [
+    ...(postgres ? [`a Postgres app "${app}-db" (unmanaged: one shared-cpu-1x machine and a 1 GB volume)`] : []),
+    ...(redis ? [`Upstash Redis "${app}-redis"`] : []),
+  ];
   const secret = () => randomBytes(32).toString("hex");
   const url = flyAppUrl(app);
 
   if (args.dryRun) {
-    const preview = planVariables({ modules: project.modules, keys, url, existing: {}, envFile, secret: () => "<generated>", databases: {}, attached: ["DATABASE_URL", ...(redis ? ["REDIS_URL"] : [])] });
+    const preview = planVariables({ modules: project.modules, keys, url, existing: {}, envFile, secret: () => "<generated>", databases: {}, attached: [...(postgres ? ["DATABASE_URL"] : []), ...(redis ? ["REDIS_URL"] : [])] });
     log.message(
       [
         `• Fly app "${app}"${named ? " (from fly.toml)" : ", written to fly.toml"}, at ${url}`,
-        `• Postgres "${app}-db" (unmanaged, one small machine), attached as DATABASE_URL${redis ? `; Upstash Redis "${app}-redis" as REDIS_URL` : ""}`,
+        ...(postgres ? [`• Postgres "${app}-db" (unmanaged, one small machine), attached as DATABASE_URL`] : []),
+        ...(redis ? [`• Upstash Redis "${app}-redis" as REDIS_URL`] : []),
+        ...(elsewhere.length ? [`• ${elsewhere.join(" and ")} from the env file, instead of Fly's databases`] : []),
         `• Secrets: ${Object.keys(preview.set).join(", ")}`,
         ...(preview.unset.length ? [`• Not set: ${preview.unset.join(", ")}`] : []),
         `• fly deploy, with NEXT_PUBLIC_APP_URL as a build argument: migrations, then health checks`,
@@ -93,7 +103,8 @@ export async function deployToFly(args: CliArgs, project: Project, cli: string):
     [
       "This deploys the project to Fly.io, in your Fly account (experimental):",
       "",
-      `• The app "${app}", a Postgres app "${app}-db" (unmanaged: one shared-cpu-1x machine and a 1 GB volume)${redis ? `, and Upstash Redis "${app}-redis"` : ""}.`,
+      `• The app "${app}"${hostedLine.length ? `, ${hostedLine.join(", and ")}` : ""}.`,
+      ...(elsewhere.length ? [`• ${elsewhere.join(" and ")} from the env file: those databases stay where they are, and Fly runs the app.`] : []),
       "• The secrets Fly can't provide come from --env-file; the ones still unset are listed before the build.",
       "• fly deploy builds the Dockerfile, runs the migrations as the release command, and waits for the health checks.",
       "",
@@ -130,12 +141,13 @@ export async function deployToFly(args: CliArgs, project: Project, cli: string):
   const regionArgs = region ? ["--region", region] : [];
   const secrets = new Set(flySecretNames((await attempt(() => fly(flyBin, ["secrets", "list", "--app", app, "--json"], root))) ?? ""));
 
+  // A DATABASE_URL secret already set (Fly's attach, or an earlier env file) is kept as it is.
   const database = `${app}-db`;
-  if (!(await attempt(() => fly(flyBin, ["status", "--app", database], root)))) {
+  if (postgres && !secrets.has("DATABASE_URL") && !(await attempt(() => fly(flyBin, ["status", "--app", database], root)))) {
     progress.message(`Creating Postgres "${database}"`);
     await fly(flyBin, ["postgres", "create", "--name", database, "--org", "personal", ...regionArgs, "--initial-cluster-size", "1", "--vm-size", "shared-cpu-1x", "--volume-size", "1", "--autostart"], root);
   }
-  if (!secrets.has("DATABASE_URL")) {
+  if (postgres && !secrets.has("DATABASE_URL")) {
     progress.message("Attaching Postgres (DATABASE_URL)");
     await fly(flyBin, ["postgres", "attach", database, "--app", app, "--yes"], root);
   }
@@ -155,7 +167,7 @@ export async function deployToFly(args: CliArgs, project: Project, cli: string):
     envFile,
     secret,
     databases: redisUrl ? { REDIS_URL: redisUrl } : {},
-    attached: ["DATABASE_URL", ...(redis && !redisUrl && secrets.has("REDIS_URL") ? ["REDIS_URL"] : [])],
+    attached: [...(postgres ? ["DATABASE_URL"] : []), ...(redis && !redisUrl && secrets.has("REDIS_URL") ? ["REDIS_URL"] : [])],
   });
   // The image sets NODE_ENV and fly.toml the port: the rest are secrets, staged for the deploy.
   const { NODE_ENV: _node, PORT: _port, ...values } = plan.set;

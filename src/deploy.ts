@@ -1,6 +1,7 @@
 // `deploy`: a guided first deploy to Railway, with Railway's own CLI. It creates (or reuses) the
-// project, its databases, the app's service and domain, sets the production variables, and runs
-// `railway up`; Railway then builds the image, runs the migrations, and checks /api/health.
+// project, the databases the env file doesn't point elsewhere, the app's service and domain, sets
+// the production variables, and runs `railway up`; Railway then builds the image, runs the
+// migrations, and checks /api/health.
 import { cancel, confirm, isCancel, log, note, outro, spinner } from "@clack/prompts";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -12,10 +13,13 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   appPort,
+  databaseVariables,
   databasesFor,
   deploymentStatus,
   exampleKeys,
+  externalDatabaseUrls,
   finalStatuses,
+  isLocalUrl,
   meetsMinimumCli,
   minimumRailwayCli,
   parseDeploymentId,
@@ -27,10 +31,11 @@ import {
   railwayDatabases,
   railwayIacPath,
   railwayIacSource,
+  railwayReferences,
   serviceName,
   serviceNames,
 } from "./core/deploy.js";
-import { readProject } from "./core/project.js";
+import { readProject, type Project } from "./core/project.js";
 import { deployToFly } from "./deploy-fly.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
@@ -39,6 +44,24 @@ import { run, spawnCommand } from "./utils/process.js";
 
 const railwayTermsUrl = "https://railway.com/legal/terms";
 const deployDocsUrl = "https://starter.clubedge.live/docs/starter/deploy";
+
+/**
+ * The production env file: --env-file, else the project's .env.production when there is one. Its
+ * values go on top of what the platform provides; its database URLs replace the platform's databases.
+ */
+async function readDeployEnv(args: CliArgs, project: Project): Promise<Record<string, string>> {
+  const path = args.envFile ? resolve(process.cwd(), args.envFile) : join(project.root, ".env.production");
+  if (!args.envFile && !(await pathExists(path))) return {};
+  if (!args.envFile) log.info("Using .env.production (pass --env-file for another file).");
+  const values = parseEnvFile(await readFile(path, "utf8"));
+  const local = databasesFor(project.modules)
+    .map((database) => databaseVariables[database])
+    .filter((key) => values[key] && isLocalUrl(values[key]!));
+  if (local.length) {
+    log.warn(`${local.join(" and ")} in the env file point at this machine, which the deployed app can't reach: ignored, so deploy creates the platform's own.`);
+  }
+  return values;
+}
 
 /** A Railway CLI to run, and the executable Railway's TypeScript SDK runs to check its version. */
 interface RailwayCli {
@@ -155,13 +178,15 @@ async function railway(cli: RailwayCli, args: string[], options: RunOptions = {}
 
 const attempt = async (run: () => Promise<string>) => run().catch(() => null);
 
-async function agree(args: CliArgs, service: string, databases: string[]): Promise<boolean> {
+async function agree(args: CliArgs, service: string, databases: Array<keyof typeof railwayDatabases>, external: string[]): Promise<boolean> {
+  const hosted = databases.map((db) => railwayDatabases[db]).join(" and ");
   note(
     [
       "This deploys the project to Railway, in your Railway account:",
       "",
-      `• A project with ${databases.map((db) => railwayDatabases[db as keyof typeof railwayDatabases]).join(" and ")}, and a service "${service}" with a public *.up.railway.app domain.`,
-      "• The production variables Railway can provide; your provider keys come from --env-file.",
+      `• A project${hosted ? ` with ${hosted}` : ""}, and a service "${service}" with a public *.up.railway.app domain.`,
+      ...(external.length ? [`• ${external.join(" and ")} from the env file: those databases stay where they are, and Railway runs the app.`] : []),
+      "• The production variables Railway can provide; your provider keys come from the env file.",
       "• Railway builds the Dockerfile, runs the migrations before the release, and checks /api/health; the first build takes several minutes.",
       `• The service's settings go in ${railwayIacPath}, which replaces railway.json; the railway package is added to read it.`,
       "",
@@ -179,7 +204,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
-  if (platform === "fly") return await deployToFly(args, project, cli);
+  if (platform === "fly") return await deployToFly(args, project, cli, await readDeployEnv(args, project));
   if (platform !== "railway") {
     throw new UsageError(
       `deploy sets up Railway and Fly.io for now, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly), or follow ${deployDocsUrl} for ${platform}.`,
@@ -187,16 +212,18 @@ export async function deployProject(args: CliArgs): Promise<void> {
   }
 
   const service = serviceName(project.identity.packageName);
-  const databases = databasesFor(project.modules);
   const keys = exampleKeys(await readFile(join(project.root, ".env.example"), "utf8").catch(() => ""));
-  const envFile = args.envFile ? parseEnvFile(await readFile(resolve(process.cwd(), args.envFile), "utf8")) : {};
+  const envFile = await readDeployEnv(args, project);
+  const external = Object.keys(externalDatabaseUrls(project.modules, envFile));
+  const databases = databasesFor(project.modules, external);
   const secret = () => randomBytes(32).toString("hex");
 
   if (args.dryRun) {
     const preview = planVariables({ modules: project.modules, keys, url: "https://<service>.up.railway.app", existing: {}, envFile, secret: () => "<generated>" });
     log.message(
       [
-        `• Railway project "${service}" with ${databases.join(" and ")}, and the service "${service}"`,
+        `• Railway project "${service}"${databases.length ? ` with ${databases.map((db) => railwayDatabases[db]).join(" and ")}` : ""}, and the service "${service}"`,
+        ...(external.length ? [`• ${external.join(" and ")} from the env file, instead of Railway's databases`] : []),
         `• A *.up.railway.app domain for port ${appPort}`,
         `• ${railwayIacPath} (written if missing, with Railway's SDK added), applied with railway config apply`,
         `• Variables: ${Object.keys(preview.set).join(", ")}`,
@@ -208,7 +235,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
     return;
   }
 
-  if (!(await agree(args, service, databases))) {
+  if (!(await agree(args, service, databases, external))) {
     cancel("Nothing was deployed.");
     return;
   }
@@ -239,7 +266,14 @@ export async function deployProject(args: CliArgs): Promise<void> {
     // Unknown status format: create what is missing, as for a new project.
   }
 
-  for (const database of databases) {
+  // A database URL the service already has without that database in the project points elsewhere
+  // (an earlier --env-file): keep it, rather than create Railway's and switch the app over.
+  const current = parseVariables((await attempt(() => railway(rw, ["variable", "list", "--service", service, "--json"]))) ?? "");
+  const kept = databasesFor(project.modules, external)
+    .filter((database) => current[databaseVariables[database]] && !existing.includes(railwayDatabases[database]))
+    .map((database) => databaseVariables[database]);
+  const hosted = databasesFor(project.modules, [...external, ...kept]);
+  for (const database of hosted) {
     if (existing.includes(railwayDatabases[database])) continue;
     progress.message(`Adding ${railwayDatabases[database]}`);
     await railway(rw, ["add", "--database", database]);
@@ -258,8 +292,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const url = `https://${domain}`;
 
   progress.message("Setting the production variables");
-  const current = parseVariables((await attempt(() => railway(rw, ["variable", "list", "--service", service, "--json"]))) ?? "");
-  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret });
+  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: railwayReferences(hosted) });
   for (const [key, value] of Object.entries(plan.set)) {
     if (current[key] === value) continue;
     await railway(rw, ["variable", "set", key, "--stdin", "--service", service, "--skip-deploys"], { input: value });
@@ -290,6 +323,12 @@ export async function deployProject(args: CliArgs): Promise<void> {
   progress.message(`Applying ${railwayIacPath}`);
   await railway(rw, ["config", "apply", "--yes"]);
   progress.stop(`Railway is ready: ${url}`);
+  const unused = databasesFor(project.modules)
+    .filter((database) => !hosted.includes(database) && existing.includes(railwayDatabases[database]))
+    .map((database) => railwayDatabases[database]);
+  if (unused.length) {
+    log.info(`The app no longer uses Railway's ${unused.join(" and ")}: its URL comes from elsewhere now. Delete it in the dashboard (railway open) if you don't need its data.`);
+  }
   if (changed.length) {
     log.info(
       `Commit ${changed.join(", ")}: Railway reads the service's settings from ${railwayIacPath} now. railway.json is no longer needed (Railway stops reading it on 2026-12-01).`,

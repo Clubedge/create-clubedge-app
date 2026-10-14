@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import {
   databasesFor,
+  externalDatabaseUrls,
+  isLocalUrl,
   deploymentStatus,
   meetsMinimumCli,
   exampleKeys,
@@ -30,6 +32,27 @@ describe("deploy plan", () => {
   it("adds Redis only with the redis cache", () => {
     expect(databasesFor({ cache: "redis" })).toEqual(["postgres", "redis"]);
     expect(databasesFor({ cache: "memory" })).toEqual(["postgres"]);
+  });
+
+  it("skips the databases whose URL comes from elsewhere", () => {
+    expect(databasesFor({ cache: "redis" }, ["DATABASE_URL"])).toEqual(["redis"]);
+    expect(databasesFor({ cache: "redis" }, ["DATABASE_URL", "REDIS_URL"])).toEqual([]);
+  });
+
+  it("tells local URLs from hosted ones", () => {
+    expect(isLocalUrl("postgresql://postgres:postgres@localhost:5432/app")).toBe(true);
+    expect(isLocalUrl("redis://127.0.0.1:6379")).toBe(true);
+    expect(isLocalUrl("postgres://u:p@[::1]/app")).toBe(true);
+    expect(isLocalUrl("postgres://u:p@host.docker.internal/app")).toBe(true);
+    expect(isLocalUrl("postgresql://postgres.abc:pw@aws-0-eu-west-1.pooler.supabase.com:6543/postgres")).toBe(false);
+    expect(isLocalUrl("rediss://default:pw@eu1-x.upstash.io:6379")).toBe(false);
+  });
+
+  it("takes hosted database URLs from the env file, for the databases the project uses", () => {
+    const envFile = { DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres", REDIS_URL: "rediss://default:pw@x.upstash.io:6379" };
+    expect(externalDatabaseUrls({ cache: "redis" }, envFile)).toEqual(envFile);
+    expect(externalDatabaseUrls({ cache: "memory" }, envFile)).toEqual({ DATABASE_URL: envFile.DATABASE_URL });
+    expect(externalDatabaseUrls({ cache: "redis" }, { DATABASE_URL: "postgresql://localhost/dev", REDIS_URL: "" })).toEqual({});
   });
 
   it("reads the example's variable names once each", () => {
@@ -85,7 +108,7 @@ describe("deploy plan", () => {
     expect(plan.unset).toEqual(["STRIPE_SECRET_KEY"]);
   });
 
-  it("takes --env-file values, but never over the database references", () => {
+  it("takes --env-file values, but not a local database URL", () => {
     const plan = planVariables({
       ...base,
       envFile: { STRIPE_SECRET_KEY: "sk_live_x", DATABASE_URL: "postgresql://localhost/dev", SMTP_URL: "" },
@@ -93,6 +116,22 @@ describe("deploy plan", () => {
     expect(plan.set.STRIPE_SECRET_KEY).toBe("sk_live_x");
     expect(plan.set.DATABASE_URL).toBe("${{Postgres.DATABASE_URL}}");
     expect(plan.unset).toEqual(["SMTP_URL"]);
+  });
+
+  it("uses hosted database URLs from --env-file instead of Railway's databases", () => {
+    const plan = planVariables({
+      ...base,
+      envFile: { DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres", REDIS_URL: "rediss://default:pw@x.upstash.io:6379" },
+    });
+    expect(plan.set).toMatchObject({ DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres", REDIS_URL: "rediss://default:pw@x.upstash.io:6379" });
+    const mixed = planVariables({ ...base, envFile: { DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres" } });
+    expect(mixed.set).toMatchObject({ DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres", REDIS_URL: "${{Redis.REDIS_URL}}" });
+  });
+
+  it("leaves a database URL the service keeps out of the plan", () => {
+    const plan = planVariables({ ...base, existing: { DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres" }, databases: { REDIS_URL: "${{Redis.REDIS_URL}}" } });
+    expect(plan.set).not.toHaveProperty("DATABASE_URL");
+    expect(plan.unset).not.toContain("DATABASE_URL");
   });
 
   it("needs no secret without Better Auth", () => {
@@ -209,6 +248,20 @@ describe("Fly.io", () => {
     expect(plan.set).not.toHaveProperty("DATABASE_URL");
     expect(plan.set).toMatchObject({ REDIS_URL: "redis://upstash", NEXT_PUBLIC_APP_URL: "https://my-app.fly.dev", BETTER_AUTH_SECRET: "s3cret" });
     expect(plan.unset).toEqual(["SMTP_URL"]);
+  });
+
+  it("plans the secrets with a hosted DATABASE_URL from the env file, and nothing attached", () => {
+    const plan = planVariables({
+      modules: { auth: "better-auth", cache: "redis" },
+      keys: ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"],
+      url: "https://my-app.fly.dev",
+      existing: {},
+      envFile: { DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres" },
+      secret: () => "s3cret",
+      databases: { REDIS_URL: "redis://upstash" },
+    });
+    expect(plan.set).toMatchObject({ DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres", REDIS_URL: "redis://upstash" });
+    expect(plan.unset).toEqual([]);
   });
 });
 

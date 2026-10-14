@@ -13,9 +13,43 @@ export function serviceName(packageName: string): string {
   return name || "web";
 }
 
-/** The databases a project needs on Railway: Postgres always (Drizzle), Redis with the redis cache. */
-export function databasesFor(modules: Record<string, string>): Array<keyof typeof railwayDatabases> {
-  return modules.cache === "redis" ? ["postgres", "redis"] : ["postgres"];
+/** The variable each database's URL goes in. */
+export const databaseVariables = { postgres: "DATABASE_URL", redis: "REDIS_URL" } as const;
+
+/** A URL to this machine: from a development env file, unreachable from the deployed app. */
+export function isLocalUrl(value: string): boolean {
+  const host = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]*@)?(\[[^\]]*\]|[^:/?#]*)/i.exec(value.trim())?.[1]?.toLowerCase() ?? "";
+  return ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "host.docker.internal"].includes(host) || host.endsWith(".localhost");
+}
+
+/**
+ * The database URLs an env file provides, for databases hosted elsewhere (Supabase, Neon, Upstash):
+ * deploy uses them instead of creating the platform's own. Only the databases the project uses
+ * count, and not empty or local URLs.
+ */
+export function externalDatabaseUrls(modules: Record<string, string>, envFile: Record<string, string>): Record<string, string> {
+  const urls: Record<string, string> = {};
+  for (const database of databasesFor(modules)) {
+    const key = databaseVariables[database];
+    const value = envFile[key];
+    if (value && !isLocalUrl(value)) urls[key] = value;
+  }
+  return urls;
+}
+
+/**
+ * The databases a project needs from the platform: Postgres always (Drizzle), Redis with the redis
+ * cache, except the ones whose URL comes from elsewhere (`external`: variable names).
+ */
+export function databasesFor(modules: Record<string, string>, external: Iterable<string> = []): Array<keyof typeof railwayDatabases> {
+  const skip = new Set(external);
+  const needed: Array<keyof typeof railwayDatabases> = modules.cache === "redis" ? ["postgres", "redis"] : ["postgres"];
+  return needed.filter((database) => !skip.has(databaseVariables[database]));
+}
+
+/** References to Railway's databases, for the service's variables. */
+export function railwayReferences(databases: Array<keyof typeof railwayDatabases>): Record<string, string> {
+  return Object.fromEntries(databases.map((database) => [databaseVariables[database], `\${{${railwayDatabases[database]}.${databaseVariables[database]}}}`]));
 }
 
 /** The variable names a project's .env.example lists, in order. */
@@ -49,11 +83,11 @@ export interface VariablePlan {
 }
 
 /**
- * The service's production variables. The CLI provides what it can: references to Railway's
- * databases, a generated Better Auth secret (unless the service already has one), the public URL,
- * and the port. Values from --env-file come next and win over those, except the database
- * references, which must point at Railway's databases. Everything else the example lists is
- * reported as unset; values the service already has count as set.
+ * The service's production variables. The CLI provides what it can: the database URLs (references
+ * to Railway's databases by default), a generated Better Auth secret (unless the service already
+ * has one), the public URL, and the port. Values from --env-file come next and win over those;
+ * their database URLs replace the platform's, except local ones (a development env file).
+ * Everything else the example lists is reported as unset; values the service already has count as set.
  */
 export function planVariables(input: {
   modules: Record<string, string>;
@@ -62,27 +96,26 @@ export function planVariables(input: {
   existing: Record<string, string>;
   envFile: Record<string, string>;
   secret: () => string;
-  /** The database variables' values; by default references to Railway's Postgres and Redis. */
+  /** The database variables' values; by default references to the Railway databases the env file doesn't replace. */
   databases?: Record<string, string>;
   /** Variables the platform sets itself (Fly's `postgres attach` sets DATABASE_URL). */
   attached?: string[];
 }): VariablePlan {
   const { modules, keys, url, envFile, secret, attached = [] } = input;
   const existing = { ...input.existing, ...Object.fromEntries(attached.map((key) => [key, "(attached)"])) };
-  const reference = (database: string, variable: string) => `\${{${database}.${variable}}}`;
-  const databases = input.databases ?? {
-    DATABASE_URL: reference(railwayDatabases.postgres, "DATABASE_URL"),
-    ...(modules.cache === "redis" ? { REDIS_URL: reference(railwayDatabases.redis, "REDIS_URL") } : {}),
-  };
+  const external = externalDatabaseUrls(modules, envFile);
+  const databases = input.databases ?? railwayReferences(databasesFor(modules, Object.keys(external)));
   const provided: Record<string, string> = { NODE_ENV: "production", PORT: String(appPort), ...databases };
   // The public URL under both names: TanStack Start reads APP_URL, Next.js NEXT_PUBLIC_APP_URL.
   const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
   if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
 
+  const databaseKeys: string[] = Object.values(databaseVariables);
   for (const [key, value] of Object.entries(envFile)) {
-    if (key === "DATABASE_URL" || key === "REDIS_URL" || value === "") continue;
+    if (value === "" || databaseKeys.includes(key)) continue;
     set[key] = value;
   }
+  Object.assign(set, external);
   const unset = keys.filter((key) => set[key] === undefined && !existing[key]);
   return { set, unset };
 }

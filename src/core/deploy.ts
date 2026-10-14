@@ -113,6 +113,8 @@ export function planVariables(input: {
   const databaseKeys: string[] = Object.values(databaseVariables);
   for (const [key, value] of Object.entries(envFile)) {
     if (value === "" || databaseKeys.includes(key)) continue;
+    // A development env file's localhost URL would send emailed links to this machine.
+    if (appUrlKeys.includes(key) && isLocalUrl(value)) continue;
     set[key] = value;
   }
   Object.assign(set, external);
@@ -199,9 +201,9 @@ export function railwayCliVersion(output: string): [number, number, number] | nu
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
-export function meetsMinimumCli(version: readonly number[]): boolean {
+export function meetsMinimumCli(version: readonly number[], minimum: readonly number[] = minimumRailwayCli): boolean {
   for (let i = 0; i < 3; i++) {
-    if (version[i]! !== minimumRailwayCli[i]) return version[i]! > minimumRailwayCli[i]!;
+    if (version[i]! !== minimum[i]) return version[i]! > minimum[i]!;
   }
   return true;
 }
@@ -280,4 +282,105 @@ export function flySecretsInput(values: Record<string, string>): string {
   return Object.entries(values)
     .map(([key, value]) => `${key}=${value}`)
     .join("\n");
+}
+
+// Vercel: the platform only runs the app. Databases, Redis, storage, and email come from the env file.
+
+/** vercel@50.5.1 added `vercel api`, which deploy uses to create the project and set its variables. */
+export const minimumVercelCli = [50, 5, 1] as const;
+
+/** Where Vercel builds: the app's folder, with the whole workspace uploaded. */
+export const vercelRootDirectory = "apps/web";
+
+/** The variables that hold the public URL: readable on Vercel ("plain"), so a later deploy can compare them. */
+export const appUrlKeys = ["APP_URL", "NEXT_PUBLIC_APP_URL"];
+
+export interface VercelProject {
+  id: string;
+  name: string;
+  rootDirectory: string | null;
+}
+
+/** A project in `vercel api /v9/projects/:name` output, or null. */
+export function parseVercelProject(output: string): VercelProject | null {
+  try {
+    const value = JSON.parse(output) as { id?: unknown; name?: unknown; rootDirectory?: unknown };
+    if (typeof value.id !== "string" || typeof value.name !== "string") return null;
+    return { id: value.id, name: value.name, rootDirectory: typeof value.rootDirectory === "string" ? value.rootDirectory : null };
+  } catch {
+    return null;
+  }
+}
+
+/** The project's production variables from `vercel api /v10/projects/:id/env`: plain values as they are, the rest as "(set)". */
+export function parseVercelEnv(output: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  try {
+    const { envs } = JSON.parse(output) as { envs?: Array<{ key?: unknown; value?: unknown; type?: unknown; target?: unknown }> };
+    for (const env of envs ?? []) {
+      const targets = Array.isArray(env.target) ? env.target : [env.target];
+      if (typeof env.key !== "string" || !targets.includes("production")) continue;
+      values[env.key] = env.type === "plain" && typeof env.value === "string" ? env.value : "(set)";
+    }
+  } catch {
+    // Unknown output: every variable counts as unset, and the upsert sets them again.
+  }
+  return values;
+}
+
+/** The body of `POST /v10/projects/:id/env?upsert=true`: production variables, encrypted except the public URL. */
+export function vercelEnvBody(values: Record<string, string>): Array<{ key: string; value: string; type: string; target: string[] }> {
+  return Object.entries(values).map(([key, value]) => ({
+    key,
+    value,
+    type: appUrlKeys.includes(key) ? "plain" : "encrypted",
+    target: ["production"],
+  }));
+}
+
+/**
+ * The public URL Vercel gave a production deployment, from `vercel api /v13/deployments/:url`: the
+ * shortest *.vercel.app alias that isn't the deployment's own URL or a Git branch's.
+ */
+export function vercelProductionUrl(output: string, deploymentUrl: string): string | null {
+  const own = deploymentUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
+  try {
+    const { alias } = JSON.parse(output) as { alias?: unknown };
+    const names = (Array.isArray(alias) ? alias : [])
+      .filter((name): name is string => typeof name === "string")
+      .map((name) => name.toLowerCase())
+      .filter((name) => name.endsWith(".vercel.app") && name !== own && !name.includes("-git-"))
+      .sort((a, b) => a.length - b.length);
+    return names[0] ? `https://${names[0]}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The deployment URL `vercel deploy` prints on stdout (its last https URL). */
+export function parseVercelDeploymentUrl(output: string): string | null {
+  const urls = output.match(/https:\/\/[a-z0-9.-]+\.vercel\.app\b/gi);
+  return urls?.at(-1)?.toLowerCase() ?? null;
+}
+
+/**
+ * .vercelignore for a project without one: the CLI uploads everything but a short list, which
+ * keeps .env.local out but not .env or .env.production. Uploading what Git would commit keeps
+ * secrets and build output out, as `try` does.
+ */
+export function vercelIgnoreSource(gitignore: string): string {
+  const lines = gitignore.split(/\r?\n/).map((line) => line.trimEnd());
+  const required = [".env*", "!.env.example"].filter((line) => !lines.includes(line));
+  return [
+    "# What `vercel deploy` leaves out: what Git ignores, so secrets in .env files and build output",
+    "# stay on this machine. Vercel reads its variables from the project's settings.",
+    ...lines.filter((line, index) => line || index < lines.length - 1),
+    ...required,
+    "",
+  ].join("\n");
+}
+
+/** Whether a .vercelignore keeps .env files out of the upload. */
+export function ignoresEnvFiles(vercelignore: string): boolean {
+  return vercelignore.split(/\r?\n/).some((line) => /^\/?(\*\*\/)?\.env(\*|\.\*)?\/?$/.test(line.trim()));
 }

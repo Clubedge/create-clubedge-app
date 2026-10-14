@@ -21,6 +21,14 @@ import {
   railwayIacSource,
   serviceName,
   serviceNames,
+  ignoresEnvFiles,
+  minimumVercelCli,
+  parseVercelDeploymentUrl,
+  parseVercelEnv,
+  parseVercelProject,
+  vercelEnvBody,
+  vercelIgnoreSource,
+  vercelProductionUrl,
 } from "../src/core/deploy.js";
 
 describe("deploy plan", () => {
@@ -262,6 +270,76 @@ describe("Fly.io", () => {
     });
     expect(plan.set).toMatchObject({ DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres", REDIS_URL: "redis://upstash" });
     expect(plan.unset).toEqual([]);
+  });
+});
+
+describe("Vercel", () => {
+  it("needs a CLI with vercel api", () => {
+    expect(meetsMinimumCli([64, 0, 2], minimumVercelCli)).toBe(true);
+    expect(meetsMinimumCli([50, 5, 1], minimumVercelCli)).toBe(true);
+    expect(meetsMinimumCli([50, 4, 9], minimumVercelCli)).toBe(false);
+    expect(railwayCliVersion("Vercel CLI 64.0.2")).toEqual([64, 0, 2]);
+  });
+
+  it("reads the project and its production variables", () => {
+    expect(parseVercelProject('{"id":"prj_1","name":"my-app","rootDirectory":"apps/web"}')).toEqual({
+      id: "prj_1",
+      name: "my-app",
+      rootDirectory: "apps/web",
+    });
+    expect(parseVercelProject('{"id":"prj_1","name":"my-app","rootDirectory":null}')?.rootDirectory).toBeNull();
+    expect(parseVercelProject('{"error":{"code":"not_found"}}')).toBeNull();
+    const envs = JSON.stringify({
+      envs: [
+        { key: "NEXT_PUBLIC_APP_URL", value: "https://my-app.vercel.app", type: "plain", target: ["production"] },
+        { key: "BETTER_AUTH_SECRET", value: "eyJ...", type: "encrypted", target: ["production", "preview"] },
+        { key: "PREVIEW_ONLY", value: "x", type: "plain", target: ["preview"] },
+      ],
+    });
+    expect(parseVercelEnv(envs)).toEqual({ NEXT_PUBLIC_APP_URL: "https://my-app.vercel.app", BETTER_AUTH_SECRET: "(set)" });
+    expect(parseVercelEnv("not json")).toEqual({});
+  });
+
+  it("sets production variables, encrypted except the public URL", () => {
+    expect(vercelEnvBody({ APP_URL: "https://a.vercel.app", DATABASE_URL: "postgres://x" })).toEqual([
+      { key: "APP_URL", value: "https://a.vercel.app", type: "plain", target: ["production"] },
+      { key: "DATABASE_URL", value: "postgres://x", type: "encrypted", target: ["production"] },
+    ]);
+  });
+
+  it("finds the deployment URL and the production alias Vercel assigned", () => {
+    expect(parseVercelDeploymentUrl("Inspect: https://vercel.com/x\nhttps://my-app-abc123-me.vercel.app\n")).toBe(
+      "https://my-app-abc123-me.vercel.app",
+    );
+    const deployment = JSON.stringify({
+      alias: ["my-app-me.vercel.app", "my-app-git-main-me.vercel.app", "my-app-five.vercel.app", "my-app-abc123-me.vercel.app"],
+    });
+    expect(vercelProductionUrl(deployment, "https://my-app-abc123-me.vercel.app")).toBe("https://my-app-me.vercel.app");
+    expect(vercelProductionUrl('{"alias":[]}', "https://x.vercel.app")).toBeNull();
+  });
+
+  it("writes a .vercelignore that keeps .env files out of the upload", () => {
+    const ignore = vercelIgnoreSource("node_modules/\n.env*\n!.env.example\n");
+    expect(ignore).toContain("node_modules/");
+    expect(ignore.match(/^\.env\*$/gm)).toHaveLength(1);
+    expect(ignoresEnvFiles(ignore)).toBe(true);
+    expect(vercelIgnoreSource("node_modules/\n")).toContain(".env*\n!.env.example\n");
+    expect(ignoresEnvFiles("node_modules\n")).toBe(false);
+    expect(ignoresEnvFiles("/.env.*\n")).toBe(true);
+  });
+
+  it("never takes a localhost public URL from the env file", () => {
+    const plan = planVariables({
+      modules: { auth: "none", cache: "memory" },
+      keys: [],
+      url: "https://my-app.vercel.app",
+      existing: {},
+      envFile: { NEXT_PUBLIC_APP_URL: "http://localhost:3000", APP_URL: "https://app.example.com" },
+      secret: () => "s",
+      databases: {},
+    });
+    expect(plan.set.NEXT_PUBLIC_APP_URL).toBe("https://my-app.vercel.app");
+    expect(plan.set.APP_URL).toBe("https://app.example.com");
   });
 });
 

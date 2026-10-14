@@ -27,6 +27,16 @@ import {
   parseVercelEnv,
   parseVercelProject,
   vercelEnvBody,
+  netlifyEnvFile,
+  netlifySiteName,
+  parseNetlifyAccounts,
+  parseNetlifyDeploy,
+  parseNetlifySite,
+  parseRenderEnv,
+  parseRenderOwners,
+  parseRenderService,
+  renderRepoUrl,
+  renderServiceBody,
   vercelIgnoreSource,
   vercelProductionUrl,
 } from "../src/core/deploy.js";
@@ -340,6 +350,77 @@ describe("Vercel", () => {
     });
     expect(plan.set.NEXT_PUBLIC_APP_URL).toBe("https://my-app.vercel.app");
     expect(plan.set.APP_URL).toBe("https://app.example.com");
+  });
+});
+
+describe("Netlify", () => {
+  it("names the site from the package", () => {
+    expect(netlifySiteName("my_App")).toBe("my-app");
+    expect(netlifySiteName("x".repeat(70))).toHaveLength(63);
+    expect(netlifySiteName("---")).toBe("web");
+  });
+
+  it("reads the site, its URL and base directory, and the teams", () => {
+    expect(parseNetlifySite('{"id":"s1","name":"my-app","ssl_url":"https://my-app.netlify.app/","build_settings":{"base":"apps/web"}}')).toEqual({
+      id: "s1",
+      name: "my-app",
+      url: "https://my-app.netlify.app",
+      base: "apps/web",
+    });
+    expect(parseNetlifySite('{"id":"s1","name":"my-app"}')).toMatchObject({ url: "https://my-app.netlify.app", base: null });
+    expect(parseNetlifySite('{"code":404,"message":"Not Found"}')).toBeNull();
+    expect(parseNetlifyAccounts('[{"slug":"me"},{"slug":"team"}]')).toEqual(["me", "team"]);
+    expect(parseNetlifyAccounts("Not logged in")).toEqual([]);
+  });
+
+  it("writes an env file Netlify imports as it is", () => {
+    expect(netlifyEnvFile({ DATABASE_URL: "postgresql://u:p@h/db?sslmode=require&x=1", EMAIL_FROM: "It's me <a@b.c>" })).toBe(
+      "DATABASE_URL='postgresql://u:p@h/db?sslmode=require&x=1'\nEMAIL_FROM=\"It's me <a@b.c>\"\n",
+    );
+    expect(() => netlifyEnvFile({ KEY: "a\nb" })).toThrow(/line break/);
+  });
+
+  it("finds the URL in netlify deploy --json output after the build log", () => {
+    const output = 'Building {site}\n{\n  "site_id": "s1",\n  "deploy_url": "https://abc--my-app.netlify.app",\n  "url": "https://my-app.netlify.app"\n}\n';
+    expect(parseNetlifyDeploy(output)).toBe("https://my-app.netlify.app");
+    expect(parseNetlifyDeploy("no json")).toBeNull();
+  });
+});
+
+describe("Render", () => {
+  it("builds from GitHub, GitLab, or Bitbucket remotes", () => {
+    expect(renderRepoUrl("git@github.com:me/my-app.git")).toBe("https://github.com/me/my-app");
+    expect(renderRepoUrl("https://github.com/me/my-app.git\n")).toBe("https://github.com/me/my-app");
+    expect(renderRepoUrl("https://token@gitlab.com/group/sub/app")).toBe("https://gitlab.com/group/sub/app");
+    expect(renderRepoUrl("ssh://git@bitbucket.org/me/app.git")).toBe("https://bitbucket.org/me/app");
+    expect(renderRepoUrl("https://example.com/me/app.git")).toBeNull();
+    expect(renderRepoUrl("")).toBeNull();
+  });
+
+  it("creates a Docker web service that migrates before each release", () => {
+    const body = renderServiceBody({ name: "my-app", ownerId: "tea_1", repo: "https://github.com/me/my-app", branch: "main", values: { DATABASE_URL: "postgres://x" } });
+    expect(body).toMatchObject({
+      type: "web_service",
+      name: "my-app",
+      ownerId: "tea_1",
+      repo: "https://github.com/me/my-app",
+      branch: "main",
+      serviceDetails: { runtime: "docker", plan: "starter", healthCheckPath: "/api/health", preDeployCommand: "node /app/migrate.mjs" },
+      envVars: [{ key: "DATABASE_URL", value: "postgres://x" }],
+    });
+  });
+
+  it("reads services, workspaces, and variables from Render's API", () => {
+    const list = [
+      { service: { id: "srv-2", name: "my-app-old", serviceDetails: { url: "https://my-app-old.onrender.com" } } },
+      { service: { id: "srv-1", name: "my-app", serviceDetails: { url: "https://my-app-x1.onrender.com/" } } },
+    ];
+    expect(parseRenderService(list, "my-app")).toEqual({ id: "srv-1", name: "my-app", url: "https://my-app-x1.onrender.com" });
+    expect(parseRenderService([], "my-app")).toBeNull();
+    expect(parseRenderService({ service: { id: "srv-3", name: "new", serviceDetails: {} } })).toEqual({ id: "srv-3", name: "new", url: null });
+    expect(parseRenderOwners([{ owner: { id: "tea_1", name: "Me" } }, { cursor: "x" }])).toEqual([{ id: "tea_1", name: "Me" }]);
+    expect(parseRenderEnv([{ envVar: { key: "BETTER_AUTH_SECRET", value: "s" } }, { envVar: { key: "X" } }])).toEqual({ BETTER_AUTH_SECRET: "s", X: "(set)" });
+    expect(parseRenderEnv(null)).toEqual({});
   });
 });
 

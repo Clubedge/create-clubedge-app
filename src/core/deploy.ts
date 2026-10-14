@@ -62,15 +62,19 @@ export function planVariables(input: {
   existing: Record<string, string>;
   envFile: Record<string, string>;
   secret: () => string;
+  /** The database variables' values; by default references to Railway's Postgres and Redis. */
+  databases?: Record<string, string>;
+  /** Variables the platform sets itself (Fly's `postgres attach` sets DATABASE_URL). */
+  attached?: string[];
 }): VariablePlan {
-  const { modules, keys, url, existing, envFile, secret } = input;
+  const { modules, keys, url, envFile, secret, attached = [] } = input;
+  const existing = { ...input.existing, ...Object.fromEntries(attached.map((key) => [key, "(attached)"])) };
   const reference = (database: string, variable: string) => `\${{${database}.${variable}}}`;
-  const provided: Record<string, string> = {
-    NODE_ENV: "production",
-    PORT: String(appPort),
+  const databases = input.databases ?? {
     DATABASE_URL: reference(railwayDatabases.postgres, "DATABASE_URL"),
     ...(modules.cache === "redis" ? { REDIS_URL: reference(railwayDatabases.redis, "REDIS_URL") } : {}),
   };
+  const provided: Record<string, string> = { NODE_ENV: "production", PORT: String(appPort), ...databases };
   // The public URL under both names: TanStack Start reads APP_URL, Next.js NEXT_PUBLIC_APP_URL.
   const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
   if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
@@ -200,4 +204,47 @@ export default defineRailway(() => {
   });
 });
 `;
+}
+
+/* ------------------------------------ Fly.io ------------------------------------ */
+
+/** The public URL Fly gives an app. */
+export const flyAppUrl = (app: string) => `https://${app}.fly.dev`;
+
+/** A top-level `key = "value"` in fly.toml, which `fly launch` writes (app, primary_region). */
+export function flyTomlValue(toml: string, key: string): string | null {
+  for (const line of toml.split(/\r?\n/)) {
+    if (/^\s*\[/.test(line)) return null; // top-level keys come before the first table
+    const match = new RegExp(`^\\s*${key}\\s*=\\s*["']([^"']+)["']`).exec(line);
+    if (match) return match[1]!;
+  }
+  return null;
+}
+
+/** The Redis URL in `fly redis create` or `fly redis status` output. */
+export function parseRedisUrl(output: string): string | null {
+  return /\b(rediss?:\/\/[^\s"'`]+)/.exec(output)?.[1] ?? null;
+}
+
+/** The secret names in `fly secrets list --json`: objects with Name (or name), or a plain list. */
+export function flySecretNames(output: string): string[] {
+  try {
+    const value = JSON.parse(output) as unknown;
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => (typeof item === "string" ? item : (item?.Name ?? item?.name)))
+      .filter((name): name is string => typeof name === "string");
+  } catch {
+    return [];
+  }
+}
+
+/** `fly secrets import` input: NAME=VALUE lines. A value with a line break can't be imported this way. */
+export function flySecretsInput(values: Record<string, string>): string {
+  for (const [key, value] of Object.entries(values)) {
+    if (/[\r\n]/.test(value)) throw new Error(`${key} has a line break, which Fly's secrets import can't take. Set it with fly secrets set.`);
+  }
+  return Object.entries(values)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
 }

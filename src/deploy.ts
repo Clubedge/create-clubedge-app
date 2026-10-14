@@ -31,6 +31,7 @@ import {
   serviceNames,
 } from "./core/deploy.js";
 import { readProject } from "./core/project.js";
+import { deployToFly } from "./deploy-fly.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
 import { pathExists } from "./utils/fs.js";
@@ -178,9 +179,10 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
+  if (platform === "fly") return await deployToFly(args, project, cli);
   if (platform !== "railway") {
     throw new UsageError(
-      `deploy sets up Railway for now, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\`, or follow ${deployDocsUrl} for ${platform}.`,
+      `deploy sets up Railway and Fly.io for now, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly), or follow ${deployDocsUrl} for ${platform}.`,
     );
   }
 

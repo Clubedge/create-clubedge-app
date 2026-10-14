@@ -141,10 +141,10 @@ ${selectionHelp(manifest)}
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove: change a project with uncommitted changes or without Git
   --no-services           doctor: skip pnpm check:services
-  --no-open               try: do not open the preview in the browser
+  --no-open               try, deploy (Vercel): do not open the URL in the browser
   --claim                 try: open the page that claims the VM, to share the preview
   --status                try: the last VM's preview, time left, and claim link
-  --env-file <path>       deploy (Railway, Fly.io): production values, such as .env.production
+  --env-file <path>       deploy: production values (default: .env.production when there is one)
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
   --no-git                Skip Git repository initialization

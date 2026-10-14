@@ -254,7 +254,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       intro("Check this project's setup");
       await runDoctor(args);
     } else if (args.command.name === "deploy") {
-      intro("Deploy this project to Railway");
+      intro("Deploy this project");
       await deployProject(args);
     } else if (args.command.name === "try") {
       intro("Try a project on a free Railway VM");

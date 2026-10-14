@@ -37,6 +37,7 @@ import {
 } from "./core/deploy.js";
 import { readProject, type Project } from "./core/project.js";
 import { deployToFly } from "./deploy-fly.js";
+import { deployToVercel } from "./deploy-vercel.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
 import { pathExists } from "./utils/fs.js";
@@ -208,9 +209,10 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
   if (platform === "fly") return await deployToFly(args, project, cli, await readDeployEnv(args, project));
+  if (platform === "vercel") return await deployToVercel(args, project, cli, await readDeployEnv(args, project));
   if (platform !== "railway") {
     throw new UsageError(
-      `deploy sets up Railway and Fly.io for now, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly), or follow ${deployDocsUrl} for ${platform}.`,
+      `deploy sets up Railway, Fly.io, and Vercel for now, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly, or vercel), or follow ${deployDocsUrl} for ${platform}.`,
     );
   }
 

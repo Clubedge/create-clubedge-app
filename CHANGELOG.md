@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.27.0
+
+- Default to Starter `v0.18.0` (#77).
+
 ## 0.26.0
 
 - `deploy` uses your own databases when the env file has their URLs (#74). The platform hosts everything as before when it doesn't.

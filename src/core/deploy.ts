@@ -384,3 +384,167 @@ export function vercelIgnoreSource(gitignore: string): string {
 export function ignoresEnvFiles(vercelignore: string): boolean {
   return vercelignore.split(/\r?\n/).some((line) => /^\/?(\*\*\/)?\.env(\*|\.\*)?\/?$/.test(line.trim()));
 }
+
+/* ------------------------------------ Netlify ------------------------------------ */
+// Netlify only runs the app, as Vercel does: databases, Redis, storage, and email come from the env file.
+
+/** Where Netlify builds: the app's folder, which holds netlify.toml. */
+export const netlifyBaseDirectory = "apps/web";
+
+/** A Netlify site name: lowercase letters, digits, and dashes, at most 63 characters. */
+export function netlifySiteName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63).replace(/-+$/, "") || "web";
+}
+
+export interface NetlifySite {
+  id: string;
+  name: string;
+  /** The site's https URL, such as https://my-app.netlify.app. */
+  url: string;
+  base: string | null;
+}
+
+/** A site in `netlify api getSite` or `createSiteInTeam` output, or null. */
+export function parseNetlifySite(output: string): NetlifySite | null {
+  try {
+    const value = JSON.parse(output) as { id?: unknown; name?: unknown; ssl_url?: unknown; url?: unknown; build_settings?: { base?: unknown } };
+    if (typeof value.id !== "string" || typeof value.name !== "string") return null;
+    const url = typeof value.ssl_url === "string" && value.ssl_url ? value.ssl_url : `https://${value.name}.netlify.app`;
+    const base = typeof value.build_settings?.base === "string" ? value.build_settings.base : null;
+    return { id: value.id, name: value.name, url: url.replace(/\/+$/, ""), base };
+  } catch {
+    return null;
+  }
+}
+
+/** The team slugs in `netlify api listAccountsForUser` output. */
+export function parseNetlifyAccounts(output: string): string[] {
+  try {
+    const value = JSON.parse(output) as unknown;
+    if (!Array.isArray(value)) return [];
+    return value.map((account) => account?.slug).filter((slug): slug is string => typeof slug === "string");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The file `netlify env:import` reads: KEY='value' lines. Each value is quoted with a quote it
+ * doesn't contain, so dotenv keeps it as it is (#, spaces, $); a line break can't be imported.
+ */
+export function netlifyEnvFile(values: Record<string, string>): string {
+  return Object.entries(values)
+    .map(([key, value]) => {
+      if (/[\r\n]/.test(value)) throw new Error(`${key} has a line break, which Netlify's env:import can't take. Set it in the site's settings.`);
+      const quote = ["'", '"', "`"].find((mark) => !value.includes(mark));
+      if (!quote) throw new Error(`${key} contains every kind of quote, which Netlify's env:import can't take. Set it in the site's settings.`);
+      return `${key}=${quote}${value}${quote}`;
+    })
+    .join("\n")
+    .concat("\n");
+}
+
+/** The production URL in `netlify deploy --json` output (the last JSON object it prints). */
+export function parseNetlifyDeploy(output: string): string | null {
+  for (let index = output.lastIndexOf("{"); index >= 0; index = output.lastIndexOf("{", index - 1)) {
+    try {
+      const value = JSON.parse(output.slice(index)) as { url?: unknown; deploy_url?: unknown };
+      const url = typeof value.url === "string" ? value.url : typeof value.deploy_url === "string" ? value.deploy_url : null;
+      if (url) return url.replace(/\/+$/, "");
+    } catch {
+      // Not the start of the JSON object: try the one before.
+    }
+  }
+  return null;
+}
+
+/* ------------------------------------ Render ------------------------------------ */
+// Render builds the Dockerfile from the project's Git repository, through Render's API.
+
+export const renderApiUrl = "https://api.render.com/v1";
+
+/** Deploy statuses Render does not move on from. */
+export const renderFinalStatuses = ["live", "deactivated", "build_failed", "update_failed", "canceled", "pre_deploy_failed"] as const;
+
+/**
+ * The https URL of a Git remote Render can build from (GitHub, GitLab, or Bitbucket), from an
+ * https or SSH remote; null for anything else.
+ */
+export function renderRepoUrl(remote: string): string | null {
+  const value = remote.trim();
+  const match =
+    /^(?:git@|ssh:\/\/git@)(github\.com|gitlab\.com|bitbucket\.org)[:/](.+?)(?:\.git)?\/?$/i.exec(value) ??
+    /^https:\/\/(?:[^@/]+@)?(github\.com|gitlab\.com|bitbucket\.org)\/(.+?)(?:\.git)?\/?$/i.exec(value);
+  return match ? `https://${match[1]!.toLowerCase()}/${match[2]}` : null;
+}
+
+/**
+ * The body of `POST /v1/services`: a Docker web service on a paid instance type, since pre-deploy
+ * commands (the migrations before each release) need one, as in render.yaml.
+ */
+export function renderServiceBody(input: {
+  name: string;
+  ownerId: string;
+  repo: string;
+  branch: string;
+  values: Record<string, string>;
+}): Record<string, unknown> {
+  return {
+    type: "web_service",
+    name: input.name,
+    ownerId: input.ownerId,
+    repo: input.repo,
+    branch: input.branch,
+    autoDeploy: "yes",
+    serviceDetails: {
+      runtime: "docker",
+      plan: "starter",
+      healthCheckPath: "/api/health",
+      preDeployCommand: "node /app/migrate.mjs",
+      envSpecificDetails: { dockerfilePath: "./Dockerfile", dockerContext: "." },
+    },
+    envVars: Object.entries(input.values).map(([key, value]) => ({ key, value })),
+  };
+}
+
+export interface RenderService {
+  id: string;
+  name: string;
+  url: string | null;
+}
+
+/** A service from Render's API: `{ service }` items in a list, or the service itself. */
+function renderService(value: unknown): RenderService | null {
+  const item = (value as { service?: unknown })?.service ?? value;
+  const service = item as { id?: unknown; name?: unknown; serviceDetails?: { url?: unknown } };
+  if (typeof service?.id !== "string" || typeof service.name !== "string") return null;
+  const url = service.serviceDetails?.url;
+  return { id: service.id, name: service.name, url: typeof url === "string" && url ? url.replace(/\/+$/, "") : null };
+}
+
+/** The service named `name` in `GET /v1/services?name=...`, or the one `POST /v1/services` created. */
+export function parseRenderService(body: unknown, name?: string): RenderService | null {
+  if (Array.isArray(body)) {
+    return body.map(renderService).find((service) => service && (!name || service.name === name)) ?? null;
+  }
+  return renderService(body);
+}
+
+/** The workspaces in `GET /v1/owners`: `{ owner: { id, name } }` items. */
+export function parseRenderOwners(body: unknown): Array<{ id: string; name: string }> {
+  if (!Array.isArray(body)) return [];
+  return body
+    .map((item) => (item as { owner?: { id?: unknown; name?: unknown } })?.owner)
+    .filter((owner): owner is { id: string; name: string } => typeof owner?.id === "string" && typeof owner.name === "string");
+}
+
+/** The variable names and values in `GET /v1/services/:id/env-vars`: `{ envVar: { key, value } }` items. */
+export function parseRenderEnv(body: unknown): Record<string, string> {
+  if (!Array.isArray(body)) return {};
+  const values: Record<string, string> = {};
+  for (const item of body) {
+    const env = (item as { envVar?: { key?: unknown; value?: unknown } })?.envVar ?? item;
+    if (typeof env?.key === "string") values[env.key] = typeof env.value === "string" ? env.value : "(set)";
+  }
+  return values;
+}

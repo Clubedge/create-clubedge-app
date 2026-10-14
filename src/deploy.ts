@@ -37,6 +37,8 @@ import {
 } from "./core/deploy.js";
 import { readProject, type Project } from "./core/project.js";
 import { deployToFly } from "./deploy-fly.js";
+import { deployToNetlify } from "./deploy-netlify.js";
+import { deployToRender } from "./deploy-render.js";
 import { deployToVercel } from "./deploy-vercel.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
@@ -210,9 +212,11 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const platform = project.modules.deploy ?? "docker";
   if (platform === "fly") return await deployToFly(args, project, cli, await readDeployEnv(args, project));
   if (platform === "vercel") return await deployToVercel(args, project, cli, await readDeployEnv(args, project));
+  if (platform === "netlify") return await deployToNetlify(args, project, cli, await readDeployEnv(args, project));
+  if (platform === "render") return await deployToRender(args, project, cli, await readDeployEnv(args, project));
   if (platform !== "railway") {
     throw new UsageError(
-      `deploy sets up Railway, Fly.io, and Vercel for now, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly, or vercel), or follow ${deployDocsUrl} for ${platform}.`,
+      `deploy sets up Railway, Fly.io, Vercel, Netlify, and Render, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly, vercel, netlify, render), or follow ${deployDocsUrl} for ${platform}.`,
     );
   }
 

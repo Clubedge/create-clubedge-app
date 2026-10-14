@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Clubedge/create-clubedge-app/main/.github/assets/cover.png" alt="Clubedge Starter" width="100%">
+<img src="https://raw.githubusercontent.com/Clubedge/create-clubedge-app/main/.github/assets/cover.png" alt="Terminal running pnpm dlx @clubedge/create-clubedge-app my-app and printing the CLUBEDGE STARTER banner" width="100%">
 
 # create-clubedge-app
 

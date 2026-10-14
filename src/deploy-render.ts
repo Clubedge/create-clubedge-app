@@ -173,6 +173,9 @@ export async function deployToRender(args: CliArgs, project: Project, cli: strin
       url = service.url;
       log.info(`Render named the app ${url}. Setting it as the public URL and deploying again, since the build compiles it in.`);
       for (const urlKey of appUrlKeys) await render(key, "PUT", `/services/${service.id}/env-vars/${urlKey}`, { value: url });
+      // The deploy that creating the service started builds the old URL in, and would run the
+      // migrations alongside the next one: cancel it first. It may have ended already.
+      if (deployId) await render(key, "POST", `/services/${service.id}/deploys/${deployId}/cancel`).catch(() => null);
       deployId = null;
     }
   } else {

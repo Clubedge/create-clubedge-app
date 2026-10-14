@@ -4,8 +4,11 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.28.0
 
-- Add CLI banner cover image to README (#79).
-- Deploy to Vercel (experimental) (#80).
+- `pnpm clubedge deploy` deploys to Vercel (experimental) (#80), in projects created with `--deploy vercel`:
+  - It signs in with `vercel login` when you are signed out, then creates or reuses the project with `apps/web` as its Root Directory and writes `.vercelignore` so `.env` files stay on your machine.
+  - It sets the production variables from `.env.production` (or `--env-file`), the public URL, and a generated `BETTER_AUTH_SECRET`, then runs `vercel deploy --prod`. `DATABASE_URL` must point at your provider (Neon, Supabase, ...), since Vercel only runs the app.
+  - When Vercel names the app something other than `<project>.vercel.app`, it sets that URL and deploys again, since the build compiles it in.
+- The README opens with the banner the CLI prints (#79).
 - Still on Starter `v0.18.0`.
 
 ## 0.27.0

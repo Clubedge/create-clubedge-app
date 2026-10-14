@@ -328,7 +328,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.25.0 | v0.17.1 | `deploy` to Fly.io (experimental); weekly Dependabot updates |
 | 0.26.0 | v0.17.1 | `deploy` uses your own databases (Supabase, Neon, Upstash) when the env file has their URLs, and reads `.env.production` |
 | 0.27.0 | v0.18.0 | Starter v0.18.0: Vercel and Netlify builds stop when a production variable is missing (`pnpm check:env`) |
-| 0.28.0 | v0.18.0 | Add CLI banner cover image to README; Deploy to Vercel (experimental) |
+| 0.28.0 | v0.18.0 | `deploy` to Vercel (experimental) |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

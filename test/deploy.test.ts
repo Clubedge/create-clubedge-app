@@ -5,8 +5,13 @@ import {
   deploymentStatus,
   meetsMinimumCli,
   exampleKeys,
+  flyAppUrl,
+  flySecretNames,
+  flySecretsInput,
+  flyTomlValue,
   parseDeploymentId,
   parseEnvFile,
+  parseRedisUrl,
   parseRailwayDomain,
   parseVariables,
   planVariables,
@@ -164,6 +169,46 @@ describe("Railway configuration as code", () => {
     // Variables stay with deploy and the dashboard; no region, so Railway's default applies.
     expect(source).toContain("variables: { managed: false }");
     expect(source).not.toContain("replicas");
+  });
+});
+
+describe("Fly.io", () => {
+  it("reads the app and region fly launch writes, only above the first table", () => {
+    const toml = 'app = "my-app-3f2a"\nprimary_region = "cdg"\n\n[build]\n  app = "not-this"\n';
+    expect(flyTomlValue(toml, "app")).toBe("my-app-3f2a");
+    expect(flyTomlValue(toml, "primary_region")).toBe("cdg");
+    expect(flyTomlValue("[build]\n  dockerfile = \"Dockerfile\"\n", "app")).toBeNull();
+    expect(flyAppUrl("my-app-3f2a")).toBe("https://my-app-3f2a.fly.dev");
+  });
+
+  it("finds the Redis URL and the secret names", () => {
+    expect(parseRedisUrl("Your database is ready.\nRedis URL: redis://default:pw@fly-x.upstash.io:6379\n")).toBe(
+      "redis://default:pw@fly-x.upstash.io:6379",
+    );
+    expect(parseRedisUrl("nothing here")).toBeNull();
+    expect(flySecretNames('[{"Name":"DATABASE_URL","Digest":"x"},{"name":"APP_URL"}]')).toEqual(["DATABASE_URL", "APP_URL"]);
+    expect(flySecretNames("not json")).toEqual([]);
+  });
+
+  it("imports secrets as NAME=VALUE lines, and refuses a value with a line break", () => {
+    expect(flySecretsInput({ A: "1", B: "two words" })).toBe("A=1\nB=two words");
+    expect(() => flySecretsInput({ KEY: "line\nbreak" })).toThrow(/line break/);
+  });
+
+  it("plans the secrets with DATABASE_URL attached by Fly and Redis from Upstash", () => {
+    const plan = planVariables({
+      modules: { auth: "better-auth", cache: "redis" },
+      keys: ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET", "SMTP_URL"],
+      url: "https://my-app.fly.dev",
+      existing: {},
+      envFile: { DATABASE_URL: "postgresql://localhost/dev" },
+      secret: () => "s3cret",
+      databases: { REDIS_URL: "redis://upstash" },
+      attached: ["DATABASE_URL"],
+    });
+    expect(plan.set).not.toHaveProperty("DATABASE_URL");
+    expect(plan.set).toMatchObject({ REDIS_URL: "redis://upstash", NEXT_PUBLIC_APP_URL: "https://my-app.fly.dev", BETTER_AUTH_SECRET: "s3cret" });
+    expect(plan.unset).toEqual(["SMTP_URL"]);
   });
 });
 

@@ -1,6 +1,8 @@
 // The showcase walkthroughs. Each one creates a project with the published CLI and alternates
 // terminal scenes (typed and run for real) with browser scenes (the running app, driven by
 // Playwright). See director.mjs for terminal(), browser() and sh().
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 const create = (flags) => `pnpm dlx @clubedge/create-clubedge-app my-app ${flags} --yes`.replace(/\s+/g, " ");
@@ -341,5 +343,44 @@ run "pnpm clubedge status"
 run "git log --oneline"`,
     );
     return { flags: `--ref ${from} --auth better-auth`, from, stripe: stripeReal ? "test-mode" : "stand-in" };
+  },
+
+  // try: a new project on Railway's free VM (ssh railway.new), no account and no Docker, then the
+  // preview in the browser. The preview only opens from the IP that created the VM: the runner.
+  // Railway allows few VMs per IP a day, so the workflow lets this one fail.
+  async try({ terminal, browser }) {
+    const command = "pnpm dlx @clubedge/create-clubedge-app try --no-open --yes";
+    // The claim link takes over the VM: hidden in the recording. script(1) keeps a terminal for
+    // the CLI, so its output looks as it does for a person.
+    const hideClaim = `script -qefc '${command}' /dev/null | hide_claim`;
+    await terminal(
+      "Create a project on a Railway VM",
+      `note "No account, no Docker: the VM is free for an hour"
+run_as "${command}" "${hideClaim}"`,
+    );
+    const vm = JSON.parse(readFileSync(join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "clubedge", "railway-vm.json"), "utf8"));
+    // The VM runs the dev server, which compiles each page on its first visit: off camera.
+    for (const path of ["/", "/login", "/dashboard", "/settings"]) {
+      await fetch(`${vm.previewUrl}${path}`, { signal: AbortSignal.timeout(180_000) }).catch(() => {});
+    }
+    await browser(
+      "The app on the preview URL",
+      async (a) => {
+        a.page.setDefaultNavigationTimeout(120_000);
+        await a.goto("/", 3000);
+        await signUp(a, "ada@example.com");
+        // Signed-in pages compile only once someone signs in.
+        await a.page.waitForURL(/\/dashboard/, { timeout: 180_000 });
+        await a.page.getByRole("complementary").waitFor({ timeout: 180_000 });
+        await a.pause(2500);
+        await a.click(a.page.getByRole("complementary").getByRole("link", { name: "Settings" }), 1200);
+        await a.page.getByLabel("Display name").waitFor({ timeout: 180_000 });
+        await a.type(a.page.getByLabel("Display name"), "Ada Lovelace");
+        await a.click(a.page.getByRole("button", { name: "Save profile" }), 1800);
+        await a.goto("/dashboard", 2500);
+      },
+      { baseURL: vm.previewUrl },
+    );
+    return { flags: "try", stripe: null };
   },
 };

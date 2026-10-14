@@ -85,7 +85,7 @@ const cursorScript = () => {
 };
 
 /** Helpers for browser scenes: paced like a person, with the pointer moving to what is used. */
-function actions(page) {
+function actions(page, origin) {
   const point = async (locator) => {
     await locator.waitFor({ state: "visible", timeout: 30_000 });
     await locator.scrollIntoViewIfNeeded();
@@ -96,7 +96,7 @@ function actions(page) {
   };
   return {
     page,
-    baseURL,
+    baseURL: origin,
     pause: (ms = 1200) => page.waitForTimeout(ms),
     goto: async (url, ms = 1500) => {
       await page.goto(url);
@@ -124,13 +124,14 @@ function actions(page) {
   };
 }
 
-/** A browser scene: Playwright drives the app, recorded at 1280x800. */
-async function browser(label, steps) {
+/** A browser scene: Playwright drives the app, recorded at 1280x800, at localhost:3000 or options.baseURL. */
+async function browser(label, steps, options = {}) {
+  const origin = options.baseURL ?? baseURL;
   const index = scenes.length;
   const videoDir = join(state, `video-${index}`);
   const instance = await chromium.launch();
   const context = await instance.newContext({
-    baseURL,
+    baseURL: origin,
     viewport: { width: 1280, height: 800 },
     recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } },
     colorScheme: "light",
@@ -146,7 +147,7 @@ async function browser(label, steps) {
     }
   });
   try {
-    await steps(actions(page));
+    await steps(actions(page, origin));
     await page.waitForTimeout(1200);
     storageState = await context.storageState();
   } catch (error) {

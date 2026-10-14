@@ -148,10 +148,12 @@ jobs:
     name: walkthrough (${{ matrix.example }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # try records on a free Railway VM, which Railway limits per IP a day: its failure fails no run.
+    continue-on-error: ${{ matrix.example == 'try' }}
     strategy:
       fail-fast: false
       matrix:
-        example: [default, saas, start-local, minimal, evolution]
+        example: [default, saas, start-local, minimal, evolution, try]
     env:
       CLI_VERSION: ${{ inputs.cli-version || 'latest' }}
       BETTER_AUTH_SECRET: showcase-only-better-auth-secret-0123456789abcdef
@@ -213,6 +215,8 @@ jobs:
       - name: Compose the video
         run: node "$RUNNER_TEMP/tools/compose.mjs" "$RUNNER_TEMP/out"
       - name: Lint, typecheck, test, and build the project
+        # try built and ran its project on the VM.
+        if: matrix.example != 'try'
         working-directory: ${{ runner.temp }}/work/my-app
         run: |
           set -euo pipefail
@@ -224,18 +228,19 @@ jobs:
           pnpm test
           pnpm build
       - name: Record versions and checks
-        working-directory: ${{ runner.temp }}/work/my-app
+        working-directory: ${{ runner.temp }}/work
         run: |
           set -euo pipefail
+          [ -d my-app ] && cd my-app
           node -e '
             const fs = require("fs");
             const file = process.argv[1];
             const walkthrough = JSON.parse(fs.readFileSync(file, "utf8"));
-            const pkg = require("./package.json");
+            const pkg = fs.existsSync("package.json") ? require("./package.json") : null;
             Object.assign(walkthrough, {
               cliVersion: process.env.CLI_RESOLVED,
-              origin: pkg.clubedge,
-              checks: ["pnpm lint", "pnpm typecheck", "pnpm test", "pnpm build"],
+              origin: pkg?.clubedge,
+              checks: pkg ? ["pnpm lint", "pnpm typecheck", "pnpm test", "pnpm build"] : ["sign up on the Railway preview URL"],
               capturedAt: new Date().toISOString(),
               run: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
             });
@@ -246,8 +251,9 @@ jobs:
           ls -la "$RUNNER_TEMP/publish"
       - name: Stop the local services
         if: always()
-        working-directory: ${{ runner.temp }}/work/my-app
+        working-directory: ${{ runner.temp }}/work
         run: |
+          [ -d my-app ] && cd my-app
           for pid in "$RUNNER_TEMP"/out/state/*.pid; do [ -f "$pid" ] && kill -INT -- "-$(cat "$pid")" 2>/dev/null || true; done
           pnpm infra:down 2>/dev/null || true
       - name: Upload the walkthrough

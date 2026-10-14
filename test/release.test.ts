@@ -111,9 +111,10 @@ describe("changelog draft", () => {
 
 describe("release tables", () => {
   it("adds a row after the last one in the README and ROADMAP.md", () => {
-    const { readme, roadmap } = addRoadmapRows({ readme: docs.readme, roadmap: file("ROADMAP.md") }, "0.21.0", "v0.15.0", "Release tooling");
-    expect(readme).toContain(`| ${pkg.version} |`);
-    expect(readme.indexOf("| 0.21.0 | v0.15.0 | Release tooling |")).toBeGreaterThan(readme.indexOf(`| ${pkg.version} |`));
-    expect(roadmap).toMatch(/^\| \d+ \| 0\.21\.0 \| Release tooling \|$/m);
+    // Patch releases have no row, so compare with the last row there is, not the current version's.
+    const lastRow = docs.readme.split("\n").filter((line) => /^\| \d+\.\d+\.\d+ \| /.test(line)).at(-1)!;
+    const { readme, roadmap } = addRoadmapRows({ readme: docs.readme, roadmap: file("ROADMAP.md") }, "99.0.0", "v0.15.0", "Release tooling");
+    expect(readme.indexOf("| 99.0.0 | v0.15.0 | Release tooling |")).toBeGreaterThan(readme.indexOf(lastRow));
+    expect(roadmap).toMatch(/^\| \d+ \| 99\.0\.0 \| Release tooling \|$/m);
   });
 });

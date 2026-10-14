@@ -319,7 +319,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.22.0 | v0.16.1 | `pnpm clubedge deploy`: a guided first deploy to Railway; faster Docker builds |
 | 0.23.0 | v0.16.1 | `deploy` moves Railway projects to `.railway/railway.ts` before Railway stops reading `railway.json` |
 | 0.24.0 | v0.17.0 | Starter v0.17.0: Railway configuration as code (`.railway/railway.ts`) instead of `railway.json` |
-| 0.25.0 | v0.17.1 | Weekly Dependabot updates for npm and GitHub Actions; Deploy to Fly.io (experimental) |
+| 0.25.0 | v0.17.1 | `deploy` to Fly.io (experimental); weekly Dependabot updates |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

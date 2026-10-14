@@ -4,8 +4,12 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.25.0
 
-- Weekly Dependabot updates for npm and GitHub Actions (#67).
-- Deploy to Fly.io (experimental) (#71).
+- `deploy` for Fly.io (experimental) (#71): in a project with `deploy fly`, `pnpm clubedge deploy` uses Fly's CLI and your Fly login.
+  - It creates or reuses the app (`fly launch`, which writes its name and region into `fly.toml`; commit it), an unmanaged Postgres app attached as `DATABASE_URL` (one `shared-cpu-1x` machine and a 1 GB volume), and Upstash Redis with `cache redis`.
+  - It imports the secrets through stdin: the public URL `https://<app>.fly.dev`, a `BETTER_AUTH_SECRET` kept on later runs, and `--env-file` values; the ones still unset are listed before the build.
+  - `fly deploy` builds the Dockerfile with `NEXT_PUBLIC_APP_URL` as a build argument, runs the migrations as the release command, and waits for the health checks.
+  - Fly's Managed Postgres (from $38/month) is a manual choice: create and attach it before deploying.
+- Weekly Dependabot updates for the CLI's npm dependencies and GitHub Actions (#67). The Starter gets the same, without passing it on to generated projects, which receive updates as upgrade pull requests.
 - Still on Starter `v0.17.1`.
 
 ## 0.24.1

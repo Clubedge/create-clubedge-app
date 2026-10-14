@@ -359,10 +359,13 @@ run "git log --oneline"`,
 run_as "${command}" "${hideClaim}"`,
     );
     const vm = JSON.parse(readFileSync(join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "clubedge", "railway-vm.json"), "utf8"));
+    // The VM runs the dev server, which compiles each page on its first visit: off camera.
+    for (const path of ["/", "/login", "/dashboard", "/settings"]) {
+      await fetch(`${vm.previewUrl}${path}`, { signal: AbortSignal.timeout(180_000) }).catch(() => {});
+    }
     await browser(
       "The app on the preview URL",
       async (a) => {
-        // The first page compiles on the VM's dev server.
         a.page.setDefaultNavigationTimeout(120_000);
         await a.goto("/", 3000);
         await signUp(a, "ada@example.com");

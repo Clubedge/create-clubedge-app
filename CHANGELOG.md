@@ -4,9 +4,10 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.24.1
 
-- Re-record the showcase after each release (#63).
-- Warn about unset settings before deploying, and stop the DEP0190 warning (#64).
-- Default to Starter `v0.17.1` (#65).
+- Default to Starter `v0.17.1` (#65), which fixes deployed Next.js apps sending sign-in email links and Stripe return URLs to `http://localhost:3000`: the Dockerfile now takes `NEXT_PUBLIC_APP_URL` as a build argument, which Railway and Render pass from the service's variables. `pnpm clubedge deploy` already sets it on Railway.
+- `deploy` lists the settings still unset before the build instead of after the release, and asks whether to deploy anyway (#64).
+- No more Node DEP0190 warning on Windows: commands that need the shell get one quoted command line (#64).
+- The showcase is re-recorded after each release (#63).
 
 ## 0.24.0
 

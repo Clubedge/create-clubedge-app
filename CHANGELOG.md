@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.25.0
+
+- Weekly Dependabot updates for npm and GitHub Actions (#67).
+- Deploy to Fly.io (experimental) (#71).
+- Still on Starter `v0.17.1`.
+
 ## 0.24.1
 
 - Default to Starter `v0.17.1` (#65), which fixes deployed Next.js apps sending sign-in email links and Stripe return URLs to `http://localhost:3000`: the Dockerfile now takes `NEXT_PUBLIC_APP_URL` as a build argument, which Railway and Render pass from the service's variables. `pnpm clubedge deploy` already sets it on Railway.

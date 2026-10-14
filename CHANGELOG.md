@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.28.0
+
+- Add CLI banner cover image to README (#79).
+- Deploy to Vercel (experimental) (#80).
+- Still on Starter `v0.18.0`.
+
 ## 0.27.0
 
 - Default to Starter `v0.18.0` (#77), which stops Vercel and Netlify builds when a production variable is missing:

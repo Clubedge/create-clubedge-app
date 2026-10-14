@@ -34,6 +34,11 @@ run_as() {
   sleep "${3:-1.2}"
 }
 
+# Hides the code of Railway's claim links in what passes through, keeping its length.
+hide_claim() {
+  perl -pe 'BEGIN { $| = 1 } s/(code=)([A-Za-z0-9._~-]+)/$1 . ("*" x length($2))/ge'
+}
+
 # A comment line, for what happens off screen.
 note() {
   printf '\033[2m# %s\033[0m\n' "$1"

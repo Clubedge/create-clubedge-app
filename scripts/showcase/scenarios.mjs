@@ -352,7 +352,7 @@ run "git log --oneline"`,
     const command = "pnpm dlx @clubedge/create-clubedge-app try --no-open --yes";
     // The claim link takes over the VM: hidden in the recording. script(1) keeps a terminal for
     // the CLI, so its output looks as it does for a person.
-    const hideClaim = `script -qefc '${command}' /dev/null | sed -u -E 's/(code=)[A-Za-z0-9._~-]+/\\1••••••••/g'`;
+    const hideClaim = `script -qefc '${command}' /dev/null | hide_claim`;
     await terminal(
       "Create a project on a Railway VM",
       `note "No account, no Docker: the VM is free for an hour"
@@ -369,8 +369,12 @@ run_as "${command}" "${hideClaim}"`,
         a.page.setDefaultNavigationTimeout(120_000);
         await a.goto("/", 3000);
         await signUp(a, "ada@example.com");
+        // Signed-in pages compile only once someone signs in.
+        await a.page.waitForURL(/\/dashboard/, { timeout: 180_000 });
+        await a.page.getByRole("complementary").waitFor({ timeout: 180_000 });
         await a.pause(2500);
         await a.click(a.page.getByRole("complementary").getByRole("link", { name: "Settings" }), 1200);
+        await a.page.getByLabel("Display name").waitFor({ timeout: 180_000 });
         await a.type(a.page.getByLabel("Display name"), "Ada Lovelace");
         await a.click(a.page.getByRole("button", { name: "Save profile" }), 1800);
         await a.goto("/dashboard", 2500);

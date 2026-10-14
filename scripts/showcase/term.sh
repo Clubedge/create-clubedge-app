@@ -25,6 +25,15 @@ run() {
   sleep "${2:-1.2}"
 }
 
+# Types a command but runs another: the same one with its output filtered (a secret hidden).
+#   run_as "<shown>" "<run>"
+run_as() {
+  prompt
+  type_out "$1"
+  eval "$2"
+  sleep "${3:-1.2}"
+}
+
 # A comment line, for what happens off screen.
 note() {
   printf '\033[2m# %s\033[0m\n' "$1"

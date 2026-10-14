@@ -29,6 +29,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 21 | 0.24.0 | Starter v0.17.0: `.railway/railway.ts` instead of `railway.json`, ahead of Railway's 2026-12-01 cutoff |
 | 22 | 0.25.0 | `deploy` for Fly.io (experimental); Dependabot for the CLI and the Starter |
 | 23 | 0.26.0 | `deploy` with your own databases from the env file; a `try` walkthrough in the showcase |
+| 24 | 0.27.0 | Starter v0.18.0: `check:env` stops Vercel and Netlify builds on a missing production variable |
 
 ## CLI improvements
 

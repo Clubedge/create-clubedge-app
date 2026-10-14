@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.27.0
+
+- Default to Starter `v0.18.0` (#77), which stops Vercel and Netlify builds when a production variable is missing:
+  - On those hosts the platform only runs the app, and the database, Redis, storage, and email come from your providers. `pnpm check:env` now runs first in the build command of `vercel.json` and `netlify.toml`, before migrations.
+  - It lists each variable the project's modules need that is unset, points at `localhost`, or isn't an absolute URL, and stops the build. That includes `.env.example`'s `example.com` sender in `EMAIL_FROM`.
+  - Generated projects check only their own modules. `SKIP_ENV_CHECK=1` builds anyway.
+- If you deploy to Vercel or Netlify: run `pnpm clubedge upgrade`, then set the variables for every environment you build (Production and Preview).
+
 ## 0.26.0
 
 - `deploy` uses your own databases when the env file has their URLs (#74). The platform hosts everything as before when it doesn't.

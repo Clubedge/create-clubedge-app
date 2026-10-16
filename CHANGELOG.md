@@ -2,6 +2,18 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.30.1
+
+Railway previews, fixed after running them for real on the Starter's own pull requests.
+
+- `deploy --preview` sets `PORT` on the Railway preview environment (#87). The preview's domain sends traffic to port 3000, but a production service without `PORT` gave the copied environment none: Railway assigned its own port, and the app answered 502.
+- Default to Starter `v0.19.1` (#88), which fixes the Railway step of `.github/workflows/preview.yml`:
+  - It works with a workspace token as well as an account token: it no longer runs `railway link`, which needs an account token, since the Railway CLI targets the project from `RAILWAY_PROJECT_ID`.
+  - It sets `PORT=3000` on the pull request's environment, for the same reason as above.
+  - The pull request comment lists the Vercel and Railway apps separately when both deploy.
+  - Tested on the Starter's pull requests: a Neon branch with the migrations, a Vercel and a Railway preview each answering `/api/ready`, and cleanup of the branch and the Railway environment on merge.
+- If your project deploys previews to Railway, run `pnpm clubedge upgrade` to get the fixed `preview.yml`.
+
 ## 0.30.0
 
 - **`--infra neon`** gives a project a hosted Neon database with nothing to install and no account (#84):

@@ -34,6 +34,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 26 | 0.29.0 | `deploy` to Netlify and Render (experimental) |
 | 27 | 0.30.0 | Starter v0.19.0: `--infra neon` creates a free Neon database, the `neon` command, `DATABASE_URL_DIRECT` for migrations and jobs |
 | 28 | 0.30.0 | `deploy --preview` for Vercel and Railway with a Neon branch per preview; Starter: a preview environment for each pull request |
+| 28 | 0.30.1 | Starter v0.19.1: Railway previews fixed after running for real (workspace tokens, `PORT`), both preview URLs in the comment; tested end to end on Vercel and Railway |
 
 ## CLI improvements
 

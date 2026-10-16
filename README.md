@@ -375,7 +375,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.29.0 | v0.18.0 | `deploy` to Netlify and Render (experimental) |
 | 0.30.0 | v0.19.0 | `--infra neon` with a free Neon database, the `neon` command, `deploy --preview` with a Neon branch per preview |
 | 0.30.1 | v0.19.1 | Railway previews work with a workspace token and answer on the port their domain targets |
-| 0.31.0 | v0.20.0 | The showcase waits for Stripe's portal to be on screen; Default to Starter v0.20.0 |
+| 0.31.0 | v0.20.0 | Pluggable background jobs: `--jobs bullmq` and `--jobs inngest` next to pg-boss, and a conformance suite every provider passes |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

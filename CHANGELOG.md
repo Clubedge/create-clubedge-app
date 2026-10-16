@@ -4,8 +4,14 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.31.0
 
-- The showcase waits for Stripe's portal to be on screen (#90).
-- Default to Starter `v0.20.0` (#91).
+- **Pluggable background jobs**: default to Starter `v0.20.0` (#91). The jobs module now has three providers behind one interface, so job definitions, routes, and the dashboard's jobs card stay the same whichever runs them:
+  - `--jobs pg-boss`: jobs in your PostgreSQL, run by a worker in the app server.
+  - **`--jobs bullmq`** (new): jobs in Redis through BullMQ 6, run by a worker in the app server. It needs `--cache redis`, so `deploy` creates Railway's Redis with it.
+  - **`--jobs inngest`** (new): Inngest calls the app's `/api/inngest` to run each job, so serverless hosts need no cron. `pnpm jobs:dev` starts its Dev Server, and `check:env` requires `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` in production.
+  - `@clubedge/jobs/conformance` is one test suite every provider passes: retries, delays, throttling, timeouts, history, and the worker. SETUP.md shows how to add your own provider with it.
+  - `runDue`'s `failed` now counts every failed attempt, retries included, for every provider.
+  - Switch an existing project with `pnpm clubedge add jobs bullmq` or `pnpm clubedge add jobs inngest`.
+- The showcase's SaaS walkthrough waits for Stripe's billing portal to be on screen before moving on (#90). Stripe renders the portal's text under a spinner and fades it in, which Playwright counted as visible.
 
 ## 0.30.1
 

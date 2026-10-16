@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.30.1
+
+- Deploy --preview sets PORT on the Railway environment (#87).
+- Default to Starter `v0.19.1` (#88).
+
 ## 0.30.0
 
 - **`--infra neon`** gives a project a hosted Neon database with nothing to install and no account (#84):

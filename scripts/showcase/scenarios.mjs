@@ -50,6 +50,36 @@ async function waitForText(a, selector, text, timeout = 60_000) {
   }
 }
 
+/**
+ * Waits until text matching `pattern` is painted on screen, not just present: Playwright counts an
+ * element as visible when it has a box, even at opacity 0 or clipped to 1px for screen readers,
+ * and Stripe's pages render their content that way under a spinner, then fade it in. So the text
+ * must be large enough to read, unhidden and opaque up its ancestors, with no spinner on top.
+ */
+async function waitForPainted(page, pattern, timeout = 60_000) {
+  await page.waitForFunction(
+    (source) => {
+      const re = new RegExp(source, "i");
+      const spinners = document.querySelectorAll('[role="progressbar"], [aria-busy="true"], [class*="Spinner"], [class*="spinner"]');
+      for (const spinner of spinners) {
+        if (spinner.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+      }
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!re.test(node.textContent ?? "")) continue;
+        const element = node.parentElement;
+        const box = element?.getBoundingClientRect();
+        if (!element || !box || box.width < 40 || box.height < 8) continue;
+        if (box.bottom < 0 || box.top > innerHeight) continue;
+        if (element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return true;
+      }
+      return false;
+    },
+    pattern.source,
+    { timeout, polling: 250 },
+  );
+}
+
 async function mailpitMessage(to) {
   for (let i = 0; i < 30; i++) {
     const search = await fetch(`http://localhost:8025/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`)
@@ -71,6 +101,8 @@ async function payOnStripeCheckout(a) {
   const { page } = a;
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 60_000 });
   await page.waitForLoadState("networkidle").catch(() => {});
+  // Checkout also loads behind a spinner: start once its form is on screen.
+  await waitForPainted(page, /pay with card|card information|contact information|payment method/i).catch(() => {});
   await a.pause(1500);
   const visible = async (locator) => (await locator.count()) > 0 && (await locator.first().isVisible());
   // The app passes the signed-in user's email, which Checkout then shows read-only.
@@ -201,13 +233,9 @@ serve "pnpm dev" "http://localhost:3000/" dev`,
           await a.click(a.page.locator("#billing").getByRole("button", { name: "Manage billing" }), 0);
           await a.page.waitForURL(/billing\.stripe\.com/, { timeout: 60_000 });
           await a.page.waitForLoadState("networkidle").catch(() => {});
-          // The portal shows a spinner, then renders the subscription after its own requests: wait
-          // for that content (not just the page load), then let it be read.
-          await a.page
-            .getByText(/current subscription|cancel subscription|payment method/i)
-            .first()
-            .waitFor({ state: "visible", timeout: 45_000 });
-          await a.page.waitForLoadState("networkidle").catch(() => {});
+          // The portal shows a spinner, then renders the subscription after its own requests. The
+          // text is in the page before it shows, so wait until it is painted, then let it be read.
+          await waitForPainted(a.page, /current subscription|cancel subscription|payment method/i);
           await a.pause(4500);
           await a.scrollTo(a.page.getByText(/payment method/i).first(), 3000).catch(() => {});
         }

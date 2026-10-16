@@ -189,6 +189,15 @@ export function checkLockfile(error: string | null): CheckResult {
   };
 }
 
+/** The database a connection URL names (its path). */
+function databaseName(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url.trim()).pathname.slice(1));
+  } catch {
+    return "";
+  }
+}
+
 /**
  * The database URLs in the local env file: Neon's pooled URL for the app and its direct URL for
  * migrations and the jobs worker, and how long a free Neon database the CLI created has left.
@@ -226,7 +235,7 @@ export function checkDatabaseUrls(input: {
   if (!direct) {
     return { name, status: "warn", detail: "DATABASE_URL is Neon's pooler, and DATABASE_URL_DIRECT is not set", fix: "Set DATABASE_URL_DIRECT to the same URL without -pooler in the host, for migrations and the jobs worker." };
   }
-  if (neonEndpoint(direct) !== neonEndpoint(url)) {
+  if (neonEndpoint(direct) !== neonEndpoint(url) || databaseName(direct) !== databaseName(url)) {
     return { name, status: "warn", detail: "DATABASE_URL and DATABASE_URL_DIRECT point at different Neon databases", fix: "Copy both from the same branch in the Neon console: pooled and direct." };
   }
   if (claimable?.kind === "unclaimed") {

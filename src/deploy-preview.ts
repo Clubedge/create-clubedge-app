@@ -7,7 +7,18 @@ import { cancel, confirm, isCancel, log, note, outro, spinner } from "@clack/pro
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
-import { appPort, deploymentStatus, externalDatabaseUrls, finalStatuses, parseDeploymentId, parseRailwayDomain, parseVercelDeploymentUrl, serviceName } from "./core/deploy.js";
+import {
+  appPort,
+  deploymentStatus,
+  externalDatabaseUrls,
+  finalStatuses,
+  parseDeploymentId,
+  parseRailwayDomain,
+  parseVercelDeploymentUrl,
+  railwayEnvironmentNames,
+  serviceName,
+  vercelPreviewEnvBody,
+} from "./core/deploy.js";
 import { ensureNeonBranch, neonRoleAndDatabase, previewBranchName, type NeonBranch } from "./core/neon.js";
 import type { Project } from "./core/project.js";
 import { railway, railwayCli } from "./deploy.js";
@@ -109,7 +120,7 @@ export async function deployPreview(args: CliArgs, project: Project, cli: string
     await migrate(project.root, branch);
   }
 
-  const url = platform === "vercel" ? await toVercel(project, cli, branch) : await toRailway(project, cli, name, branch);
+  const url = platform === "vercel" ? await toVercel(project, cli, gitBranch, branch) : await toRailway(project, cli, name, branch);
   note(
     [`${bold("URL")}       ${url}`, `${bold("Git")}       ${gitBranch}`, ...(branch ? [`${bold("Database")}  Neon branch ${branch.name}`] : [])].join("\n"),
     "Preview deployed",
@@ -124,7 +135,7 @@ export async function deployPreview(args: CliArgs, project: Project, cli: string
   );
 }
 
-async function toVercel(project: Project, cli: string, branch: NeonBranch | null): Promise<string> {
+async function toVercel(project: Project, cli: string, gitBranch: string, branch: NeonBranch | null): Promise<string> {
   const root = project.root;
   const progress = spinner();
   progress.start("Preparing Vercel's CLI");
@@ -135,14 +146,29 @@ async function toVercel(project: Project, cli: string, branch: NeonBranch | null
     await vercel(vc, ["login"], root, { mode: "interactive" });
     progress.start("Signed in");
   }
-  if (!(await linkedProject(root))) {
+  const projectId = await linkedProject(root);
+  if (!projectId) {
     progress.stop("No Vercel project");
     throw new UsageError(`This project isn't linked to Vercel yet. Run \`${cli} deploy\` once for production, then deploy previews.`);
   }
+  // The branch's URLs as Preview variables of this Git branch, sent on stdin: the build (whose
+  // migrations then find nothing left to apply) and later redeploys from the dashboard use them.
+  let variables: string[] = [];
+  if (branch) {
+    progress.message(`Setting the Preview variables of "${gitBranch}"`);
+    const values = { DATABASE_URL: branch.url, DATABASE_URL_DIRECT: branch.directUrl };
+    const scoped = await attempt(() =>
+      vercel(vc, ["api", `/v10/projects/${projectId}/env?upsert=true`, "-X", "POST", "--input", "-"], root, {
+        input: JSON.stringify(vercelPreviewEnvBody(values, gitBranch)),
+      }),
+    );
+    if (scoped === null) {
+      // Branch variables need a project connected to a Git repository: these deploy flags apply to this deployment only.
+      log.warn(`Vercel didn't take Preview variables for "${gitBranch}" (connect the project to its Git repository for that), so the branch's URLs go to this deployment only; a redeploy from the dashboard uses the project's Preview DATABASE_URL.`);
+      variables = Object.entries(values).flatMap(([key, value]) => ["--build-env", `${key}=${value}`, "--env", `${key}=${value}`]);
+    }
+  }
   progress.stop("Vercel is ready");
-  // The build runs the migrations too; with the branch's URLs they find nothing left to apply.
-  const database: Array<[string, string]> = branch ? [["DATABASE_URL", branch.url], ["DATABASE_URL_DIRECT", branch.directUrl]] : [];
-  const variables = database.flatMap(([key, value]) => ["--build-env", `${key}=${value}`, "--env", `${key}=${value}`]);
   log.step("Deploying with vercel deploy (build logs follow)");
   let output: string;
   try {
@@ -169,8 +195,8 @@ async function toRailway(project: Project, cli: string, environment: string, bra
     progress.stop("No Railway project");
     throw new UsageError(`This project isn't linked to Railway yet. Run \`${cli} deploy\` once for production, then deploy previews.`);
   }
-  const environments = (await attempt(() => railway(rw, ["environment", "list", "--json"]))) ?? "";
-  if (!environments.includes(`"${environment}"`)) {
+  const environments = railwayEnvironmentNames(await railway(rw, ["environment", "list", "--json"]));
+  if (!environments.includes(environment)) {
     progress.message(`Creating the environment "${environment}" from production`);
     await railway(rw, ["environment", "new", environment, "--duplicate", "production", "--json"]);
   }

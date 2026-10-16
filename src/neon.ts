@@ -2,7 +2,7 @@
 // `neon claim` opens the page that moves it into a Neon account, and `neon create` makes a new one.
 // create, `add infra neon`, and `try --infra neon` create theirs through provisionNeonDatabase.
 import { confirm, isCancel, log, note, outro, spinner } from "@clack/prompts";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
@@ -41,10 +41,14 @@ export async function savedNeonDatabases(): Promise<NeonDatabase[]> {
   return parseNeonState(await readText(neonStatePath()));
 }
 
+/** Writes the state file through a temporary file, readable only by the user: it holds secrets. */
 async function saveNeonDatabase(database: NeonDatabase) {
   const path = neonStatePath();
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, addNeonDatabase(await readText(path), database), { mode: 0o600 });
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, addNeonDatabase(await readText(path), database), { mode: 0o600 });
+  await chmod(temporary, 0o600).catch(() => {});
+  await rename(temporary, path);
 }
 
 /** Creates a free Neon database and remembers it, so `neon claim` can claim it later. */

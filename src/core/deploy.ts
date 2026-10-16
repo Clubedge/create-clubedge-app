@@ -121,6 +121,9 @@ export function planVariables(input: {
   Object.assign(set, external);
   const direct = directDatabaseUrl(external.DATABASE_URL, envFile.DATABASE_URL_DIRECT);
   if (direct) set.DATABASE_URL_DIRECT = direct;
+  // A direct URL left from an earlier database would send migrations there: point it at the
+  // database the app now uses, or blank it (blank counts as unset).
+  else if (existing.DATABASE_URL_DIRECT) set.DATABASE_URL_DIRECT = set.DATABASE_URL ?? "";
   // Optional: without it, migrations and the jobs worker use DATABASE_URL.
   const unset = keys.filter((key) => set[key] === undefined && !existing[key] && key !== "DATABASE_URL_DIRECT");
   return { set, unset };
@@ -135,6 +138,27 @@ export function directDatabaseUrl(external: string | undefined, direct: string |
   if (!external) return null;
   if (direct?.trim() && !isLocalUrl(direct)) return direct.trim();
   return isNeonPooledUrl(external) ? neonDirectUrl(external) : null;
+}
+
+/** `railway environment list --json`: an array of environments, or an object holding them. */
+export function railwayEnvironmentNames(output: string): string[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(output);
+  } catch {
+    throw new Error("Railway listed its environments in a form deploy doesn't read. Check `railway environment list --json`.");
+  }
+  const list = Array.isArray(value) ? value : ((value as { environments?: unknown })?.environments ?? []);
+  const items = Array.isArray(list) ? list : ((list as { edges?: unknown })?.edges ?? []);
+  return (Array.isArray(items) ? items : [])
+    .map((item) => (item as { node?: unknown })?.node ?? item)
+    .map((item) => (item as { name?: unknown })?.name)
+    .filter((name): name is string => typeof name === "string");
+}
+
+/** The body of `POST /v10/projects/:id/env?upsert=true`: encrypted Preview variables of one Git branch. */
+export function vercelPreviewEnvBody(values: Record<string, string>, gitBranch: string) {
+  return Object.entries(values).map(([key, value]) => ({ key, value, type: "encrypted", target: ["preview"], gitBranch }));
 }
 
 /** The public domain in `railway domain` output (JSON or text). */

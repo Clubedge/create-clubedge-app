@@ -228,7 +228,12 @@ export function parseNeonState(text: string | null): NeonDatabase[] {
     return list
       .filter(
         (item): item is NeonDatabase =>
-          typeof item?.projectId === "string" && typeof item.assertion === "string" && typeof item.expiresAt === "string" && typeof item.project === "string",
+          typeof item?.projectId === "string" &&
+          typeof item.assertion === "string" &&
+          typeof item.expiresAt === "string" &&
+          typeof item.project === "string" &&
+          typeof item.host === "string" &&
+          item.host.endsWith(".neon.tech"),
       )
       .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
   } catch {

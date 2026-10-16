@@ -174,6 +174,8 @@ export function tryCreateArgs({ framework, modules, ref }: { framework?: string;
     ...(framework ? ["--framework", framework] : []),
     ...Object.entries(modules).flatMap(([module, option]) => [`--${module}`, option]),
     ...(ref ? ["--ref", ref] : []),
+    // try creates the Neon database here and writes its URLs on the VM.
+    ...(modules.infra === "neon" ? ["--no-neon"] : []),
     "--yes",
   ];
 }

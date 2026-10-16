@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
-import { directDatabaseUrl, planVariables } from "../src/core/deploy.js";
+import { directDatabaseUrl, planVariables, railwayEnvironmentNames, vercelPreviewEnvBody } from "../src/core/deploy.js";
 import { checkDatabaseUrls } from "../src/core/health.js";
 import {
   addNeonDatabase,
@@ -26,7 +26,7 @@ import {
   setEnvValues,
   type NeonDatabase,
 } from "../src/core/neon.js";
-import { projectTryProblem, tryModules, tryScript } from "../src/core/railway.js";
+import { projectTryProblem, tryCreateArgs, tryModules, tryScript } from "../src/core/railway.js";
 import { previewName } from "../src/deploy-preview.js";
 
 const pooled = "postgresql://neondb_owner:p%40ss@ep-cool-name-a1b2c3-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require";
@@ -323,5 +323,40 @@ describe("preview branches", () => {
   it("parses --preview for deploy only", () => {
     expect(parseCliArgs(["deploy", "--preview"]).preview).toBe(true);
     expect(() => parseCliArgs(["my-app", "--preview"])).toThrow(/only apply to deploy/);
+  });
+});
+
+describe("review fixes", () => {
+  it("repoints a direct URL left from an earlier database", () => {
+    const base = { modules: { auth: "none", cache: "memory" }, keys: [], url: "https://x.up.railway.app", envFile: {}, secret: () => "s" };
+    expect(planVariables({ ...base, existing: { DATABASE_URL_DIRECT: "(set)" } }).set.DATABASE_URL_DIRECT).toBe("${{Postgres.DATABASE_URL}}");
+    expect(planVariables({ ...base, existing: { DATABASE_URL_DIRECT: "(set)" }, databases: {}, attached: ["DATABASE_URL"] }).set.DATABASE_URL_DIRECT).toBe("");
+    expect(planVariables({ ...base, existing: {} }).set.DATABASE_URL_DIRECT).toBeUndefined();
+  });
+
+  it("warns when the direct URL names another database on the same compute", () => {
+    const result = checkDatabaseUrls({ env: { DATABASE_URL: pooled, DATABASE_URL_DIRECT: direct.replace("/neondb?", "/other?") }, infra: "neon", claimable: null, cli: "pnpm clubedge", envPath: "x" });
+    expect(result).toMatchObject({ status: "warn", detail: expect.stringContaining("different") });
+  });
+
+  it("drops saved entries without a Neon host", () => {
+    const entry = { projectId: "p", assertion: "a", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-01-01T00:00:00Z", project: "x" };
+    expect(parseNeonState(JSON.stringify({ databases: [entry, { ...entry, projectId: "q", host: "ep-a-pooler.eu.aws.neon.tech" }] })).map((item) => item.projectId)).toEqual(["q"]);
+  });
+
+  it("keeps the VM from creating a second Neon database", () => {
+    expect(tryCreateArgs({ modules: { infra: "neon" } })).toEqual(["--infra", "neon", "--no-neon", "--yes"]);
+    expect(tryCreateArgs({ modules: { infra: "local" } })).not.toContain("--no-neon");
+  });
+
+  it("reads Railway's environment list exactly", () => {
+    expect(railwayEnvironmentNames(JSON.stringify([{ id: "1", name: "production" }, { id: "2", name: "preview-a" }]))).toEqual(["production", "preview-a"]);
+    expect(railwayEnvironmentNames(JSON.stringify({ environments: { edges: [{ node: { name: "production" } }] } }))).toEqual(["production"]);
+    expect(railwayEnvironmentNames(JSON.stringify([{ name: "production", variables: { X: "preview-a" } }]))).toEqual(["production"]);
+    expect(() => railwayEnvironmentNames("")).toThrow(/environment list/);
+  });
+
+  it("scopes the preview's variables to its Git branch", () => {
+    expect(vercelPreviewEnvBody({ DATABASE_URL: pooled }, "feature/x")).toEqual([{ key: "DATABASE_URL", value: pooled, type: "encrypted", target: ["preview"], gitBranch: "feature/x" }]);
   });
 });

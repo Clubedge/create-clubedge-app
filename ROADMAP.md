@@ -32,6 +32,8 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 24 | 0.27.0 | Starter v0.18.0: `check:env` stops Vercel and Netlify builds on a missing production variable |
 | 25 | 0.28.0 | `deploy` to Vercel (experimental) |
 | 26 | 0.29.0 | `deploy` to Netlify and Render (experimental) |
+| 27 | 0.30.0 | Starter v0.19.0: `--infra neon` creates a free Neon database, the `neon` command, `DATABASE_URL_DIRECT` for migrations and jobs |
+| 28 | 0.30.0 | `deploy --preview` for Vercel and Railway with a Neon branch per preview; Starter: a preview environment for each pull request |
 
 ## CLI improvements
 

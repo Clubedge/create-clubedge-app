@@ -58,7 +58,7 @@
     "ssh2": "^1.17.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.5",
+    "@types/node": "^26.6.5",
     "@types/ssh2": "^1.15.6",
     "typescript": "^5.9.3",
     "vitest": "^5.0.3"

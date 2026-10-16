@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.31.0
+
+- The showcase waits for Stripe's portal to be on screen (#90).
+- Default to Starter `v0.20.0` (#91).
+
 ## 0.30.1
 
 Railway previews, fixed after running them for real on the Starter's own pull requests.

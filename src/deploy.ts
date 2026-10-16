@@ -35,8 +35,11 @@ import {
   serviceName,
   serviceNames,
 } from "./core/deploy.js";
+import { neonDatabaseState } from "./core/neon.js";
 import { readProject, type Project } from "./core/project.js";
+import { savedDatabaseForUrl } from "./neon.js";
 import { deployToFly } from "./deploy-fly.js";
+import { deployPreview } from "./deploy-preview.js";
 import { deployToNetlify } from "./deploy-netlify.js";
 import { deployToRender } from "./deploy-render.js";
 import { deployToVercel } from "./deploy-vercel.js";
@@ -66,11 +69,25 @@ async function readDeployEnv(args: CliArgs, project: Project): Promise<Record<st
   if (local.length) {
     log.warn(`${local.join(" and ")} in the env file point at this machine, which the deployed app can't reach: ignored, so deploy creates the platform's own.`);
   }
+  // The free Neon database create made is deleted after 72 hours unless it is claimed.
+  const saved = await savedDatabaseForUrl(values.DATABASE_URL);
+  if (saved) {
+    const state = await neonDatabaseState(saved);
+    if (state.kind === "expired") {
+      throw new UsageError("DATABASE_URL in the env file is a free Neon database that expired, and Neon deleted it. Point it at a database you keep.");
+    }
+    if (state.kind !== "claimed") {
+      const left = state.kind === "unclaimed" ? `in ${state.hoursLeft} hours` : `after ${new Date(saved.expiresAt).toLocaleString()}`;
+      log.warn(
+        `DATABASE_URL is the free Neon database create-clubedge-app made: Neon deletes it ${left} unless you claim it. Run \`${await cliCommand(project)} neon claim\`, then put the new connection strings in the env file.`,
+      );
+    }
+  }
   return values;
 }
 
 /** A Railway CLI to run, and the executable Railway's TypeScript SDK runs to check its version. */
-interface RailwayCli {
+export interface RailwayCli {
   command: string[];
   /** Set as `_` for every Railway command: railway/iac checks the CLI's version with `$_ --version`,
    * falling back to `railway` on PATH, which fails in PowerShell and behind npm's .cmd shims. */
@@ -129,7 +146,7 @@ async function cachedBinaries(): Promise<string[]> {
  * A Railway CLI new enough for `.railway/railway.ts`: the installed one, then one npx already
  * downloaded, and only then a download through npx.
  */
-async function railwayCli(): Promise<RailwayCli> {
+export async function railwayCli(): Promise<RailwayCli> {
   const usable = async (binary: string) => {
     const version = await cliVersion([binary], false);
     return version !== null && meetsMinimumCli(version);
@@ -155,7 +172,7 @@ interface RunOptions {
   inherit?: boolean;
 }
 
-async function railway(cli: RailwayCli, args: string[], options: RunOptions = {}): Promise<string> {
+export async function railway(cli: RailwayCli, args: string[], options: RunOptions = {}): Promise<string> {
   const [command, ...prefix] = cli.command;
   return await new Promise<string>((resolvePromise, reject) => {
     const child = spawnCommand(
@@ -210,6 +227,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
+  if (args.preview) return await deployPreview(args, project, cli, await readDeployEnv(args, project));
   if (platform === "fly") return await deployToFly(args, project, cli, await readDeployEnv(args, project));
   if (platform === "vercel") return await deployToVercel(args, project, cli, await readDeployEnv(args, project));
   if (platform === "netlify") return await deployToNetlify(args, project, cli, await readDeployEnv(args, project));

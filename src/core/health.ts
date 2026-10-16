@@ -1,6 +1,7 @@
 // Pure checks behind `status` and `doctor`: they take what the commands read from the project,
 // the system, and npm, and return what to show, so each can be tested without a real project.
 import { envKeys } from "./env.js";
+import { isNeonPooledUrl, isNeonUrl, neonEndpoint, type NeonDatabaseState } from "./neon.js";
 
 /** Compares dotted versions such as "v0.13.1" and "0.12.0"; null when either is not one. */
 export function compareVersions(a: string, b: string): number | null {
@@ -186,4 +187,62 @@ export function checkLockfile(error: string | null): CheckResult {
     status: "warn",
     detail: `could not check: ${error.split("\n").find((line) => line.trim()) ?? error}`,
   };
+}
+
+/** The database a connection URL names (its path). */
+function databaseName(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url.trim()).pathname.slice(1));
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The database URLs in the local env file: Neon's pooled URL for the app and its direct URL for
+ * migrations and the jobs worker, and how long a free Neon database the CLI created has left.
+ * Null when there is nothing to say (no Neon, no direct URL, and infra isn't neon).
+ */
+export function checkDatabaseUrls(input: {
+  env: Record<string, string>;
+  infra: string | undefined;
+  /** The free Neon database DATABASE_URL uses, as Neon describes it now, when the CLI created it. */
+  claimable: NeonDatabaseState | null;
+  cli: string;
+  envPath: string;
+}): CheckResult | null {
+  const { env, infra, claimable, cli, envPath } = input;
+  const name = "Database URLs";
+  const url = env.DATABASE_URL ?? "";
+  const direct = env.DATABASE_URL_DIRECT ?? "";
+  if (!url) {
+    return infra === "neon"
+      ? { name, status: "fail", detail: `DATABASE_URL in ${envPath} is empty`, fix: `Run \`${cli} neon create\` for a free Neon database, or paste your Neon project's pooled URL.` }
+      : null;
+  }
+  if (direct && isNeonPooledUrl(direct)) {
+    return { name, status: "fail", detail: "DATABASE_URL_DIRECT points at Neon's pooler", fix: "Use the same URL without -pooler in the host: migrations and the jobs worker need a direct session." };
+  }
+  if (claimable?.kind === "expired") {
+    return { name, status: "fail", detail: "the free Neon database in DATABASE_URL expired, and Neon deleted it", fix: `Run \`${cli} neon create\`, then \`pnpm db:migrate\`.` };
+  }
+  if (!isNeonUrl(url)) {
+    return direct ? { name, status: "ok", detail: "DATABASE_URL for the app, DATABASE_URL_DIRECT for migrations and the jobs worker" } : null;
+  }
+  if (!isNeonPooledUrl(url)) {
+    return { name, status: "warn", detail: "DATABASE_URL is Neon's direct host, which has fewer connections", fix: "Put the pooled URL (the host with -pooler) in DATABASE_URL, and this one in DATABASE_URL_DIRECT." };
+  }
+  if (!direct) {
+    return { name, status: "warn", detail: "DATABASE_URL is Neon's pooler, and DATABASE_URL_DIRECT is not set", fix: "Set DATABASE_URL_DIRECT to the same URL without -pooler in the host, for migrations and the jobs worker." };
+  }
+  if (neonEndpoint(direct) !== neonEndpoint(url) || databaseName(direct) !== databaseName(url)) {
+    return { name, status: "warn", detail: "DATABASE_URL and DATABASE_URL_DIRECT point at different Neon databases", fix: "Copy both from the same branch in the Neon console: pooled and direct." };
+  }
+  if (claimable?.kind === "unclaimed") {
+    const detail = `a free Neon database, unclaimed: ${claimable.hoursLeft} hours left`;
+    return claimable.hoursLeft < 24
+      ? { name, status: "warn", detail, fix: `Keep it with \`${cli} neon claim\`, or Neon deletes it with its data.` }
+      : { name, status: "ok", detail: `${detail} (\`${cli} neon claim\` keeps it)` };
+  }
+  return { name, status: "ok", detail: "Neon, pooled for the app and direct for migrations and the jobs worker" };
 }

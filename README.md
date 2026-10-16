@@ -80,7 +80,7 @@ Authentication, file storage, caching, email, payments, background jobs, observa
 | `--jobs` | `pg-boss`, `none` | `none` |
 | `--observability` | `otel` (OpenTelemetry, to any OTLP collector), `sentry`, `none` | `none` |
 | `--deploy`  | `docker` (any container host), `fly`, `railway`, `render`, `vercel`, `netlify` | `docker` |
-| `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `local` (no Docker: PGlite and a local folder), `none` | `docker` |
+| `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `local` (no Docker: PGlite and a local folder), `neon` (a free hosted Neon database), `none` | `docker` |
 
 ```sh
 # Only the monorepo, UI, database, and tooling
@@ -163,6 +163,29 @@ Several modules in one command are applied as one change, and their requirements
 
 The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 
+## A hosted database with Neon
+
+`--infra neon` gives the project a [Neon](https://neon.com) PostgreSQL database with nothing to install and no account:
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app my-app --infra neon
+cd my-app
+pnpm db:migrate
+pnpm dev
+```
+
+The CLI creates a free database through Neon's [claimable Postgres](https://neon.com/docs/reference/claimable-postgres) and writes two URLs into `apps/web/.env.local`: `DATABASE_URL`, the pooled connection the app uses, and `DATABASE_URL_DIRECT`, the direct one that migrations and the background jobs worker use, since a transaction pooler can break them. Neon keeps an unclaimed database for 72 hours, with up to 100 MB:
+
+```sh
+pnpm clubedge neon           # where it stands and how long it has left
+pnpm clubedge neon claim     # opens Neon's page that moves it into your (free) Neon account
+pnpm clubedge neon create    # a new database, for example after one expired
+```
+
+Claiming keeps the data but resets the password: copy the pooled and direct connection strings from the Neon console into the two variables afterward. To use a Neon project you already have, paste its URLs instead, or pass `--no-neon` to create nothing. `pnpm clubedge add infra neon` switches an existing project and creates a database when `DATABASE_URL` held the old infrastructure's example value. The CLI keeps what it needs to claim each database in `neon.json` in its config directory (`~/.config/clubedge`, or `%APPDATA%\clubedge` on Windows); treat it as a secret.
+
+`doctor` checks the two URLs (pooled for the app, direct without `-pooler`, both from the same database) and warns when a free database has less than a day left. `deploy` sends `DATABASE_URL_DIRECT` with a `DATABASE_URL` from the env file, derives it from a pooled Neon URL when the file has none, and warns before deploying a database that is still unclaimed.
+
 ## Check a project
 
 Two read-only commands help you keep a project healthy:
@@ -185,9 +208,9 @@ pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start --auth non
 
 The VM needs no Railway account and lasts 60 minutes; to keep it, open the claim link the CLI prints within 24 hours after, which moves the VM, its files, and its URL into a Railway account. Keep that link private. Until the VM is claimed, the preview opens only from the IP address that created it (not from another device on mobile data, or through a VPN); claiming makes the URL shareable. Railway allows 3 free VMs per network per day.
 
-The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth unless you choose `--auth none`, with email off; other module flags apply as usual.
+The VM has no Docker, so the project uses `--infra local` (PGlite) and Better Auth unless you choose `--auth none`, with email off; other module flags apply as usual. With `--infra neon`, the CLI creates a free Neon database first, the VM migrates it, and `neon claim` (run outside a project) keeps it after the VM is gone.
 
-Inside a project, `pnpm clubedge try` uploads that project instead, to share work in progress without deploying it. It sends what Git would commit (tracked files, plus untracked ones that are not ignored) and never `.env` files other than examples, `node_modules`, or build output; on the VM, the env file is made from `.env.example` as `create` does. The project must use `infra local` or `none`, and not Supabase Auth; `pnpm clubedge add infra local` switches a Docker project. Add `--dry-run` to list the files without uploading anything.
+Inside a project, `pnpm clubedge try` uploads that project instead, to share work in progress without deploying it. It sends what Git would commit (tracked files, plus untracked ones that are not ignored) and never `.env` files other than examples, `node_modules`, or build output; on the VM, the env file is made from `.env.example` as `create` does. The project must use `infra local`, `neon`, or `none`, and not Supabase Auth; with `neon`, the VM gets `DATABASE_URL` and `DATABASE_URL_DIRECT` from your env file; `pnpm clubedge add infra local` switches a Docker project. Add `--dry-run` to list the files without uploading anything.
 
 When the app is ready, the CLI opens the preview in your browser (`--no-open` turns that off) and asks whether to share it: claiming the VM, a free Railway sign-up, is what makes the URL work for anyone. `--claim` opens the claim page without asking. `try --status` shows the last VM's preview, time left, and claim link; it connects only while the VM is running, so it never creates a new one. To open the app from another network yourself, forward it: `ssh -i <key> -N -L 3000:127.0.0.1:3000 railway.new`, then http://localhost:3000 (the CLI prints the exact command). The CLI asks before creating anything (`--yes` agrees), keeps its own SSH key in your config directory (`~/.config/clubedge`, or `%APPDATA%\clubedge` on Windows) apart from `~/.ssh`, and connects only to Railway's known host key. Railway's [terms](https://railway.com/legal/terms) apply, and Railway can change or pause its free VM.
 
@@ -218,6 +241,18 @@ In a project with `--deploy netlify`, `pnpm clubedge deploy` uses [Netlify's CLI
 ### Deploy to Render (experimental)
 
 In a project with `--deploy render`, `pnpm clubedge deploy` uses Render's API. Render builds the Dockerfile from your Git repository, so push the project to GitHub, GitLab, or Bitbucket first, with Render's access to it granted in the dashboard; `deploy` warns about commits that aren't pushed. It signs in with an API key: `RENDER_API_KEY`, or else it opens the dashboard's API keys page and asks you to paste one. It creates or reuses a web service named after the package, on the Docker runtime and a starter instance (pre-deploy commands need a paid type), which runs `node /app/migrate.mjs` before each release, checks `/api/health`, and deploys again on each push, as `render.yaml` describes. `DATABASE_URL` comes from the env file (Render Postgres, Neon, Supabase, ...). It sets the production variables: the env file's values, the service's `*.onrender.com` URL, and a generated `BETTER_AUTH_SECRET` that later runs keep. Then it starts a deploy and waits until it is live. When Render names the app something other than `https://<service>.onrender.com`, `deploy` sets that URL and deploys again, since the build compiles it in. Running it again reuses the service. Render bills the instance on your plan.
+
+### Preview deployments
+
+In a project that deploys to Vercel or Railway, `pnpm clubedge deploy --preview` deploys the current Git branch next to production, after a first `deploy`:
+
+```sh
+NEON_API_KEY=... NEON_PROJECT_ID=... pnpm clubedge deploy --preview
+```
+
+With `NEON_API_KEY` and `NEON_PROJECT_ID` (in the shell, or in the env file), the preview gets its own [Neon branch](https://neon.com/docs/introduction/branching), `preview/<git branch>`: a copy of the production database made in seconds that shares its storage until it changes. `deploy` creates it, or reuses it on later runs, applies this branch's migrations to it, and points the preview's `DATABASE_URL` and `DATABASE_URL_DIRECT` at it. On Vercel, the preview is a preview deployment with the project's Preview variables, and the branch's URLs are set as Preview variables of your Git branch, which needs the Vercel project connected to its Git repository; without the Neon settings, it uses the Preview `DATABASE_URL`. On Railway, it is an environment named `preview-<git branch>`, copied from production with its own domain; without the Neon settings, it gets its own empty copy of Railway's Postgres, and when production's database comes from elsewhere, `deploy --preview` refuses, since the copy would use production's data. Production is not changed.
+
+Projects created with `--infra neon` also have `.github/workflows/preview.yml`, which does this for every pull request in CI: a Neon branch per pull request with its migrations, the schema diff as a comment, a Vercel or Railway preview, and cleanup when the pull request closes. The Starter's SETUP.md lists the secrets it needs.
 
 ## Version relationship
 

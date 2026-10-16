@@ -36,6 +36,8 @@ describe("parseCliArgs", () => {
       open: true,
       claim: false,
       status: false,
+      neon: true,
+      preview: false,
       envFile: undefined,
       help: false,
       version: false,

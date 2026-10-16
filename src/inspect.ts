@@ -7,6 +7,7 @@ import process from "node:process";
 import type { CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
 import {
+  checkDatabaseUrls,
   checkEnvFile,
   checkLockfile,
   checkNode,
@@ -17,7 +18,10 @@ import {
   type CheckResult,
   type GitState,
 } from "./core/health.js";
+import { parseEnvFile } from "./core/deploy.js";
+import { neonDatabaseState } from "./core/neon.js";
 import { readProject } from "./core/project.js";
+import { savedDatabaseForUrl } from "./neon.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
 import { pathExists } from "./utils/fs.js";
@@ -127,6 +131,17 @@ export async function runDoctor(args: CliArgs): Promise<void> {
       ENV_PATHS,
     ),
   );
+
+  const env = parseEnvFile((await readText(join(root, ENV_PATHS.local))) ?? "");
+  const saved = await savedDatabaseForUrl(env.DATABASE_URL);
+  const database = checkDatabaseUrls({
+    env,
+    infra: project.modules.infra,
+    claimable: saved ? await neonDatabaseState(saved) : null,
+    cli: await cliCommand(project),
+    envPath: ENV_PATHS.local,
+  });
+  if (database) check(database);
 
   // Service checks need the dependencies, and print their own results.
   if (args.services && manifest.scripts?.["check:services"] && pnpm && installed) {

@@ -40,7 +40,7 @@ const vercelPricingUrl = "https://vercel.com/pricing";
 const windows = process.platform === "win32";
 
 /** Vercel's CLI: an installed `vercel` new enough for `vercel api`, else the latest through npx. */
-interface VercelCli {
+export interface VercelCli {
   command: string[];
 }
 
@@ -52,7 +52,7 @@ interface RunOptions {
 }
 
 /** Runs Vercel's CLI in the project's root; npm's .cmd shims need a shell on Windows. */
-async function vercel(cli: VercelCli, args: string[], cwd: string, options: RunOptions = {}): Promise<string> {
+export async function vercel(cli: VercelCli, args: string[], cwd: string, options: RunOptions = {}): Promise<string> {
   const [command, ...prefix] = cli.command;
   const mode = options.mode ?? "capture";
   const stdio =
@@ -77,7 +77,7 @@ async function vercel(cli: VercelCli, args: string[], cwd: string, options: RunO
 
 const attempt = async (run: () => Promise<string>) => run().catch(() => null);
 
-async function vercelCli(cwd: string): Promise<VercelCli> {
+export async function vercelCli(cwd: string): Promise<VercelCli> {
   for (const command of [["vercel"], ["npx", "--yes", "vercel@latest"]]) {
     const cli = { command };
     const version = railwayCliVersion((await attempt(() => vercel(cli, ["--version"], cwd))) ?? "");
@@ -89,7 +89,7 @@ async function vercelCli(cwd: string): Promise<VercelCli> {
 }
 
 /** The project `vercel link` recorded in .vercel/project.json, if any. */
-async function linkedProject(root: string): Promise<string | null> {
+export async function linkedProject(root: string): Promise<string | null> {
   try {
     const linked = JSON.parse(await readFile(join(root, ".vercel", "project.json"), "utf8")) as { projectId?: unknown };
     return typeof linked.projectId === "string" ? linked.projectId : null;

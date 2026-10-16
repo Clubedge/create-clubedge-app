@@ -116,13 +116,13 @@ export function portForwardCommand(keyPath: string): string {
 
 /**
  * The modules for a project on the VM. It has no Docker, so the database is PGlite (--infra
- * local) and sign-in is Better Auth; email is off, since nothing there receives it. Flags the
- * user passed win, unless the VM cannot run them.
+ * local) or a free Neon database (--infra neon), and sign-in is Better Auth; email is off, since
+ * nothing there receives it. Flags the user passed win, unless the VM cannot run them.
  */
 export function tryModules(requested: Record<string, string>): Record<string, string> {
   const infra = requested.infra ?? "local";
-  if (infra !== "local") {
-    throw new UsageError(`try runs on a VM without Docker, so it needs --infra local (not --infra ${infra}).`);
+  if (infra !== "local" && infra !== "neon") {
+    throw new UsageError(`try runs on a VM without Docker, so it needs --infra local or --infra neon (not --infra ${infra}).`);
   }
   const auth = requested.auth ?? "better-auth";
   if (auth === "supabase") {
@@ -133,11 +133,11 @@ export function tryModules(requested: Record<string, string>): Record<string, st
 
 /**
  * Why an existing project cannot run on the VM, or null when it can. The VM has no Docker, so the
- * database must be PGlite (infra local) or none, and Supabase Auth is out.
+ * database must be PGlite (infra local), hosted (neon), or none, and Supabase Auth is out.
  */
 export function projectTryProblem(modules: Record<string, string>): string | null {
   const infra = modules.infra ?? "none";
-  if (infra !== "local" && infra !== "none") {
+  if (infra !== "local" && infra !== "neon" && infra !== "none") {
     return `This project runs its services with infra ${infra}, which needs Docker; the VM has none. Switch with \`pnpm clubedge add infra local\` (PGlite, no Docker), then run try again.`;
   }
   if (modules.auth === "supabase") {
@@ -164,6 +164,8 @@ export interface TryScriptOptions {
   source: TrySource;
   modules: Record<string, string>;
   previewUrl: string;
+  /** A hosted database (Neon) for the VM's env files: DATABASE_URL and DATABASE_URL_DIRECT. */
+  database?: { url: string; directUrl: string };
 }
 
 /** The create command's flags on the VM: the chosen selection, without prompts. */
@@ -172,6 +174,8 @@ export function tryCreateArgs({ framework, modules, ref }: { framework?: string;
     ...(framework ? ["--framework", framework] : []),
     ...Object.entries(modules).flatMap(([module, option]) => [`--${module}`, option]),
     ...(ref ? ["--ref", ref] : []),
+    // try creates the Neon database here and writes its URLs on the VM.
+    ...(modules.infra === "neon" ? ["--no-neon"] : []),
     "--yes",
   ];
 }
@@ -188,7 +192,7 @@ export const remoteArchivePath = `${remoteDir}/clubedge-upload.tgz`;
  * or "@@fail <text>" followed by the end of the log as "@@log <line>". The servers it starts keep
  * running after the SSH session ends.
  */
-export function tryScript({ source, modules, previewUrl }: TryScriptOptions): string {
+export function tryScript({ source, modules, previewUrl, database }: TryScriptOptions): string {
   const base = source.kind === "create" ? "my-app" : source.name;
   const prepare =
     source.kind === "create"
@@ -203,6 +207,12 @@ step "Installing dependencies"
 pnpm install >>"$log" 2>&1 || fail "pnpm install failed"`;
   const betterAuth = modules.auth === "better-auth";
   const localDb = modules.infra === "local";
+  // Node writes the values, so a password's characters need no escaping for sed.
+  const setDatabase = database
+    ? `node -e ${shellQuote(
+        'const fs=require("node:fs");const v=JSON.parse(process.argv[1]);for(const f of process.argv.slice(2)){let t=fs.readFileSync(f,"utf8");for(const[k,x]of Object.entries(v)){const r=new RegExp("^"+k+"=.*$","m");t=r.test(t)?t.replace(r,()=>k+"="+x):t.replace(/\\n?$/,"\\n")+k+"="+x+"\\n"}fs.writeFileSync(f,t)}',
+      )} ${shellQuote(JSON.stringify({ DATABASE_URL: database.url, DATABASE_URL_DIRECT: database.directUrl }))} apps/*/.env.local`
+    : "";
   return `#!/usr/bin/env bash
 # Written by create-clubedge-app try. Logs: ${remoteLog}, ${remoteDevLog}
 set -uo pipefail
@@ -249,6 +259,16 @@ for envfile in apps/*/.env.local; do
     echo "BETTER_AUTH_SECRET=$secret" >> "$envfile"
   fi
 done
+`
+    : ""
+}${
+  database
+    ? `
+step "Using the Neon database"
+${setDatabase} >>"$log" 2>&1 || fail "The database URLs could not be written"
+
+step "Migrating the database"
+pnpm run --if-present db:migrate >>"$log" 2>&1 || fail "The database migration failed"
 `
     : ""
 }${

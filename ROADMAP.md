@@ -36,7 +36,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 28 | 0.30.0 | `deploy --preview` for Vercel and Railway with a Neon branch per preview; Starter: a preview environment for each pull request |
 | 28 | 0.30.1 | Starter v0.19.1: Railway previews fixed after running for real (workspace tokens, `PORT`), both preview URLs in the comment; tested end to end on Vercel and Railway |
 | 29 | 0.31.0 | Starter v0.20.0: pluggable jobs, with `--jobs bullmq` (Redis) and `--jobs inngest` next to pg-boss, and `@clubedge/jobs/conformance`, which every provider passes |
-| 30 | 0.32.0 | Default to Starter v0.21.0 |
+| 30 | 0.32.0 | Starter v0.21.0: pluggable auth, with `--auth firebase` (Auth Emulator in development) and `--auth appwrite` (Cloud or self-hosted), and `@clubedge/auth/conformance`, which every provider passes |
 
 ## CLI improvements
 

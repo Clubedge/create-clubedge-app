@@ -4,7 +4,13 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.32.0
 
-- Default to Starter `v0.21.0` (#93).
+- **Pluggable authentication**: default to Starter `v0.21.0` (#93). Authentication now has four providers behind one interface, so the pages, settings, payments, and jobs stay the same whichever signs users in:
+  - `--auth supabase` and `--auth better-auth`, as before.
+  - **`--auth firebase`** (new): Firebase Authentication from the server, with session cookies. `pnpm auth:dev` starts the Auth Emulator, so development needs no Firebase account. Reset and confirmation emails go through the app's email module.
+  - **`--auth appwrite`** (new): Appwrite accounts on Appwrite Cloud or your own server, with session cookies and an API key. Appwrite sends its own emails.
+  - `@clubedge/auth/conformance` is one test suite every auth provider passes: sign-up and sign-in, sign-out, reset through the emailed link, password changes that sign out other sessions, and account deletion. The Starter's CI runs it against all four, including Appwrite Cloud.
+  - Stripe payments work with every provider.
+  - Switch an existing project with `pnpm clubedge add auth firebase` or `pnpm clubedge add auth appwrite`. After `pnpm clubedge upgrade`, run `pnpm db:migrate`: `users.auth_user_id` becomes text, since Firebase's and Appwrite's user ids aren't UUIDs.
 
 ## 0.31.0
 

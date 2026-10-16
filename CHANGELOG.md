@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.30.0
+
+- --infra neon, the neon command, and deploy --preview (phases 27 and 28) (#84).
+- Default to Starter `v0.19.0` (#85).
+
 ## 0.29.0
 
 - `pnpm clubedge deploy` deploys to Netlify and Render (experimental) (#82), so it now covers Railway, Fly.io, Vercel, Netlify, and Render:

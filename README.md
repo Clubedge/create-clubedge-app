@@ -259,7 +259,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.29.0
+create-clubedge-app v0.30.0
         |
         v
 Clubedge Starter v0.19.0
@@ -270,7 +270,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.29.0` | `clubedge-starter@v0.19.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.30.0` | `clubedge-starter@v0.19.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -373,6 +373,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.27.0 | v0.18.0 | Starter v0.18.0: Vercel and Netlify builds stop when a production variable is missing (`pnpm check:env`) |
 | 0.28.0 | v0.18.0 | `deploy` to Vercel (experimental) |
 | 0.29.0 | v0.18.0 | `deploy` to Netlify and Render (experimental) |
+| 0.30.0 | v0.19.0 | --infra neon, the neon command, and deploy --preview (phases 27 and 28); Default to Starter v0.19.0 |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

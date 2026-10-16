@@ -32,6 +32,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 24 | 0.27.0 | Starter v0.18.0: `check:env` stops Vercel and Netlify builds on a missing production variable |
 | 25 | 0.28.0 | `deploy` to Vercel (experimental) |
 | 26 | 0.29.0 | `deploy` to Netlify and Render (experimental) |
+| 27 | 0.30.0 | --infra neon, the neon command, and deploy --preview (phases 27 and 28); Default to Starter v0.19.0 |
 
 ## CLI improvements
 

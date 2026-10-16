@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.32.0
+
+- Default to Starter `v0.21.0` (#93).
+
 ## 0.31.0
 
 - **Pluggable background jobs**: default to Starter `v0.20.0` (#91). The jobs module now has three providers behind one interface, so job definitions, routes, and the dashboard's jobs card stay the same whichever runs them:

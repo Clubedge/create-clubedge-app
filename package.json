@@ -22,8 +22,8 @@
   },
   "clubedge": {
     "starterRepository": "Clubedge/clubedge-starter",
-    "starterRef": "v0.18.0",
-    "starterCommit": "bcd084d7d2d2aac0600ccb35491f48c251fb3a74"
+    "starterRef": "v0.19.0",
+    "starterCommit": "1fa6afcefb99f26332f08cd08ac63f6b229cafda"
   },
   "license": "Apache-2.0",
   "repository": {

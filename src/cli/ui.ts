@@ -110,9 +110,10 @@ Usage:
   pnpm dlx @clubedge/create-clubedge-app doctor                  (inside a project)
   pnpm dlx @clubedge/create-clubedge-app try [options]           (experimental)
   pnpm dlx @clubedge/create-clubedge-app deploy [options]        (inside a project)
+  pnpm dlx @clubedge/create-clubedge-app neon [claim|create]     (--infra neon)
 
   Inside a project with the clubedge script, use pnpm clubedge add, remove,
-  upgrade, status, doctor, try, or deploy. Without a module or option, add and remove ask
+  upgrade, status, doctor, try, deploy, or neon. Without a module or option, add and remove ask
   for them.
 
   add and remove change modules of an existing project, several at once as one
@@ -125,11 +126,16 @@ Usage:
   newer Starter is available. doctor checks Node.js, pnpm, the dependencies, the
   lockfile, and the env file, then runs pnpm check:services; it changes nothing.
 
+  --infra neon creates a free Neon database (no account; 72 hours unless claimed) and
+  writes its pooled and direct URLs into the env file. neon shows how long it has left,
+  neon claim opens the page that keeps it in a Neon account, and neon create makes a
+  new one.
+
   try creates a new project on a free, temporary Railway VM (no account, 60 minutes)
   and prints its preview URL and the link to claim the VM. The VM has no Docker, so
-  it uses --infra local (PGlite) and Better Auth, with email off. Inside a project,
-  try uploads that project instead (what Git would commit, never .env files or
-  node_modules); it needs infra local or none. It asks first, keeps its own SSH key
+  it uses --infra local (PGlite) or --infra neon, and Better Auth, with email off.
+  Inside a project, try uploads that project instead (what Git would commit, never .env
+  files or node_modules); it needs infra local, neon, or none. It asks first, keeps its own SSH key
   apart from ~/.ssh, and opens the preview when ready. Experimental: Railway can
   change or pause its free VM.
 
@@ -144,6 +150,7 @@ ${selectionHelp(manifest)}
   --no-open               try, deploy (Vercel, Netlify, Render): do not open the URL in the browser
   --claim                 try: open the page that claims the VM, to share the preview
   --status                try: the last VM's preview, time left, and claim link
+  --no-neon               --infra neon: don't create a Neon database (set DATABASE_URL yourself)
   --env-file <path>       deploy: production values (default: .env.production when there is one)
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
@@ -164,6 +171,8 @@ Examples:
   pnpm dlx @clubedge/create-clubedge-app@latest upgrade
   pnpm clubedge status
   pnpm clubedge doctor --no-services
+  pnpm dlx @clubedge/create-clubedge-app my-app --infra neon
+  pnpm clubedge neon claim
   pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start
 
 Learn more:

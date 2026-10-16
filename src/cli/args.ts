@@ -19,7 +19,9 @@ export type Command =
   /** Create a project on a temporary Railway VM instead of this machine. */
   | { name: "try" }
   /** Deploy the project to Railway: project, databases, variables, domain, and the first release. */
-  | { name: "deploy" };
+  | { name: "deploy" }
+  /** The free Neon database of a project with --infra neon: its status, claiming it, or a new one. */
+  | { name: "neon"; action: "status" | "claim" | "create" };
 
 export interface CliArgs {
   command: Command;
@@ -46,6 +48,8 @@ export interface CliArgs {
   claim: boolean;
   /** try: show the last VM's preview, time left, and claim link, without creating one. */
   status: boolean;
+  /** create and add with --infra neon: create a free Neon database (--no-neon skips it). */
+  neon: boolean;
   /** deploy: production values for the service, from this env file. */
   envFile?: string;
   help: boolean;
@@ -70,6 +74,7 @@ const OPTIONS = {
   open: { type: "boolean", default: true },
   claim: { type: "boolean", default: false },
   status: { type: "boolean", default: false },
+  neon: { type: "boolean", default: true },
   "env-file": { type: "string" },
   help: { type: "boolean", short: "h", default: false },
   version: { type: "boolean", short: "v", default: false },
@@ -184,6 +189,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     open: values.open,
     claim: values.claim,
     status: values.status,
+    neon: values.neon,
     envFile: values["env-file"],
     help: values.help,
     version: values.version,
@@ -227,6 +233,13 @@ function parseCommand(positionals: string[]): Command {
   if (name === "deploy") {
     if (module !== undefined) throw new UsageError("Usage: deploy [--env-file <path>], run inside a project.");
     return { name };
+  }
+  if (name === "neon") {
+    const action = module ?? "status";
+    if (rest.length > 1 || (action !== "status" && action !== "claim" && action !== "create")) {
+      throw new UsageError("Usage: neon [status|claim|create], run inside a project with --infra neon.");
+    }
+    return { name, action };
   }
   if (name === "try") {
     if (module !== undefined) {

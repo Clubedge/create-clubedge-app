@@ -1,7 +1,7 @@
 import { cancel, confirm, isCancel, log, note, outro, select, spinner } from "@clack/prompts";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import ssh2 from "ssh2";
 import { UsageError, type CliArgs } from "./cli/args.js";
@@ -33,7 +33,9 @@ import {
   type RailwayVm,
   type TrySource,
 } from "./core/railway.js";
+import { parseEnvFile } from "./core/deploy.js";
 import { ProjectError, readProject, type Project } from "./core/project.js";
+import { createNeonDatabase, localEnvPath } from "./neon.js";
 import { uploadableFiles } from "./core/upload.js";
 import { cliVersion } from "./package-info.js";
 import { openUrl } from "./utils/open.js";
@@ -165,10 +167,13 @@ async function currentProject(): Promise<Project | null> {
   }
 }
 
+/** A hosted database for the VM: this project's, from its env file. */
+type Database = { url: string; directUrl: string };
+
 /** What goes to the VM: a new project's selection, or this project's files. */
 type Plan =
   | { kind: "create"; modules: Record<string, string>; summary: string }
-  | { kind: "upload"; modules: Record<string, string>; summary: string; project: Project; paths: string[] };
+  | { kind: "upload"; modules: Record<string, string>; summary: string; project: Project; paths: string[]; database?: Database };
 
 async function plan(args: CliArgs): Promise<Plan> {
   const project = await currentProject();
@@ -186,7 +191,17 @@ async function plan(args: CliArgs): Promise<Plan> {
   if (problem) throw new UsageError(problem);
   const paths = await uploadableFiles(project.root);
   if (!paths.includes("package.json")) throw new UsageError(`Nothing to upload from ${project.root}.`);
+  // Env files stay here, so the VM gets the hosted database's URLs on their own.
+  let database: Database | undefined;
+  if (project.modules.infra === "neon") {
+    const env = parseEnvFile(await readFile(join(project.root, localEnvPath), "utf8").catch(() => ""));
+    if (!env.DATABASE_URL) {
+      throw new UsageError(`${localEnvPath} has no DATABASE_URL for the VM to use. Create a free Neon database with \`pnpm clubedge neon create\`, then run try again.`);
+    }
+    database = { url: env.DATABASE_URL, directUrl: env.DATABASE_URL_DIRECT || env.DATABASE_URL };
+  }
   return {
+    ...(database ? { database } : {}),
     kind: "upload",
     modules: project.modules,
     project,
@@ -205,6 +220,13 @@ async function agree(args: CliArgs, keyPath: string, what: Plan): Promise<boolea
       ...(what.kind === "upload"
         ? [
             `• Uploads ${what.paths.length} files: what Git would commit. .env files (other than examples) and node_modules stay here; the VM makes its env files from .env.example.`,
+          ]
+        : []),
+      ...(what.modules.infra === "neon"
+        ? [
+            what.kind === "upload"
+              ? "• Sends DATABASE_URL and DATABASE_URL_DIRECT from your env file to the VM, so the app there uses your Neon database."
+              : "• Creates a free Neon database for it (no account; Neon keeps it 72 hours unless you claim it).",
           ]
         : []),
       `• No Railway account is needed. You get 60 minutes, then 24 hours to claim the VM to keep it.`,
@@ -325,7 +347,9 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
         `• ${what.summary}`,
         what.modules.infra === "local"
           ? "• Start the local database (PGlite), migrate, and start the app behind the preview URL"
-          : "• Start the app behind the preview URL",
+          : what.modules.infra === "neon"
+            ? `• ${what.kind === "create" ? "Create a free Neon database" : "Use the Neon database in your env file"}, migrate, and start the app behind the preview URL`
+            : "• Start the app behind the preview URL",
         ...(what.kind === "upload" ? ["", dim(what.paths.join("\n"))] : []),
       ].join("\n"),
     );
@@ -347,6 +371,16 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
     if (key.created) log.info(`Created an SSH key for Railway in ${keyPath}`);
     connection = await connect(key.privateKey);
 
+    // Before the VM's clock starts: Neon answers in seconds.
+    let database = what.kind === "upload" ? what.database : undefined;
+    let neonExpires: Date | null = null;
+    if (what.kind === "create" && what.modules.infra === "neon") {
+      progress.message("Creating a free Neon database");
+      const created = await createNeonDatabase("try on Railway");
+      database = { url: created.url, directUrl: created.directUrl };
+      neonExpires = new Date(created.database.expiresAt);
+    }
+
     const { vm } = await exec(connection, "true");
     if (!vm) throw new Error(`${railwayHost} did not describe the VM. Railway may have changed its free VM; see ${railwayFreeVmUrl}.`);
     progress.stop(`VM ready, ${minutesLeft(vm.expiresAt)} minutes to try it`);
@@ -364,7 +398,7 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
       source = { kind: "create", cliVersion, framework: args.framework, ref: args.ref };
     }
     await upload(connection, remoteProxyPath, proxySource);
-    await upload(connection, remoteScriptPath, tryScript({ source, modules: what.modules, previewUrl: vm.previewUrl }));
+    await upload(connection, remoteScriptPath, tryScript({ source, modules: what.modules, previewUrl: vm.previewUrl, ...(database ? { database } : {}) }));
 
     const tail: string[] = [];
     let failure = "";
@@ -392,6 +426,9 @@ export async function tryOnRailway(args: CliArgs): Promise<void> {
         `${bold("Preview")}  ${vm.previewUrl}`,
         `${bold("Time")}     ${minutesLeft(vm.expiresAt)} minutes left (until ${vm.expiresAt.toLocaleTimeString()})`,
         `${bold("Claim")}    ${vm.claimUrl}`,
+        ...(neonExpires
+          ? [`${bold("Database")} Neon, free until ${neonExpires.toLocaleString()}; keep it with: pnpm dlx @clubedge/create-clubedge-app neon claim`]
+          : []),
       ].join("\n"),
       "Your app on Railway",
     );

@@ -1,5 +1,6 @@
 // What `deploy` sets up on Railway for a project, as pure functions: the service name, the
 // production variables, and reading the Railway CLI's output. src/deploy.ts runs the CLI.
+import { isNeonPooledUrl, neonDirectUrl } from "./neon.js";
 
 /** The port the production image listens on (the Starter's Dockerfile sets PORT=3000). */
 export const appPort = 3000;
@@ -110,7 +111,7 @@ export function planVariables(input: {
   const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
   if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
 
-  const databaseKeys: string[] = Object.values(databaseVariables);
+  const databaseKeys: string[] = [...Object.values(databaseVariables), "DATABASE_URL_DIRECT"];
   for (const [key, value] of Object.entries(envFile)) {
     if (value === "" || databaseKeys.includes(key)) continue;
     // A development env file's localhost URL would send emailed links to this machine.
@@ -118,8 +119,22 @@ export function planVariables(input: {
     set[key] = value;
   }
   Object.assign(set, external);
-  const unset = keys.filter((key) => set[key] === undefined && !existing[key]);
+  const direct = directDatabaseUrl(external.DATABASE_URL, envFile.DATABASE_URL_DIRECT);
+  if (direct) set.DATABASE_URL_DIRECT = direct;
+  // Optional: without it, migrations and the jobs worker use DATABASE_URL.
+  const unset = keys.filter((key) => set[key] === undefined && !existing[key] && key !== "DATABASE_URL_DIRECT");
   return { set, unset };
+}
+
+/**
+ * DATABASE_URL_DIRECT for a database hosted elsewhere: the env file's, or for a pooled Neon URL the
+ * same URL without -pooler. Never next to the platform's own database (no external URL), where it
+ * would send migrations to another database.
+ */
+export function directDatabaseUrl(external: string | undefined, direct: string | undefined): string | null {
+  if (!external) return null;
+  if (direct?.trim() && !isLocalUrl(direct)) return direct.trim();
+  return isNeonPooledUrl(external) ? neonDirectUrl(external) : null;
 }
 
 /** The public domain in `railway domain` output (JSON or text). */

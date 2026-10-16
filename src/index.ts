@@ -13,6 +13,7 @@ import { runDoctor, showStatus } from "./inspect.js";
 import { changeProject } from "./modify.js";
 import { deployProject } from "./deploy.js";
 import { tryOnRailway } from "./try.js";
+import { describeNewDatabase, neonCommand, provisionNeonDatabase } from "./neon.js";
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, installDependencies, resolvePnpm } from "./steps/install.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
@@ -135,6 +136,7 @@ async function createProject(args: CliArgs): Promise<void> {
 
   // The spinner runs while the manifest is read and again while files are written.
   let spinning: "preparing" | "writing" | null = "preparing";
+  let neonEnvFile: string | null = null;
   try {
     const manifest = await readTemplateManifest(source.root);
     progress.stop(`Starter ${source.ref} ready`);
@@ -161,8 +163,11 @@ async function createProject(args: CliArgs): Promise<void> {
       install: args.install,
     });
 
+    // --infra neon: a free Neon database, its URLs written into the new env file.
+    neonEnvFile = plan.modules.some(({ id, option }) => id === "infra" && option === "neon") && args.neon ? (plan.envFile?.to ?? null) : null;
     if (args.dryRun) {
-      log.message(describePlan(plan).map((line) => `• ${line}`).join("\n"));
+      const lines = [...describePlan(plan), ...(neonEnvFile ? [`Create a free Neon database and set its URLs in ${neonEnvFile}`] : [])];
+      log.message(lines.map((line) => `• ${line}`).join("\n"));
       outro("Dry run: nothing was written. Run again without --dry-run to create the project.");
       return;
     }
@@ -178,6 +183,22 @@ async function createProject(args: CliArgs): Promise<void> {
     throw error;
   } finally {
     await source.cleanup();
+  }
+
+  // The project stays when Neon can't be reached: the database can be created later.
+  let migrate = "";
+  if (neonEnvFile) {
+    progress.start("Creating a free Neon database");
+    try {
+      const created = await provisionNeonDatabase(targetDirectory, neonEnvFile);
+      progress.stop(describeNewDatabase(created, "pnpm clubedge"));
+      migrate = "db:migrate";
+    } catch (error) {
+      progress.stop("Neon created no database");
+      log.warn(
+        `${error instanceof Error ? error.message : String(error)} Create one later with \`pnpm clubedge neon create\`, or set DATABASE_URL in ${neonEnvFile} yourself.`,
+      );
+    }
   }
 
   if (args.git) {
@@ -212,7 +233,7 @@ async function createProject(args: CliArgs): Promise<void> {
     ? `Change modules later with \`pnpm clubedge add\` or \`pnpm clubedge remove\`, and get Starter updates with \`pnpm clubedge upgrade\`.\n\n`
     : "";
   outro(
-    `Next steps:\n  cd ${directory}\n  ${pnpmCommand} dev\n\n` +
+    `Next steps:\n  cd ${directory}\n${migrate ? `  ${pnpmCommand} ${migrate}\n` : ""}  ${pnpmCommand} dev\n\n` +
       `See SETUP.md for database and provider configuration.\n\n` +
       later +
       `${dim("Docs")}     ${cliUrl}\n${dim("Clubedge")} ${siteUrl}`,
@@ -256,6 +277,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     } else if (args.command.name === "deploy") {
       intro("Deploy this project");
       await deployProject(args);
+    } else if (args.command.name === "neon") {
+      intro("Neon database");
+      await neonCommand(args);
     } else if (args.command.name === "try") {
       intro("Try a project on a free Railway VM");
       await tryOnRailway(args);

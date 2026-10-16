@@ -21,6 +21,8 @@ import {
 } from "./core/source.js";
 import { applyUpdate, INCOMING_DIR, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
 import { cliVersion, starterPin } from "./package-info.js";
+import { parseEnvFile } from "./core/deploy.js";
+import { describeNewDatabase, localEnvPath, provisionNeonDatabase } from "./neon.js";
 import { installDependencies, resolvePnpm } from "./steps/install.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
@@ -361,6 +363,31 @@ async function planChange(
   };
 }
 
+/**
+ * After `add infra neon`: a free Neon database when the env file's DATABASE_URL is empty, which it
+ * is when it still held the old infra's example value. A URL the developer set stays.
+ */
+async function addNeonDatabase(project: Project, args: CliArgs, cli: string) {
+  const env = parseEnvFile(await readFile(join(project.root, localEnvPath), "utf8").catch(() => ""));
+  if (env.DATABASE_URL) {
+    log.info(`DATABASE_URL in ${localEnvPath} is yours, so it stays. Run \`${cli} neon create\` for a free Neon database instead.`);
+    return;
+  }
+  if (!args.neon) {
+    log.info(`Set DATABASE_URL in ${localEnvPath}, or run \`${cli} neon create\` for a free Neon database.`);
+    return;
+  }
+  const progress = spinner();
+  progress.start("Creating a free Neon database");
+  try {
+    const created = await provisionNeonDatabase(project.root);
+    progress.stop(describeNewDatabase(created, cli));
+  } catch (error) {
+    progress.stop("Neon created no database");
+    log.warn(`${error instanceof Error ? error.message : String(error)} Run \`${cli} neon create\` to try again.`);
+  }
+}
+
 export async function changeProject(args: CliArgs): Promise<void> {
   const command = args.command;
   if (command.name !== "add" && command.name !== "remove" && command.name !== "upgrade") throw new Error("Not a project change.");
@@ -421,6 +448,7 @@ export async function changeProject(args: CliArgs): Promise<void> {
 
     report(plan);
     for (const note of change.notes) log.info(note);
+    if (change.target.modules.infra === "neon" && project.modules.infra !== "neon") await addNeonDatabase(project, args, cli);
     outro(
       upgrading
         ? "Review the changes with `git diff`, then run `pnpm db:migrate` for new migrations and your tests."

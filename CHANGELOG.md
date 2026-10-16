@@ -4,8 +4,20 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.30.0
 
-- --infra neon, the neon command, and deploy --preview (phases 27 and 28) (#84).
-- Default to Starter `v0.19.0` (#85).
+- **`--infra neon`** gives a project a hosted Neon database with nothing to install and no account (#84):
+  - The CLI creates a free database through Neon's claimable Postgres. It writes the pooled `DATABASE_URL` and the direct `DATABASE_URL_DIRECT` into `apps/web/.env.local`, and the next steps include `pnpm db:migrate`.
+  - Neon keeps an unclaimed database for 72 hours. `--no-neon` creates nothing, and a project is still created when Neon can't be reached.
+  - `pnpm clubedge add infra neon` switches an existing project and creates a database when `DATABASE_URL` still held the old infrastructure's example value.
+- **`pnpm clubedge neon`** shows the database's status and hours left (#84):
+  - `neon claim` opens Neon's page that moves it into your free Neon account. Claiming resets the password, and the CLI says where to copy the new connection strings from.
+  - `neon create` makes a new database, for example after one expired.
+- **`doctor`** checks the database URLs (#84): pooled for the app, direct without `-pooler`, both for the same database. It also warns when a free database has less than a day left.
+- **`deploy`** sends `DATABASE_URL_DIRECT` with a `DATABASE_URL` from the env file, and derives it from a pooled Neon URL when the file has none. It never sends one next to the platform's own database, repoints one left from an earlier database, and warns before deploying a database that is still unclaimed (#84).
+- **`deploy --preview`** deploys the current Git branch next to production on Vercel (a preview deployment) or Railway (an environment copied from production) (#84):
+  - With `NEON_API_KEY` and `NEON_PROJECT_ID`, the preview gets its own Neon branch, `preview/<git branch>`, with this branch's migrations applied.
+  - On Vercel, the branch's URLs are set as Preview variables of the Git branch, which needs the Vercel project connected to its Git repository.
+- **`try --infra neon`** creates the database on your machine and migrates it on the VM. An uploaded Neon project sends its two URLs (#84).
+- Default to Starter `v0.19.0` (#85). It adds `infra neon`, the optional `DATABASE_URL_DIRECT` that migrations and the jobs worker use, and a preview environment with its own Neon branch for each pull request.
 
 ## 0.29.0
 

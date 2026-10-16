@@ -153,7 +153,6 @@ async function toVercel(project: Project, cli: string, gitBranch: string, branch
   }
   // The branch's URLs as Preview variables of this Git branch, sent on stdin: the build (whose
   // migrations then find nothing left to apply) and later redeploys from the dashboard use them.
-  let variables: string[] = [];
   if (branch) {
     progress.message(`Setting the Preview variables of "${gitBranch}"`);
     const values = { DATABASE_URL: branch.url, DATABASE_URL_DIRECT: branch.directUrl };
@@ -162,17 +161,20 @@ async function toVercel(project: Project, cli: string, gitBranch: string, branch
         input: JSON.stringify(vercelPreviewEnvBody(values, gitBranch)),
       }),
     );
+    // Without them the preview would build against the project's Preview DATABASE_URL, and passing
+    // the URLs as deploy flags would put the password on the command line: stop instead.
     if (scoped === null) {
-      // Branch variables need a project connected to a Git repository: these deploy flags apply to this deployment only.
-      log.warn(`Vercel didn't take Preview variables for "${gitBranch}" (connect the project to its Git repository for that), so the branch's URLs go to this deployment only; a redeploy from the dashboard uses the project's Preview DATABASE_URL.`);
-      variables = Object.entries(values).flatMap(([key, value]) => ["--build-env", `${key}=${value}`, "--env", `${key}=${value}`]);
+      progress.stop("Vercel refused the Preview variables");
+      throw new UsageError(
+        `Vercel didn't accept Preview variables for the Git branch "${gitBranch}". Branch variables need the project connected to its Git repository: in Vercel, open the project's Settings, then Git, connect the repository, and run deploy --preview again. Nothing was deployed; the Neon branch ${branch.name} is ready.`,
+      );
     }
   }
   progress.stop("Vercel is ready");
   log.step("Deploying with vercel deploy (build logs follow)");
   let output: string;
   try {
-    output = await vercel(vc, ["deploy", "--yes", "--logs", ...variables], root, { mode: "stream" });
+    output = await vercel(vc, ["deploy", "--yes", "--logs"], root, { mode: "stream" });
   } catch {
     throw new Error("The preview did not deploy. The build log above says why; fix the cause and run deploy --preview again.");
   }

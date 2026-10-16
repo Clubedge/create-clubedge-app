@@ -151,6 +151,8 @@ ${selectionHelp(manifest)}
   --claim                 try: open the page that claims the VM, to share the preview
   --status                try: the last VM's preview, time left, and claim link
   --no-neon               --infra neon: don't create a Neon database (set DATABASE_URL yourself)
+  --preview               deploy (Vercel, Railway): a preview of the current Git branch, with its
+                          own Neon branch when NEON_API_KEY and NEON_PROJECT_ID are set
   --env-file <path>       deploy: production values (default: .env.production when there is one)
   -y, --yes               Accept defaults and never prompt (default directory: my-app)
   --no-install            Skip dependency installation
@@ -173,6 +175,7 @@ Examples:
   pnpm clubedge doctor --no-services
   pnpm dlx @clubedge/create-clubedge-app my-app --infra neon
   pnpm clubedge neon claim
+  pnpm clubedge deploy --preview
   pnpm dlx @clubedge/create-clubedge-app try --framework tanstack-start
 
 Learn more:

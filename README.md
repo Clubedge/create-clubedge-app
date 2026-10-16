@@ -242,6 +242,18 @@ In a project with `--deploy netlify`, `pnpm clubedge deploy` uses [Netlify's CLI
 
 In a project with `--deploy render`, `pnpm clubedge deploy` uses Render's API. Render builds the Dockerfile from your Git repository, so push the project to GitHub, GitLab, or Bitbucket first, with Render's access to it granted in the dashboard; `deploy` warns about commits that aren't pushed. It signs in with an API key: `RENDER_API_KEY`, or else it opens the dashboard's API keys page and asks you to paste one. It creates or reuses a web service named after the package, on the Docker runtime and a starter instance (pre-deploy commands need a paid type), which runs `node /app/migrate.mjs` before each release, checks `/api/health`, and deploys again on each push, as `render.yaml` describes. `DATABASE_URL` comes from the env file (Render Postgres, Neon, Supabase, ...). It sets the production variables: the env file's values, the service's `*.onrender.com` URL, and a generated `BETTER_AUTH_SECRET` that later runs keep. Then it starts a deploy and waits until it is live. When Render names the app something other than `https://<service>.onrender.com`, `deploy` sets that URL and deploys again, since the build compiles it in. Running it again reuses the service. Render bills the instance on your plan.
 
+### Preview deployments
+
+In a project that deploys to Vercel or Railway, `pnpm clubedge deploy --preview` deploys the current Git branch next to production, after a first `deploy`:
+
+```sh
+NEON_API_KEY=... NEON_PROJECT_ID=... pnpm clubedge deploy --preview
+```
+
+With `NEON_API_KEY` and `NEON_PROJECT_ID` (in the shell, or in the env file), the preview gets its own [Neon branch](https://neon.com/docs/introduction/branching), `preview/<git branch>`: a copy of the production database made in seconds that shares its storage until it changes. `deploy` creates it, or reuses it on later runs, applies this branch's migrations to it, and points the preview's `DATABASE_URL` and `DATABASE_URL_DIRECT` at it. On Vercel, the preview is a preview deployment with the project's Preview variables; without the Neon settings, it uses their `DATABASE_URL`. On Railway, it is an environment named `preview-<git branch>`, copied from production with its own domain; without the Neon settings, it gets its own empty copy of Railway's Postgres, and when production's database comes from elsewhere, `deploy --preview` refuses, since the copy would use production's data. Production is not changed.
+
+Projects created with `--infra neon` also have `.github/workflows/preview.yml`, which does this for every pull request in CI: a Neon branch per pull request with its migrations, the schema diff as a comment, a Vercel or Railway preview, and cleanup when the pull request closes. The Starter's SETUP.md lists the secrets it needs.
+
 ## Version relationship
 
 Each CLI release is tested against one specific Starter release:

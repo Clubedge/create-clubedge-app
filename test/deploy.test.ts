@@ -430,7 +430,7 @@ describe("parseCliArgs deploy", () => {
       command: { name: "deploy" },
       envFile: ".env.production",
     });
-    expect(() => parseCliArgs(["my-app", "--env-file", "x"])).toThrow(/only applies to deploy/);
+    expect(() => parseCliArgs(["my-app", "--env-file", "x"])).toThrow(/only apply to deploy/);
     expect(() => parseCliArgs(["deploy", "web"])).toThrow(/Usage: deploy/);
   });
 });

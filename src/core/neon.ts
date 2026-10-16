@@ -271,3 +271,105 @@ export function setEnvValues(text: string, values: Record<string, string>): stri
   }
   return result;
 }
+
+/* ------------------------------ Branches (Neon API) ------------------------------ */
+// `deploy --preview` gives a preview its own branch of the user's Neon project: a copy of the
+// production branch made in seconds, which shares storage until it changes.
+
+export const neonApi = "https://console.neon.tech/api/v2";
+
+/** A branch name for a Git branch: preview/<git branch>, with characters Neon and URLs accept. */
+export function previewBranchName(gitBranch: string): string {
+  const slug = gitBranch.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
+  return `preview/${slug || "branch"}`;
+}
+
+/** The role and database a Neon URL connects as, for the branch's URL; Neon's defaults otherwise. */
+export function neonRoleAndDatabase(url: string | undefined): { role: string; database: string } {
+  try {
+    const parsed = new URL((url ?? "").trim());
+    if (parsed.hostname.endsWith(".neon.tech")) {
+      return { role: decodeURIComponent(parsed.username) || "neondb_owner", database: decodeURIComponent(parsed.pathname.slice(1)) || "neondb" };
+    }
+  } catch {
+    // Not a URL: the defaults.
+  }
+  return { role: "neondb_owner", database: "neondb" };
+}
+
+export interface NeonBranch {
+  id: string;
+  name: string;
+  /** False when the branch already existed: a later deploy of the same Git branch. */
+  created: boolean;
+  url: string;
+  directUrl: string;
+}
+
+async function neonCall<T>(fetcher: Fetch, apiKey: string, path: string, init: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetcher(`${neonApi}${path}`, {
+      ...init,
+      headers: { accept: "application/json", authorization: `Bearer ${apiKey}`, ...(init.body ? { "content-type": "application/json" } : {}) },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    throw new NeonApiError(`Could not reach Neon (${error instanceof Error ? error.message : String(error)}).`, null);
+  }
+  const text = await response.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    // Reported below.
+  }
+  if (!response.ok) {
+    const message = (body as { message?: unknown } | null)?.message;
+    const hint = response.status === 401 ? " Check NEON_API_KEY." : response.status === 404 ? " Check NEON_PROJECT_ID." : "";
+    throw new NeonApiError(`Neon answered ${response.status}${typeof message === "string" ? `: ${message}` : "."}${hint}`, null);
+  }
+  return body as T;
+}
+
+/**
+ * The branch named `name` in the project, created from the default branch when it doesn't exist,
+ * with its pooled and direct URLs for `role` and `database`.
+ */
+export async function ensureNeonBranch(
+  input: { apiKey: string; projectId: string; name: string; role: string; database: string },
+  fetcher: Fetch = fetch,
+): Promise<NeonBranch> {
+  const project = `/projects/${encodeURIComponent(input.projectId)}`;
+  const listed = await neonCall<{ branches?: Array<{ id?: unknown; name?: unknown }> }>(
+    fetcher,
+    input.apiKey,
+    `${project}/branches?search=${encodeURIComponent(input.name)}`,
+  );
+  let branch = listed?.branches?.find((item) => item?.name === input.name);
+  let created = false;
+  let uri: string | undefined;
+  if (!branch) {
+    const made = await neonCall<{ branch?: { id?: unknown; name?: unknown }; connection_uris?: Array<{ connection_uri?: unknown; connection_parameters?: { role?: unknown; database?: unknown } }> }>(
+      fetcher,
+      input.apiKey,
+      `${project}/branches`,
+      { method: "POST", body: JSON.stringify({ branch: { name: input.name }, endpoints: [{ type: "read_write" }] }) },
+    );
+    branch = made?.branch;
+    created = true;
+    const match = made?.connection_uris?.find(
+      (item) => item?.connection_parameters?.role === input.role && item.connection_parameters.database === input.database,
+    );
+    if (typeof match?.connection_uri === "string") uri = match.connection_uri;
+  }
+  if (typeof branch?.id !== "string") throw new NeonApiError(`Neon returned no branch "${input.name}".`, null);
+  if (!uri) {
+    const query = new URLSearchParams({ branch_id: branch.id, database_name: input.database, role_name: input.role });
+    const answer = await neonCall<{ uri?: unknown }>(fetcher, input.apiKey, `${project}/connection_uri?${query}`);
+    if (typeof answer?.uri !== "string") throw new NeonApiError(`Neon returned no connection URL for the branch "${input.name}".`, null);
+    uri = answer.uri;
+  }
+  const url = neonPooledUrl(uri);
+  return { id: branch.id, name: input.name, created, url, directUrl: neonDirectUrl(url) };
+}

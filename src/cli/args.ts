@@ -50,6 +50,8 @@ export interface CliArgs {
   status: boolean;
   /** create and add with --infra neon: create a free Neon database (--no-neon skips it). */
   neon: boolean;
+  /** deploy: a preview of the current Git branch instead of production. */
+  preview: boolean;
   /** deploy: production values for the service, from this env file. */
   envFile?: string;
   help: boolean;
@@ -75,6 +77,7 @@ const OPTIONS = {
   claim: { type: "boolean", default: false },
   status: { type: "boolean", default: false },
   neon: { type: "boolean", default: true },
+  preview: { type: "boolean", default: false },
   "env-file": { type: "string" },
   help: { type: "boolean", short: "h", default: false },
   version: { type: "boolean", short: "v", default: false },
@@ -154,8 +157,8 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (!creates && command.name !== "upgrade" && values.ref !== undefined) {
     throw new UsageError("--ref only applies when creating or upgrading a project.");
   }
-  if (command.name !== "deploy" && values["env-file"] !== undefined) {
-    throw new UsageError("--env-file only applies to deploy.");
+  if (command.name !== "deploy" && (values["env-file"] !== undefined || values.preview)) {
+    throw new UsageError("--env-file and --preview only apply to deploy.");
   }
   if (command.name !== "try" && (values.claim || values.status)) {
     throw new UsageError("--claim and --status only apply to try.");
@@ -190,6 +193,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     claim: values.claim,
     status: values.status,
     neon: values.neon,
+    preview: values.preview,
     envFile: values["env-file"],
     help: values.help,
     version: values.version,
@@ -231,7 +235,7 @@ function parseCommand(positionals: string[]): Command {
     return { name };
   }
   if (name === "deploy") {
-    if (module !== undefined) throw new UsageError("Usage: deploy [--env-file <path>], run inside a project.");
+    if (module !== undefined) throw new UsageError("Usage: deploy [--preview] [--env-file <path>], run inside a project.");
     return { name };
   }
   if (name === "neon") {

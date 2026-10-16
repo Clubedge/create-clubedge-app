@@ -10,20 +10,24 @@ import { checkDatabaseUrls } from "../src/core/health.js";
 import {
   addNeonDatabase,
   createClaimableDatabase,
+  ensureNeonBranch,
   isNeonPooledUrl,
   isNeonUrl,
   neonClaimUrl,
   neonDatabaseState,
   neonDirectUrl,
   neonEndpoint,
+  neonRoleAndDatabase,
   neonPooledUrl,
   neonStatePath,
   parseNeonState,
+  previewBranchName,
   savedDatabaseFor,
   setEnvValues,
   type NeonDatabase,
 } from "../src/core/neon.js";
 import { projectTryProblem, tryModules, tryScript } from "../src/core/railway.js";
+import { previewName } from "../src/deploy-preview.js";
 
 const pooled = "postgresql://neondb_owner:p%40ss@ep-cool-name-a1b2c3-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require";
 const direct = "postgresql://neondb_owner:p%40ss@ep-cool-name-a1b2c3.eu-central-1.aws.neon.tech/neondb?sslmode=require";
@@ -264,5 +268,60 @@ describe("neon on the command line", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("preview branches", () => {
+  it("names branches and Railway environments after the Git branch", () => {
+    expect(previewBranchName("feature/Sign-up_flow")).toBe("preview/feature-sign-up-flow");
+    expect(previewBranchName("///")).toBe("preview/branch");
+    expect(previewBranchName("x".repeat(80))).toBe(`preview/${"x".repeat(40)}`);
+    expect(previewName("feature/Sign-up_flow")).toBe("preview-feature-sign-up-flow");
+  });
+
+  it("connects as production's role and database, or Neon's defaults", () => {
+    expect(neonRoleAndDatabase(pooled)).toEqual({ role: "neondb_owner", database: "neondb" });
+    expect(neonRoleAndDatabase("postgresql://app_user:x@ep-a-1-pooler.eu.aws.neon.tech/shop")).toEqual({ role: "app_user", database: "shop" });
+    expect(neonRoleAndDatabase("postgresql://u:p@db.example.com/app")).toEqual({ role: "neondb_owner", database: "neondb" });
+    expect(neonRoleAndDatabase(undefined)).toEqual({ role: "neondb_owner", database: "neondb" });
+  });
+
+  const input = { apiKey: "key", projectId: "proj-1", name: "preview/feature", role: "neondb_owner", database: "neondb" };
+
+  it("creates a missing branch with a compute and returns its URLs", async () => {
+    const { fetcher, calls } = fakeNeon({
+      "/branches?search=preview%2Ffeature": [{ body: { branches: [{ id: "br-main", name: "main" }] } }],
+      "/projects/proj-1/branches": [
+        {
+          status: 201,
+          body: {
+            branch: { id: "br-new", name: "preview/feature" },
+            connection_uris: [{ connection_uri: direct, connection_parameters: { role: "neondb_owner", database: "neondb" } }],
+          },
+        },
+      ],
+    });
+    expect(await ensureNeonBranch(input, fetcher)).toEqual({ id: "br-new", name: "preview/feature", created: true, url: pooled, directUrl: direct });
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ branch: { name: "preview/feature" }, endpoints: [{ type: "read_write" }] });
+    expect((calls[0]!.init!.headers as Record<string, string>).authorization).toBe("Bearer key");
+  });
+
+  it("reuses a branch from an earlier preview", async () => {
+    const { fetcher, calls } = fakeNeon({
+      "/branches?search=preview%2Ffeature": [{ body: { branches: [{ id: "br-1", name: "preview/feature" }] } }],
+      "/connection_uri?branch_id=br-1&database_name=neondb&role_name=neondb_owner": [{ body: { uri: direct } }],
+    });
+    expect(await ensureNeonBranch(input, fetcher)).toMatchObject({ id: "br-1", created: false, url: pooled, directUrl: direct });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("names the setting to check when Neon refuses", async () => {
+    const { fetcher } = fakeNeon({ "/branches?search=preview%2Ffeature": [{ status: 401, body: { message: "authentication required" } }] });
+    await expect(ensureNeonBranch(input, fetcher)).rejects.toThrow(/NEON_API_KEY/);
+  });
+
+  it("parses --preview for deploy only", () => {
+    expect(parseCliArgs(["deploy", "--preview"]).preview).toBe(true);
+    expect(() => parseCliArgs(["my-app", "--preview"])).toThrow(/only apply to deploy/);
   });
 });

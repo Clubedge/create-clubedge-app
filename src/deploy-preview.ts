@@ -218,6 +218,8 @@ async function toRailway(project: Project, cli: string, environment: string, bra
   for (const key of ["APP_URL", "NEXT_PUBLIC_APP_URL"]) {
     await railway(rw, ["variable", "set", key, "--stdin", ...scope, "--skip-deploys"], { input: url });
   }
+  // The domain sends traffic to appPort; without PORT, Railway assigns its own and the app answers 502.
+  await railway(rw, ["variable", "set", "PORT", "--stdin", ...scope, "--skip-deploys"], { input: String(appPort) });
   progress.message("Uploading the project");
   const started = new Date();
   const id = parseDeploymentId(await railway(rw, ["up", ...scope, "--detach"]));

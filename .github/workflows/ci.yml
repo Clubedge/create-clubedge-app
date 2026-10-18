@@ -200,6 +200,7 @@ jobs:
           - { name: start-local, framework: tanstack-start, modules: --infra local --auth better-auth }
           # A frontend and a separate API, joined by the Starter's HTTP contract.
           - { name: vite-hono, framework: vite, modules: --api hono }
+          - { name: vite-fastapi, framework: vite, modules: --api fastapi }
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -208,6 +209,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.12.0
+      # A Python API (--api fastapi) runs its lint, typecheck, and tests with uv.
+      - uses: astral-sh/setup-uv@v10.3.0
       - name: Install CLI dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the CLI and bundle the pinned Starter release

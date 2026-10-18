@@ -280,7 +280,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.33.0
+create-clubedge-app v0.34.0
         |
         v
 Clubedge Starter v0.23.0
@@ -291,7 +291,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.33.0` | `clubedge-starter@v0.23.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.34.0` | `clubedge-starter@v0.23.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -399,6 +399,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.31.0 | v0.20.0 | Pluggable background jobs: `--jobs bullmq` and `--jobs inngest` next to pg-boss, and a conformance suite every provider passes |
 | 0.32.0 | v0.21.0 | Pluggable authentication: `--auth firebase` and `--auth appwrite` next to Supabase and Better Auth, and a conformance suite every provider passes |
 | 0.33.0 | v0.22.0 | Starter v0.22.0: stack packs (template schema 4), and a React + Vite frontend with a separate Hono API (`--framework vite --api hono`) |
+| 0.34.0 | v0.23.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

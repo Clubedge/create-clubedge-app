@@ -78,6 +78,9 @@ pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono
 | ------------------ | ----------------------------------------------------- | ----------- |
 | `--framework vite` | React + Vite single-page app (TanStack Router)        | `apps/web`  |
 | `--api hono`       | Hono API on Node, reusing the Starter's packages      | `apps/api`  |
+| `--api fastapi`    | FastAPI API in Python, managed with [uv](https://docs.astral.sh/uv/) | `apps/api`  |
+
+A Python API needs uv; the CLI installs its dependencies with it after `pnpm install`, and its `package.json` scripts call uv, so `pnpm dev`, `pnpm lint`, and `pnpm test` run it like the other apps.
 
 They meet at one HTTP contract, `packages/contract/openapi.yaml`: the frontend calls the API only through the client generated from it, and every API passes the same conformance suite. `pnpm dev` starts both, and the frontend forwards `/api` to the API. A full-stack framework (`next`, `tanstack-start`) has its own server, so it takes no `--api`.
 
@@ -120,7 +123,7 @@ Usage:
 
 Options:
   --framework <id>        App framework, such as next or tanstack-start (or vite, a frontend)
-  --api <id>              A separate API for a frontend, such as hono
+  --api <id>              A separate API for a frontend, such as hono or fastapi
   --<module> <option>     A module option, such as --auth none; the Starter lists its modules
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
                           (upgrade: the Starter to upgrade to)
@@ -147,7 +150,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.22.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.23.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -166,7 +169,7 @@ pnpm clubedge add email resend payments stripe              # several modules as
 pnpm clubedge remove storage payments
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
-pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.22.0 # or a specific tag, branch, or commit
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.23.0 # or a specific tag, branch, or commit
 ```
 
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
@@ -280,24 +283,24 @@ Each CLI release is tested against one specific Starter release:
 create-clubedge-app v0.33.0
         |
         v
-Clubedge Starter v0.22.0
-commit d0f3f9cdd4d568504cec4cf4681c7faf97842405
+Clubedge Starter v0.23.0
+commit 0183d091b7bffac92cd0073f12b5329e96fc183f
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.33.0` | `clubedge-starter@v0.22.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.33.0` | `clubedge-starter@v0.23.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.22.0` tag is expected to resolve to commit
-`d0f3f9cdd4d568504cec4cf4681c7faf97842405`. The CLI verifies this before
+The `v0.23.0` tag is expected to resolve to commit
+`0183d091b7bffac92cd0073f12b5329e96fc183f`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.22.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.23.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
@@ -352,7 +355,7 @@ CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarba
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.22.0`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.23.0`, and publish the Starter release.
 
 ### CLI maintainers
 

@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.34.0
+
+- Let the smoke check wait for a separate API to start (#100).
+- Default to Starter `v0.23.0` (#101).
+
 ## 0.33.0
 
 - **A frontend and a separate API**: default to Starter `v0.22.0` (#98). `--framework vite --api hono` creates a React + Vite frontend in `apps/web` and a Hono API in `apps/api`, joined by one HTTP contract:

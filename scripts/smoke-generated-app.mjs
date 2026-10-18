@@ -34,8 +34,13 @@ if (hasAuth) {
   assert.equal(login.status, 200, "the sign-up page should render");
   assert.match(await login.text(), /Create your account/, "the sign-up view should be available");
 } else {
+  // A server-rendered app answers 404; a single-page app serves its shell for every path and
+  // renders "not found" in the browser. Either way, there is no sign-in form.
   const login = await get("/login");
-  assert.equal(login.status, 404, "projects without auth should have no login page");
+  if (login.status !== 404) {
+    assert.equal(login.status, 200, "projects without auth should have no login page");
+    assert.doesNotMatch(await login.text(), /Create your account|Sign in/, "projects without auth should have no login page");
+  }
 }
 
 const dashboard = await get("/dashboard");

@@ -4,8 +4,12 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.34.0
 
-- Let the smoke check wait for a separate API to start (#100).
-- Default to Starter `v0.23.0` (#101).
+- **A FastAPI API**: default to Starter `v0.23.0` (#101). `--framework vite --api fastapi` creates the React + Vite frontend with an API in Python, managed with [uv](https://docs.astral.sh/uv/):
+  - The Starter added it as one folder that describes itself, and this CLI generates it without a code change: the API lands in `apps/api` as `@clubedge/api`, and the CLI runs `uv sync` after `pnpm install`.
+  - Its `package.json` scripts call uv, ruff, mypy, and pytest, so `pnpm dev`, `pnpm lint`, `pnpm typecheck`, and `pnpm test` run it like the other apps. `pnpm lint` and `pnpm test` now also run each app's own scripts, so apps in other languages are always checked.
+  - It passes the same contract suite as the Hono API, against the live server, through `clubedge-contract-check`.
+  - A first version: the app modules are `none` (cache: memory, deploy: Docker). Install uv first.
+- CI generates the pair from the packed CLI. The smoke check waits for a separate API that starts after its frontend (#100).
 
 ## 0.33.0
 

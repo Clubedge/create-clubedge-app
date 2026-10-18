@@ -14,7 +14,7 @@ import {
   type ScriptChanges,
   type Selection,
 } from "./customize.js";
-import type { FrameworkTemplate, TemplateManifest } from "./manifest.js";
+import { FRAMEWORK_SLOT, type TemplateManifest, type TemplateSlot, type TemplateStack, type Toolchain } from "./manifest.js";
 import type { TemplateSource } from "./source.js";
 
 export interface FileEdit {
@@ -23,18 +23,29 @@ export interface FileEdit {
   apply(source: string): string;
 }
 
+/** A selected stack, in the slot it fills. */
+export interface SelectedApp {
+  slot: string;
+  slotName: string;
+  id: string;
+  name: string;
+}
+
 /** Everything the CLI will do, decided before anything is written. */
 export interface ScaffoldPlan {
   targetDirectory: string;
   identity: ProjectIdentity;
   provenance: Provenance;
-  framework: { id: string; name: string };
+  /** The selected stack in each filled slot, in slot order. */
+  apps: SelectedApp[];
   /** The selected option per module, with display names. Empty before schema 3. */
   modules: Array<{ id: string; name: string; option: string; optionName: string }>;
   files: Array<{ from: string; to: string }>;
   edits: FileEdit[];
-  /** The environment example copied to the app's local env file, when the template has one. */
-  envFile: { from: string; to: string } | null;
+  /** Environment examples copied to each app's local env file, when the template has them. */
+  envFiles: Array<{ from: string; to: string }>;
+  /** Apps whose own tools install their dependencies after pnpm install, such as uv. */
+  toolchains: Array<{ directory: string; app: string; toolchain: Toolchain }>;
   git: boolean;
   install: boolean;
 }
@@ -44,8 +55,8 @@ export interface PlanInput {
   identity: ProjectIdentity;
   source: Pick<TemplateSource, "files" | "repository" | "ref" | "commit">;
   manifest: TemplateManifest;
-  /** A framework id from the manifest; defaults to the manifest's default framework. */
-  framework?: string;
+  /** The stack per slot, such as `{ framework: "next" }`; unlisted slots use their defaults. */
+  stacks?: Record<string, string>;
   /** Requested module options by module id; unlisted modules use their defaults. */
   modules?: Record<string, string>;
   cliVersion: string;
@@ -53,8 +64,8 @@ export interface PlanInput {
   install: boolean;
 }
 
-export class FrameworkError extends Error {
-  override name = "FrameworkError";
+export class StackError extends Error {
+  override name = "StackError";
 }
 
 export class ModuleError extends Error {
@@ -63,6 +74,9 @@ export class ModuleError extends Error {
 
 const LOCKFILE = "pnpm-lock.yaml";
 
+/** Leaves an optional slot empty, such as `--api none`. */
+export const NO_STACK = "none";
+
 const isWithin = (path: string, directory: string) =>
   path === directory || path.startsWith(`${directory.replace(/\/$/, "")}/`);
 
@@ -70,22 +84,122 @@ function isExcluded(path: string, exclude: string[]): boolean {
   return exclude.some((entry) => isWithin(path, entry));
 }
 
-/** Resolves the requested framework, or the default, with a helpful error for unknown ids. */
-export function selectFramework(manifest: TemplateManifest, requested?: string) {
-  const id = requested ?? manifest.defaultFramework;
-  const framework = manifest.frameworks[id];
-  if (!framework) {
-    const choices = Object.keys(manifest.frameworks).join(", ");
-    throw new FrameworkError(`Unknown framework "${id}". This Starter offers: ${choices}.`);
+/**
+ * Splits selection flags into stacks by slot and module options: --framework fills the
+ * framework slot, a flag named after another slot (--api) fills it, and the rest are modules.
+ */
+export function splitSelection(manifest: TemplateManifest, framework: string | undefined, flags: Record<string, string>) {
+  const stacks: Record<string, string> = {};
+  const modules: Record<string, string> = {};
+  for (const [name, value] of Object.entries(flags)) {
+    if (manifest.slots[name] && name !== FRAMEWORK_SLOT) stacks[name] = value;
+    else modules[name] = value;
   }
-  return { id, ...framework };
+  if (framework !== undefined) stacks[FRAMEWORK_SLOT] = framework;
+  return { stacks, modules };
+}
+
+/** The stacks a slot offers, in the order the CLI shows them. */
+export function stacksIn(manifest: TemplateManifest, slotId: string): string[] {
+  return Object.keys(manifest.stacks).filter((id) => manifest.stacks[id]!.slot === slotId);
+}
+
+/** Slots are filled with flags named after them: --framework, --api. */
+const slotFlag = (slotId: string) => `--${slotId}`;
+
+/**
+ * Resolves one stack per slot from the request and the defaults, with a helpful error for
+ * unknown ids, then checks the roles fit together: a frontend needs an API, and a full-stack
+ * app already has its own server.
+ */
+export function selectStacks(manifest: TemplateManifest, requested: Record<string, string> = {}): Selection {
+  const unknownSlot = Object.keys(requested).find((id) => !manifest.slots[id]);
+  if (unknownSlot !== undefined) {
+    throw new StackError(`This Starter has no ${unknownSlot} choice; remove ${slotFlag(unknownSlot)}.`);
+  }
+
+  const selection: Selection = {};
+  for (const [slotId, slot] of Object.entries(manifest.slots)) {
+    const optional = slot.default === undefined;
+    const id = requested[slotId] ?? slot.default ?? NO_STACK;
+    if (!(optional && id === NO_STACK) && manifest.stacks[id]?.slot !== slotId) {
+      const choices = [...stacksIn(manifest, slotId), ...(optional ? [NO_STACK] : [])].join(", ");
+      throw new StackError(`Unknown ${slot.name.toLowerCase()} "${id}". This Starter offers: ${choices}.`);
+    }
+    selection[slotId] = id;
+  }
+
+  const conflict = roleConflict(manifest, selection);
+  if (conflict) throw new StackError(conflict);
+  return selection;
 }
 
 /**
- * Resolves one option per module from the request and the defaults, then checks every
- * option's requirements, so an invalid combination fails before anything is written.
+ * Why the chosen stacks cannot work together, or null when they can: a frontend calls an API,
+ * and a full-stack app has its own server. Slots not chosen yet (`pending`) may still bring
+ * the API a frontend needs.
  */
-export function selectModules(manifest: TemplateManifest, requested: Record<string, string> = {}): Selection {
+function roleConflict(manifest: TemplateManifest, chosen: Selection, pending: string[] = []): string | null {
+  const stacks = Object.values(chosen).flatMap((id) => manifest.stacks[id] ?? []);
+  const withRole = (role: string) => stacks.find((stack) => stack.role === role);
+  const apiSlot = Object.keys(manifest.slots).find((id) => manifest.slots[id]!.roles.includes("api"));
+  const frontend = withRole("frontend");
+  const fullstack = withRole("fullstack");
+  const api = withRole("api");
+  if (frontend && !api && !(apiSlot && pending.includes(apiSlot))) {
+    const apis = apiSlot ? ` (${stacksIn(manifest, apiSlot).join(", ")})` : "";
+    return `${frontend.name} is a frontend and calls an API: choose one with ${slotFlag(apiSlot ?? "api")}${apis}.`;
+  }
+  if (fullstack && api) {
+    return `${fullstack.name} has its own server, so it does not call ${api.name}: choose a frontend, or ${slotFlag(apiSlot!)} ${NO_STACK}.`;
+  }
+  return null;
+}
+
+/**
+ * The stacks a slot can take next to the ones already chosen, for prompts: its stacks, and
+ * "none" for an optional slot, that fit the chosen stacks' roles. Slots after it are pending.
+ */
+export function slotChoices(manifest: TemplateManifest, slotId: string, chosen: Selection = {}): string[] {
+  const slot = manifest.slots[slotId]!;
+  const slotIds = Object.keys(manifest.slots);
+  const pending = slotIds.slice(slotIds.indexOf(slotId) + 1).filter((id) => chosen[id] === undefined);
+  const candidates = [...stacksIn(manifest, slotId), ...(slot.default === undefined ? [NO_STACK] : [])];
+  return candidates.filter((id) => roleConflict(manifest, { ...chosen, [slotId]: id }, pending) === null);
+}
+
+/** The selected stacks, each with its slot, in slot order. */
+function selectedApps(manifest: TemplateManifest, stacks: Selection) {
+  return Object.entries(stacks).flatMap(([slotId, id]) => {
+    const stack = manifest.stacks[id];
+    return stack ? [{ slotId, slot: manifest.slots[slotId]!, id, stack }] : [];
+  });
+}
+
+/**
+ * The options of a module the selected stacks can use: every selected stack that implements
+ * the module must implement the option. Project-wide modules (local infrastructure,
+ * deployment) are not tied to a stack.
+ */
+export function moduleChoices(manifest: TemplateManifest, stacks: Selection, moduleId: string): string[] {
+  const module = manifest.modules[moduleId]!;
+  const all = Object.keys(module.options);
+  if (module.scope === "project") return all;
+  const involved = selectedApps(manifest, stacks).filter(({ stack }) => stack.modules[moduleId]);
+  return all.filter((option) => involved.length > 0 && involved.every(({ stack }) => stack.modules[moduleId]!.includes(option)));
+}
+
+/**
+ * Resolves one option per module from the request and the defaults, then checks that the
+ * selected stacks implement each option and that every option's requirements hold, so an
+ * invalid combination fails before anything is written. A module left to its default uses the
+ * first option the stacks implement when they do not implement the default.
+ */
+export function selectModules(
+  manifest: TemplateManifest,
+  requested: Record<string, string> = {},
+  stacks: Selection = selectStacks(manifest),
+): Selection {
   const unknownModule = Object.keys(requested).find((id) => !manifest.modules[id]);
   if (unknownModule !== undefined) {
     const offered = Object.keys(manifest.modules);
@@ -96,12 +210,24 @@ export function selectModules(manifest: TemplateManifest, requested: Record<stri
     );
   }
 
+  const apps = selectedApps(manifest, stacks);
   const selection: Selection = {};
   for (const [id, module] of Object.entries(manifest.modules)) {
-    const option = requested[id] ?? module.default;
+    const choices = moduleChoices(manifest, stacks, id);
+    const fallback = choices.includes(module.default) ? module.default : (choices[0] ?? module.default);
+    const option = requested[id] ?? fallback;
     if (!module.options[option]) {
       throw new ModuleError(
         `Unknown ${id} option "${option}". Choose one of: ${Object.keys(module.options).join(", ")}.`,
+      );
+    }
+    if (!choices.includes(option)) {
+      const optionName = `${module.options[option]!.name} (--${id} ${option})`;
+      const lacking = apps.find(({ stack }) => stack.modules[id] && !stack.modules[id]!.includes(option));
+      throw new ModuleError(
+        lacking
+          ? `${lacking.stack.name} does not implement ${optionName}. It implements: ${lacking.stack.modules[id]!.join(", ")}.`
+          : `No selected app implements ${module.name} (${apps.map(({ stack }) => stack.name).join(", ")}).`,
       );
     }
     selection[id] = option;
@@ -122,23 +248,24 @@ export function selectModules(manifest: TemplateManifest, requested: Record<stri
 }
 
 /**
- * Where a Starter file lands in the generated project, or null when it belongs to a framework
- * that was not selected. The selected app moves to `manifest.app`, and its environment example
- * and Dockerfile move to the generated project's locations.
+ * Where a Starter file lands in the generated project, or null when it belongs to a stack that
+ * was not selected. Each selected stack's app moves to its slot's path, and its environment
+ * example and Dockerfile move to the slot's locations.
  */
-function relocate(
-  path: string,
-  manifest: TemplateManifest,
-  selected: FrameworkTemplate,
-  others: FrameworkTemplate[],
-): string | null {
-  if (path === selected.envExample) return manifest.env.example;
-  if (path === selected.dockerfile) return "Dockerfile";
-  if (isWithin(path, selected.app)) return manifest.app + path.slice(selected.app.length);
-  const belongsToOther = others.some(
-    (other) => isWithin(path, other.app) || path === other.envExample || path === other.dockerfile,
-  );
-  return belongsToOther ? null : path;
+function placement(selected: Array<{ slot: TemplateSlot; stack: TemplateStack }>, others: TemplateStack[]) {
+  return (path: string): string | null => {
+    for (const { slot, stack } of selected) {
+      if (path === stack.envExample) return slot.env.example;
+      if (path === stack.dockerfile) return slot.dockerfile;
+    }
+    for (const { slot, stack } of selected) {
+      if (isWithin(path, stack.app)) return slot.path + path.slice(stack.app.length);
+    }
+    const belongsToOther = others.some(
+      (other) => isWithin(path, other.app) || path === other.envExample || path === other.dockerfile,
+    );
+    return belongsToOther ? null : path;
+  };
 }
 
 /** Works out which files, packages, and variants the selected module options keep. */
@@ -198,14 +325,20 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection) {
 
 export function createPlan(input: PlanInput): ScaffoldPlan {
   const { manifest, identity, source } = input;
-  const framework = selectFramework(manifest, input.framework);
-  const selection = selectModules(manifest, input.modules);
-  const others = Object.entries(manifest.frameworks)
-    .filter(([id]) => id !== framework.id)
+  const stacks = selectStacks(manifest, input.stacks);
+  const selection = selectModules(manifest, input.modules, stacks);
+  const selected = selectedApps(manifest, stacks);
+  const selectedIds = new Set(selected.map(({ id }) => id));
+  const others = Object.entries(manifest.stacks)
+    .filter(([id]) => !selectedIds.has(id))
     .map(([, other]) => other);
-  const multipleFrameworks = others.length > 0;
   const moduleFiles = resolveModuleFiles(manifest, selection);
 
+  // A slot is recorded when it offers a choice, so add, remove, and upgrade render the same apps.
+  const recorded = selected.filter(
+    ({ slotId, slot }) => stacksIn(manifest, slotId).length + (slot.default === undefined ? 1 : 0) > 1,
+  );
+  const apps = selected.map(({ slotId, slot, id, stack }) => ({ slot: slotId, slotName: slot.name, id, name: stack.name }));
   const modules = Object.entries(selection).map(([id, option]) => ({
     id,
     name: manifest.modules[id]!.name,
@@ -217,7 +350,12 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     starterRepository: source.repository,
     starterRef: source.ref,
     ...(source.commit ? { starterCommit: source.commit } : {}),
-    ...(multipleFrameworks ? { framework: framework.id, frameworkName: framework.name } : {}),
+    ...(recorded.length
+      ? {
+          stacks: Object.fromEntries(recorded.map(({ slotId, id }) => [slotId, id])),
+          stackSummary: recorded.map(({ slot, stack }) => `${slot.name}: ${stack.name}`),
+        }
+      : {}),
     ...(modules.length
       ? {
           modules: Object.fromEntries(modules.map(({ id, option }) => [id, option])),
@@ -225,7 +363,8 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
         }
       : {}),
   };
-  const place = (path: string) => relocate(path, manifest, framework, others);
+  const place = placement(selected, others);
+  const envTargets = Object.values(manifest.slots).map((slot) => slot.env.target);
 
   const files: Array<{ from: string; to: string }> = [];
   for (const file of source.files) {
@@ -245,7 +384,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     } else {
       target = place(path);
     }
-    if (target !== null && target !== manifest.env.target) files.push({ from: file.from, to: target });
+    if (target !== null && !envTargets.includes(target)) files.push({ from: file.from, to: target });
   }
   const has = (path: string) => files.some(({ to }) => to === path);
 
@@ -258,14 +397,16 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
         customizeRootManifest(text, identity, provenance, manifest.dockerImage, moduleFiles.scripts),
     });
   }
-  const appManifest = `${manifest.app}/package.json`;
-  if (manifest.appPackage && framework.app !== manifest.app && has(appManifest)) {
-    const appPackage = manifest.appPackage;
-    edits.push({
-      path: appManifest,
-      description: `Name the ${framework.name} app "${appPackage}"`,
-      apply: (text) => customizeAppManifest(text, appPackage),
-    });
+  for (const { slot, stack } of selected) {
+    const appManifest = `${slot.path}/package.json`;
+    const appPackage = slot.package;
+    if (appPackage && stack.app !== slot.path && has(appManifest)) {
+      edits.push({
+        path: appManifest,
+        description: `Name the ${stack.name} app "${appPackage}"`,
+        apply: (text) => customizeAppManifest(text, appPackage),
+      });
+    }
   }
   const { removedPackageNames, removedPackageDirectories } = moduleFiles;
   if (removedPackageNames.length) {
@@ -278,27 +419,35 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
       });
     }
   }
-  if ((multipleFrameworks || removedPackageNames.length) && has(LOCKFILE)) {
+  if ((others.length > 0 || removedPackageNames.length) && has(LOCKFILE)) {
+    const selectedDirectories = selected.map(({ stack }) => stack.app);
     const changes: LockfileChanges = {
-      remove: [...others.map((other) => other.app).filter((app) => app !== framework.app), ...removedPackageDirectories],
-      ...(framework.app !== manifest.app ? { rename: { from: framework.app, to: manifest.app } } : {}),
+      remove: [
+        ...others.map((other) => other.app).filter((app) => !selectedDirectories.includes(app)),
+        ...removedPackageDirectories,
+      ],
+      rename: selected
+        .filter(({ slot, stack }) => stack.app !== slot.path)
+        .map(({ slot, stack }) => ({ from: stack.app, to: slot.path })),
       removeDependencies: removedPackageNames,
     };
+    const names = selected.map(({ stack }) => stack.name).join(" and ");
+    const kept = `${names} app${selected.length > 1 ? "s" : ""}`;
     edits.push({
       path: LOCKFILE,
       description: removedPackageNames.length
-        ? `Keep only the ${framework.name} app and the selected modules in the lockfile`
-        : `Keep only the ${framework.name} app in the lockfile`,
+        ? `Keep only the ${kept} and the selected modules in the lockfile`
+        : `Keep only the ${kept} in the lockfile`,
       apply: (text) => customizeLockfile(text, changes),
     });
   }
-  const context: Selection = { framework: framework.id, ...selection };
+  const context: Selection = { ...stacks, ...selection };
   for (const path of manifest.conditional) {
     const target = moduleFiles.replacedTargets.has(path) ? null : place(path);
     if (target === null || !has(target)) continue;
     edits.push({
       path: target,
-      description: "Keep the sections for the selected framework and modules",
+      description: "Keep the sections for the selected stacks and modules",
       apply: (text) => applyConditionals(text, context, target),
     });
   }
@@ -329,28 +478,37 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     targetDirectory: input.targetDirectory,
     identity,
     provenance,
-    framework: { id: framework.id, name: framework.name },
+    apps,
     modules,
     files,
     edits,
-    envFile: has(manifest.env.example) ? { from: manifest.env.example, to: manifest.env.target } : null,
+    envFiles: selected
+      .map(({ slot }) => ({ from: slot.env.example, to: slot.env.target }))
+      .filter(({ from }) => has(from)),
+    toolchains: selected.flatMap(({ slot, stack }) =>
+      stack.toolchain ? [{ directory: slot.path, app: stack.name, toolchain: stack.toolchain }] : [],
+    ),
     git: input.git,
     install: input.install,
   };
 }
 
 export function describePlan(plan: ScaffoldPlan): string[] {
+  const recorded = plan.apps.filter(({ slot }) => plan.provenance.stacks?.[slot]);
   return [
     `Create ${plan.targetDirectory}`,
-    ...(plan.provenance.framework ? [`Use ${plan.framework.name}`] : []),
+    ...(recorded.length ? [`Use ${recorded.map(({ name }) => name).join(" and ")}`] : []),
     ...(plan.modules.length
       ? [`Use ${plan.modules.map(({ name, optionName }) => `${name}: ${optionName}`).join(", ")}`]
       : []),
     `Copy ${plan.files.length} files from ${plan.provenance.starterRepository}@${plan.provenance.starterRef}` +
       (plan.provenance.starterCommit ? ` (${plan.provenance.starterCommit.slice(0, 8)})` : ""),
     ...plan.edits.map((edit) => `Edit ${edit.path}: ${edit.description}`),
-    ...(plan.envFile ? [`Create ${plan.envFile.to} from ${plan.envFile.from}`] : []),
+    ...plan.envFiles.map((file) => `Create ${file.to} from ${file.from}`),
     plan.git ? "Initialize a Git repository on main" : "Skip Git initialization",
     plan.install ? "Install dependencies with pnpm" : "Skip dependency installation",
+    ...(plan.install
+      ? plan.toolchains.map(({ directory, app, toolchain }) => `Install the ${app} app's dependencies in ${directory} with ${toolchain.name}`)
+      : []),
   ];
 }

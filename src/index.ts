@@ -6,7 +6,7 @@ import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
 import { dim, helpText, showBanner } from "./cli/ui.js";
 import { assertTargetIsUsable, executePlan } from "./core/execute.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
-import { createPlan, describePlan, selectFramework } from "./core/plan.js";
+import { createPlan, describePlan, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
 import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
 import { runDoctor, showStatus } from "./inspect.js";
@@ -16,6 +16,7 @@ import { tryOnRailway } from "./try.js";
 import { describeNewDatabase, neonCommand, provisionNeonDatabase } from "./neon.js";
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, installDependencies, resolvePnpm } from "./steps/install.js";
+import { commandSucceeds, run } from "./utils/process.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
 
 const minimumNode = [22, 12] as const;
@@ -43,37 +44,48 @@ async function askProjectDirectory(): Promise<string> {
 }
 
 /**
- * The framework from --framework, a prompt when the Starter offers several, or the default.
- * Returns null when the prompt is cancelled.
+ * The stack per slot, from flags (--framework, --api), prompts for slots that offer a choice,
+ * or the defaults. Only stacks that fit the earlier answers are offered. Returns null when a
+ * prompt is cancelled.
  */
-async function chooseFramework(
+async function chooseStacks(
   manifest: TemplateManifest,
-  requested: string | undefined,
+  requested: Record<string, string>,
   interactive: boolean,
-): Promise<string | null> {
-  if (requested) return selectFramework(manifest, requested).id;
-  const ids = Object.keys(manifest.frameworks);
-  if (!interactive || ids.length < 2) return manifest.defaultFramework;
-
-  const value = await select({
-    message: "Which framework should the app use?",
-    initialValue: manifest.defaultFramework,
-    options: ids.map((id) => ({
-      value: id,
-      label: manifest.frameworks[id]!.name,
-      ...(id === manifest.defaultFramework ? { hint: "default" } : {}),
-    })),
-  });
-  return isCancel(value) ? null : value;
+): Promise<Record<string, string> | null> {
+  if (!interactive) return selectStacks(manifest, requested);
+  const chosen = { ...requested };
+  for (const [slotId, slot] of Object.entries(manifest.slots)) {
+    if (chosen[slotId] !== undefined) continue;
+    const choices = slotChoices(manifest, slotId, chosen);
+    if (choices.length < 2) {
+      if (choices[0] !== undefined) chosen[slotId] = choices[0];
+      continue;
+    }
+    const preferred = slot.default ?? NO_STACK;
+    const value = await select({
+      message: slot.question,
+      initialValue: choices.includes(preferred) ? preferred : choices[0]!,
+      options: choices.map((id) => ({
+        value: id,
+        label: manifest.stacks[id]?.name ?? "None",
+        ...(id === preferred ? { hint: "default" } : {}),
+      })),
+    });
+    if (isCancel(value)) return null;
+    chosen[slotId] = value;
+  }
+  return selectStacks(manifest, chosen);
 }
 
 /**
  * Module options from flags, plus prompts for the rest when the visitor wants to customize.
- * Options whose requirements are not met by earlier answers are not offered. Returns null
- * when a prompt is cancelled.
+ * Only options the selected stacks implement, and whose requirements earlier answers meet, are
+ * offered. Returns null when a prompt is cancelled.
  */
 async function chooseModules(
   manifest: TemplateManifest,
+  stacks: Record<string, string>,
   requested: Record<string, string>,
   interactive: boolean,
 ): Promise<Record<string, string> | null> {
@@ -92,13 +104,16 @@ async function chooseModules(
   const chosen = { ...requested };
   for (const [id, module] of Object.entries(manifest.modules)) {
     if (chosen[id] !== undefined) continue;
-    const available = Object.entries(module.options).filter(([, option]) =>
+    const implemented = moduleChoices(manifest, stacks, id);
+    const available = Object.entries(module.options).filter(([optionId, option]) =>
+      implemented.includes(optionId) &&
       Object.entries(option.requires).every(([other, allowed]) => {
         const value = chosen[other] ?? requested[other];
         // Modules answered later are checked when the plan is created.
         return value === undefined || allowed.includes(value);
       }),
     );
+    if (available.length === 0) continue;
     const value = await select({
       message: module.name,
       initialValue: available.some(([optionId]) => optionId === module.default)
@@ -114,6 +129,28 @@ async function chooseModules(
     chosen[id] = value;
   }
   return chosen;
+}
+
+/**
+ * Installs the dependencies of apps with their own tools, such as uv for a Python API. A
+ * missing tool is reported with where to get it; the project is already complete without it.
+ */
+async function installToolchains(root: string, toolchains: ScaffoldPlan["toolchains"]): Promise<void> {
+  for (const { directory, app, toolchain } of toolchains) {
+    const [check, ...checkArgs] = toolchain.check;
+    const [command, ...args] = toolchain.install;
+    const retry = `\`${toolchain.install.join(" ")}\` in ${directory}`;
+    if (!(await commandSucceeds(check!, checkArgs))) {
+      log.warn(`${toolchain.name} was not found, so the ${app} app's dependencies were not installed. Get it from ${toolchain.url}, then run ${retry}.`);
+      continue;
+    }
+    try {
+      await run(command!, args, join(root, directory));
+      log.success(`${app} dependencies installed with ${toolchain.name}`);
+    } catch (error) {
+      log.error(`The ${app} app's dependencies did not install. ${error instanceof Error ? error.message : ""} Run ${retry} to retry.`);
+    }
+  }
 }
 
 async function createProject(args: CliArgs): Promise<void> {
@@ -137,16 +174,18 @@ async function createProject(args: CliArgs): Promise<void> {
   // The spinner runs while the manifest is read and again while files are written.
   let spinning: "preparing" | "writing" | null = "preparing";
   let neonEnvFile: string | null = null;
+  let toolchains: ScaffoldPlan["toolchains"] = [];
   try {
     const manifest = await readTemplateManifest(source.root);
     progress.stop(`Starter ${source.ref} ready`);
     spinning = null;
-    const framework = await chooseFramework(manifest, args.framework, interactive);
-    if (framework === null) {
+    const requested = splitSelection(manifest, args.framework, args.modules);
+    const stacks = await chooseStacks(manifest, requested.stacks, interactive);
+    if (stacks === null) {
       cancel("Operation cancelled.");
       return;
     }
-    const modules = await chooseModules(manifest, args.modules, interactive);
+    const modules = await chooseModules(manifest, stacks, requested.modules, interactive);
     if (modules === null) {
       cancel("Operation cancelled.");
       return;
@@ -156,7 +195,7 @@ async function createProject(args: CliArgs): Promise<void> {
       identity,
       source,
       manifest,
-      framework,
+      stacks,
       modules,
       cliVersion,
       git: args.git,
@@ -164,7 +203,8 @@ async function createProject(args: CliArgs): Promise<void> {
     });
 
     // --infra neon: a free Neon database, its URLs written into the new env file.
-    neonEnvFile = plan.modules.some(({ id, option }) => id === "infra" && option === "neon") && args.neon ? (plan.envFile?.to ?? null) : null;
+    toolchains = plan.toolchains;
+    neonEnvFile = plan.modules.some(({ id, option }) => id === "infra" && option === "neon") && args.neon ? (plan.envFiles[0]?.to ?? null) : null;
     if (args.dryRun) {
       const lines = [...describePlan(plan), ...(neonEnvFile ? [`Create a free Neon database and set its URLs in ${neonEnvFile}`] : [])];
       log.message(lines.map((line) => `• ${line}`).join("\n"));
@@ -175,7 +215,7 @@ async function createProject(args: CliArgs): Promise<void> {
     spinning = "writing";
     progress.start(`Writing ${plan.files.length} files`);
     await executePlan(plan, source);
-    progress.stop(`Created ${identity.packageName} with ${plan.framework.name} from Starter ${source.ref}`);
+    progress.stop(`Created ${identity.packageName} with ${plan.apps.map(({ name }) => name).join(" and ")} from Starter ${source.ref}`);
     spinning = null;
   } catch (error) {
     if (spinning === "preparing") progress.stop("Could not read the Starter");
@@ -220,6 +260,7 @@ async function createProject(args: CliArgs): Promise<void> {
       try {
         await installDependencies(targetDirectory, pnpm);
         log.success("Dependencies installed");
+        await installToolchains(targetDirectory, toolchains);
       } catch (error) {
         log.error(`Project created; dependency installation did not complete. ${error instanceof Error ? error.message : ""}`);
         log.info(`Run \`${pnpmCommand} install\` in the project to retry.`);

@@ -97,7 +97,7 @@ describe("customizeLockfile", () => {
   it("drops the apps that were left out and renames the selected one", () => {
     const result = customizeLockfile(lockfile, {
       remove: ["apps/web"],
-      rename: { from: "apps/start", to: "apps/web" },
+      rename: [{ from: "apps/start", to: "apps/web" }],
     });
 
     expect(result).toBe(`lockfileVersion: '9.0'
@@ -142,8 +142,12 @@ describe("customizeAppManifest", () => {
   });
 });
 
-describe("framework provenance", () => {
-  const withFramework: Provenance = { ...provenance, framework: "tanstack-start", frameworkName: "TanStack Start" };
+describe("stack provenance", () => {
+  const withFramework: Provenance = {
+    ...provenance,
+    stacks: { framework: "tanstack-start" },
+    stackSummary: ["Framework: TanStack Start"],
+  };
 
   it("records the framework id in package.json", () => {
     const result = JSON.parse(
@@ -261,7 +265,7 @@ describe("customizeLockfile with left-out packages", () => {
   it("drops their importers and every dependency entry pointing at them", () => {
     const result = customizeLockfile(modulesLockfile, {
       remove: ["apps/web", "packages/auth-supabase", "packages/storage-s3", "packages/storage-supabase"],
-      rename: { from: "apps/start", to: "apps/web" },
+      rename: [{ from: "apps/start", to: "apps/web" }],
       removeDependencies: ["@clubedge/auth-supabase", "@clubedge/storage-s3", "@clubedge/storage-supabase"],
     });
 

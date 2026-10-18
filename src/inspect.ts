@@ -70,7 +70,7 @@ export async function showStatus(_args: CliArgs): Promise<void> {
   const rows: Array<[string, string]> = [
     ["Project", project.identity.packageName],
     ["Starter", `${project.starterRef}${commit}, created with create-clubedge-app ${project.cliVersion}`],
-    ["Framework", project.framework],
+    ...Object.entries(project.stacks).map(([slot, stack]): [string, string] => [slot[0]!.toUpperCase() + slot.slice(1), stack]),
     ["Modules", modules],
     ["Git", describeGit(git)],
     ["Updates", updates],

@@ -1,6 +1,7 @@
 // Pure text transforms applied to template files. Keeping them free of I/O makes each one easy
 // to test and lets --dry-run describe them without touching the disk.
 import { pruneOptionalPeers } from "./lockfile-peers.js";
+import { FRAMEWORK_SLOT } from "./manifest-fields.js";
 
 export interface ProjectIdentity {
   packageName: string;
@@ -13,10 +14,10 @@ export interface Provenance {
   starterRepository: string;
   starterRef: string;
   starterCommit?: string;
-  /** The framework id chosen for the project, such as "tanstack-start". */
-  framework?: string;
-  /** Its display name, for the README. */
-  frameworkName?: string;
+  /** The stack chosen per slot that offers a choice, such as `{ framework: "tanstack-start" }`. */
+  stacks?: Record<string, string>;
+  /** Readable stack choices for the README, such as `Framework: TanStack Start`. */
+  stackSummary?: string[];
   /** The selected option per module, such as `{ auth: "none" }`. */
   modules?: Record<string, string>;
   /** Readable module choices for the README, such as `Authentication: None`. */
@@ -24,6 +25,26 @@ export interface Provenance {
 }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * The stacks a project recorded in its package.json `clubedge` field, by slot. Projects have
+ * recorded the framework slot as `framework` since before slots existed; other slots are
+ * recorded under `apps`, such as `"apps": { "api": "fastapi" }`. */
+export function recordedStacks(origin: { framework?: unknown; apps?: unknown }): Record<string, string> {
+  const apps = origin.apps && typeof origin.apps === "object" ? (origin.apps as Record<string, string>) : {};
+  return {
+    ...(typeof origin.framework === "string" ? { [FRAMEWORK_SLOT]: origin.framework } : {}),
+    ...apps,
+  };
+}
+
+function recordStacks(stacks: Record<string, string>) {
+  const { [FRAMEWORK_SLOT]: framework, ...apps } = stacks;
+  return {
+    ...(framework ? { framework } : {}),
+    ...(Object.keys(apps).length ? { apps } : {}),
+  };
+}
 
 /** Root package.json scripts that module options set or that left-out options remove. */
 export interface ScriptChanges {
@@ -49,7 +70,7 @@ export function customizeRootManifest(
     starterRepository: provenance.starterRepository,
     starterRef: provenance.starterRef,
     ...(provenance.starterCommit ? { starterCommit: provenance.starterCommit } : {}),
-    ...(provenance.framework ? { framework: provenance.framework } : {}),
+    ...recordStacks(provenance.stacks ?? {}),
     ...(provenance.modules ? { modules: provenance.modules } : {}),
   };
 
@@ -69,14 +90,14 @@ export function customizeReadme(
   const commitLine = provenance.starterCommit
     ? `\n- Starter commit: \`${provenance.starterCommit}\``
     : "";
-  const frameworkLine = provenance.frameworkName ? `\n- Framework: ${provenance.frameworkName}` : "";
+  const stackLines = (provenance.stackSummary ?? []).map((line) => `\n- ${line}`).join("");
   const modulesLine = provenance.moduleSummary?.length
     ? `\n- Modules: ${provenance.moduleSummary.join(", ")}`
     : "";
   const origin =
     `## Generated from\n\n` +
     `- Starter repository: \`${provenance.starterRepository}\`\n` +
-    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${frameworkLine}${modulesLine}\n` +
+    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${stackLines}${modulesLine}\n` +
     `- CLI version: \`${provenance.cliVersion}\``;
 
   // Only the first heading is the project title; leave every other line as written.
@@ -115,7 +136,7 @@ export function customizeLegacySource(source: string, { displayName }: ProjectId
     .replaceAll("Starter workspace", "Application workspace");
 }
 
-/** Gives the selected framework's app the package name generated projects use. */
+/** Gives a selected stack's app the package name generated projects use. */
 export function customizeAppManifest(source: string, appPackage: string): string {
   const manifest = JSON.parse(source);
   manifest.name = appPackage;
@@ -123,16 +144,16 @@ export function customizeAppManifest(source: string, appPackage: string): string
 }
 
 export interface LockfileChanges {
-  /** Workspace importers to drop: unselected framework apps and left-out packages. */
+  /** Workspace importers to drop: unselected stacks' apps and left-out packages. */
   remove: string[];
-  /** The selected app's importer, renamed to its location in the generated project. */
-  rename?: { from: string; to: string };
+  /** Selected apps' importers, renamed to their locations in the generated project. */
+  rename?: Array<{ from: string; to: string }>;
   /** Dependencies to drop from every remaining importer: the left-out workspace packages. */
   removeDependencies?: string[];
 }
 
 /**
- * Keeps pnpm-lock.yaml in step with the selected framework so `pnpm install --frozen-lockfile`
+ * Keeps pnpm-lock.yaml in step with the selected stacks so `pnpm install --frozen-lockfile`
  * works. Importers are keyed by workspace path at two-space indentation; package entries that
  * are no longer used are harmless, and pnpm prunes them on the next lockfile update. Optional
  * peer links to packages that only left-out importers installed are removed, so those packages
@@ -140,7 +161,7 @@ export interface LockfileChanges {
  */
 export function customizeLockfile(
   source: string,
-  { remove, rename, removeDependencies = [] }: LockfileChanges,
+  { remove, rename = [], removeDependencies = [] }: LockfileChanges,
 ): string {
   const output: string[] = [];
   let inImporters = false;
@@ -169,7 +190,8 @@ export function customizeLockfile(
       skippingImporter = remove.includes(importer);
       skippingDependency = false;
       pendingGroup = null;
-      if (!skippingImporter) output.push(importer === rename?.from ? `  ${rename.to}:` : line);
+      const renamed = rename.find(({ from }) => from === importer);
+      if (!skippingImporter) output.push(renamed ? `  ${renamed.to}:` : line);
       continue;
     }
     if (skippingImporter) continue;
@@ -201,7 +223,7 @@ export function customizeLockfile(
   return pruneOptionalPeers(output.join("\n"));
 }
 
-/** The selected framework and module options, as `{ framework: "next", auth: "none", ... }`. */
+/** The stack per slot and the option per module, as `{ framework: "next", auth: "none", ... }`. */
 export type Selection = Record<string, string>;
 
 export class ConditionalError extends Error {

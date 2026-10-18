@@ -141,6 +141,15 @@ describe("schema 4 packs", () => {
     expect(() => parseTemplateManifest(JSON.stringify(root), broken as Packs)).toThrow(ManifestError);
   });
 
+  it("refuses a module id that would read outside clubedge/modules", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, {
+      "clubedge.template.json": JSON.stringify({ ...root, modules: ["../../outside"] }),
+      "outside.json": JSON.stringify(modules.auth),
+    });
+    await expect(readTemplateManifest(starter)).rejects.toThrow('"../../outside" is not a valid module id.');
+  });
+
   it("reads the packs from a Starter's files", async () => {
     const starter = await temporaryDirectory();
     await writeFiles(starter, {

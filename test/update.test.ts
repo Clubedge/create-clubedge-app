@@ -63,6 +63,20 @@ describe("readProject", () => {
     });
   });
 
+  it("reads a project that recorded only an optional app, without a framework", async () => {
+    const root = await temporaryDirectory();
+    const clubedge = { cliVersion: "2.0.0", starterRepository: "r", starterRef: "v1", apps: { api: "fastapi" }, modules: { auth: "none" } };
+    await writeFiles(root, { "package.json": JSON.stringify({ name: "my-product", clubedge }) });
+    expect(await readProject(root)).toMatchObject({ stacks: { api: "fastapi" }, modules: { auth: "none" } });
+  });
+
+  it("refuses projects that predate recorded modules", async () => {
+    const root = await temporaryDirectory();
+    const clubedge = { cliVersion: "0.4.0", starterRepository: "r", starterRef: "v0.4.0", framework: "next" };
+    await writeFiles(root, { "package.json": JSON.stringify({ name: "my-product", clubedge }) });
+    await expect(readProject(root)).rejects.toThrow("before create-clubedge-app 0.5.0");
+  });
+
   it("explains when there is no generated project", async () => {
     await expect(readProject(await temporaryDirectory())).rejects.toThrow("No Clubedge project found");
   });

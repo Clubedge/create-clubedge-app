@@ -8,7 +8,7 @@
 //   folder; nothing shared changes.
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FRAMEWORK_SLOT, isRecord, MANIFEST_FILE, ManifestError, stackRoles, type StackRole } from "./manifest-fields.js";
+import { FRAMEWORK_SLOT, ID, isRecord, MANIFEST_FILE, ManifestError, stackRoles, type StackRole } from "./manifest-fields.js";
 import { legacyManifest, parseLegacyManifest } from "./manifest-legacy.js";
 import { MODULES_DIRECTORY, parsePackManifest, STACK_FILE, STACKS_DIRECTORY, type Packs } from "./manifest-packs.js";
 
@@ -187,6 +187,8 @@ async function readPacks(templateRoot: string, data: Record<string, unknown>): P
   const modules: Packs["modules"] = {};
   const ids = Array.isArray(data.modules) ? data.modules.filter((id) => typeof id === "string") : [];
   for (const id of ids) {
+    // Checked before reading, so a module id never reaches outside clubedge/modules.
+    if (!ID.test(id)) throw new ManifestError(`${MANIFEST_FILE}: "${id}" is not a valid module id.`);
     const file = `${MODULES_DIRECTORY}/${id}.json`;
     const source = await readOptional(join(templateRoot, file));
     if (source === null) throw new ManifestError(`${MANIFEST_FILE}: module "${id}" has no ${file}.`);

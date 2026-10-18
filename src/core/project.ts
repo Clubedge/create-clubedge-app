@@ -37,7 +37,8 @@ export async function readProject(directory: string): Promise<Project> {
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
       const origin = manifest.clubedge;
       if (origin?.starterRef) {
-        if (!origin.framework || !origin.modules) {
+        // Projects record the framework only when the Starter offered a choice, but always their modules.
+        if (!origin.modules) {
           throw new ProjectError(
             "This project was created before create-clubedge-app 0.5.0 and does not record its modules, so it cannot be changed automatically.",
           );

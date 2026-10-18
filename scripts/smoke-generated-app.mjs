@@ -25,6 +25,19 @@ async function get(path) {
   throw new Error(`The generated app did not respond at ${baseUrl}: ${lastError}`);
 }
 
+/**
+ * Like get, but also waits while the answer is a server error: a frontend forwards /api to a
+ * separate API, which may still be starting when the frontend already answers.
+ */
+async function getOnceUp(path) {
+  let response = await get(path);
+  while (response.status >= 500 && Date.now() < timeout) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    response = await get(path);
+  }
+  return response;
+}
+
 const landing = await get("/");
 assert.equal(landing.status, 200, "the landing page should render");
 assert.match(await landing.text(), /Generated App/, "the generated project name should be rendered");
@@ -46,7 +59,7 @@ if (hasAuth) {
 const dashboard = await get("/dashboard");
 assert.equal(dashboard.status, 200, "the dashboard should render");
 
-const health = await get("/api/health");
+const health = await getOnceUp("/api/health");
 assert.equal(health.status, 200, "the health endpoint should respond");
 assert.equal((await health.json()).status, "ok", "the health endpoint should report success");
 

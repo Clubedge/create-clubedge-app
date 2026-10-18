@@ -2,15 +2,19 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
-## Unreleased
+## 0.33.0
 
-- **Stack packs** (template schema 4): a Starter can describe each app in its own `clubedge.stack.json` and each module in `clubedge/modules/<id>.json`, so adding a stack adds a folder and changes nothing shared. See [docs/stack-packs.md](docs/stack-packs.md).
-  - Slots place apps in generated projects: `--framework` for the web app and, for Starters that offer one, `--api` for a separate API. A frontend needs an API, and a full-stack app takes none.
+- **A frontend and a separate API**: default to Starter `v0.22.0` (#98). `--framework vite --api hono` creates a React + Vite frontend in `apps/web` and a Hono API in `apps/api`, joined by one HTTP contract:
+  - `packages/contract/openapi.yaml` is the contract. The frontend calls the API only through the client generated from it, and `@clubedge/contract/conformance` is the test suite every API passes, in process or over HTTP against any running API.
+  - `pnpm dev` and `pnpm start` run both, and the frontend forwards `/api` to the API, so the browser sees one origin. `docker compose up --build` runs both images.
+  - A first version: on these stacks the modules are `none` (cache: memory, deploy: Docker). `deploy` explains that it sets up one app and doesn't deploy the pair yet (#96).
+  - CI generates the pair from the packed CLI and runs its full pipeline; the smoke check accepts a single-page app's shell for a missing page (#97).
+- **Stack packs** (template schema 4, #95): a Starter describes each app in its own `clubedge.stack.json` and each module in `clubedge/modules/<id>.json`, so adding a stack adds a folder and changes nothing shared. See [docs/stack-packs.md](docs/stack-packs.md).
+  - Slots place apps in generated projects: `--framework` for the web app and `--api` for a separate API. A frontend needs an API, and a full-stack app takes none.
   - The CLI checks that the selected stacks implement each chosen module option, and only offers those options in prompts and `add`.
   - Stacks outside Node.js declare a toolchain, such as uv, whose install runs after `pnpm install`.
-  - A slot can name packages only its apps use, left out when it is empty, and its own site config, named after the project.
-  - `deploy` explains that it sets up one app when a project has a frontend and a separate API.
-  - Starters with schema 1 to 3 are read into the same model, and projects created from them still add, remove, and upgrade. Projects generated from the same selection are byte-identical to before.
+  - A slot can name packages only its apps use, left out when it is empty, and its own site config, named after the project (#96).
+  - Starters with schema 1 to 3 are read into the same model, so projects created from them still add, remove, and upgrade. Projects generated from the same selection are byte-identical to 0.32.0.
 
 ## 0.32.0
 

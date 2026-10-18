@@ -3,7 +3,7 @@
 A Starter describes itself to the CLI in packs (template schema 4). Each part is described in
 one place, so adding a stack, in any language, adds a folder and changes nothing shared.
 
-```
+```text
 clubedge.template.json            the project: slots, the module order, shared conditional files
 clubedge/modules/<id>.json        a module: its options, packages, scripts, and shared files
 apps/<name>/clubedge.stack.json   a stack: its role, and its own files for each module option

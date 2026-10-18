@@ -24,7 +24,7 @@ async function generatedProject(modules: Record<string, string> = {}) {
       identity: { packageName: "my-product", displayName: "My Product" },
       source,
       manifest,
-      framework: "next",
+      stacks: { framework: "next" },
       modules,
       cliVersion: "1.0.0",
       git: false,
@@ -58,9 +58,23 @@ describe("readProject", () => {
       root,
       identity: { packageName: "my-product", displayName: "My Product" },
       cliVersion: "1.0.0",
-      framework: "next",
+      stacks: { framework: "next" },
       modules: { auth: "supabase", storage: "s3" },
     });
+  });
+
+  it("reads a project that recorded only an optional app, without a framework", async () => {
+    const root = await temporaryDirectory();
+    const clubedge = { cliVersion: "2.0.0", starterRepository: "r", starterRef: "v1", apps: { api: "fastapi" }, modules: { auth: "none" } };
+    await writeFiles(root, { "package.json": JSON.stringify({ name: "my-product", clubedge }) });
+    expect(await readProject(root)).toMatchObject({ stacks: { api: "fastapi" }, modules: { auth: "none" } });
+  });
+
+  it("refuses projects that predate recorded modules", async () => {
+    const root = await temporaryDirectory();
+    const clubedge = { cliVersion: "0.4.0", starterRepository: "r", starterRef: "v0.4.0", framework: "next" };
+    await writeFiles(root, { "package.json": JSON.stringify({ name: "my-product", clubedge }) });
+    await expect(readProject(root)).rejects.toThrow("before create-clubedge-app 0.5.0");
   });
 
   it("explains when there is no generated project", async () => {
@@ -85,7 +99,7 @@ describe("planUpdate and applyUpdate", () => {
     });
     expect(plan.lockfile.kind).toBe("replace");
     expect(await project.read("pnpm-lock.yaml")).not.toContain("packages/storage-s3:");
-    expect(plan.env).toMatchObject({ path: "apps/web/.env.local", update: { removed: ["STORAGE_BUCKET"] } });
+    expect(plan.envs).toMatchObject([{ path: "apps/web/.env.local", update: { removed: ["STORAGE_BUCKET"] } }]);
   });
 
   it("keeps the project's edits and marks lines both sides changed", async () => {
@@ -123,7 +137,7 @@ describe("planUpdate and applyUpdate", () => {
 
     const plan = await project.change({ storage: "s3" });
 
-    expect(plan.env?.update?.added).toEqual(["STORAGE_BUCKET"]);
+    expect(plan.envs[0]?.update?.added).toEqual(["STORAGE_BUCKET"]);
     expect(await project.read("apps/web/.env.local")).toBe(
       "DATABASE_URL=postgres://secret\nSUPABASE_URL=https://mine\n\nSTORAGE_BUCKET=\n",
     );
@@ -188,7 +202,7 @@ describe("upgrading to a newer Starter", () => {
         identity: { packageName: "my-product", displayName: "My Product" },
         source: { ...v1, ref: "v1.0.0", commit: "1".repeat(40) },
         manifest: v1Manifest,
-        framework: "next",
+        stacks: { framework: "next" },
         cliVersion: "1.0.0",
         git: false,
         install: false,
@@ -299,7 +313,7 @@ describe("incoming versions", () => {
     project: { root } as UpdatePlan["project"],
     actions,
     lockfile: { kind: "unchanged" },
-    env: null,
+    envs: [],
   });
 
   it("saves the Starter's version of each file left to resolve, in a folder Git ignores", async () => {

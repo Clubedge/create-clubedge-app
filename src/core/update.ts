@@ -33,8 +33,8 @@ export interface UpdatePlan {
    * "install": the project changed its dependencies, so `pnpm install` must reconcile them.
    */
   lockfile: { kind: "unchanged" } | { kind: "replace"; content: Buffer } | { kind: "install" };
-  /** The local env file, such as apps/web/.env.local; `update` is null when it does not exist. */
-  env: { path: string; update: EnvUpdate | null; changed: boolean } | null;
+  /** Each app's local env file, such as apps/web/.env.local; `update` is null when it does not exist. */
+  envs: Array<{ path: string; update: EnvUpdate | null; changed: boolean }>;
 }
 
 export async function planUpdate(project: Project, base: UpdateSide, target: UpdateSide): Promise<UpdatePlan> {
@@ -43,16 +43,16 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
       source: side.source,
       manifest: side.manifest,
       identity: project.identity,
-      framework: project.framework,
+      stacks: project.stacks,
       modules: side.modules,
       cliVersion: side.cliVersion,
     });
   const before = await render(base);
   const after = await render(target);
 
-  // The lockfile and the local env file are handled on their own below.
-  const envFile = after.envFile ?? before.envFile;
-  const special = [LOCKFILE, ...(envFile ? [envFile.to] : [])];
+  // The lockfile and the local env files are handled on their own below.
+  const envFiles = [...after.envFiles, ...before.envFiles.filter(({ to }) => !after.envFiles.some((file) => file.to === to))];
+  const special = [LOCKFILE, ...envFiles.map(({ to }) => to)];
   const strip = (files: Map<string, Buffer>) =>
     new Map([...files].filter(([path]) => !special.includes(path)));
   const baseFiles = strip(before.files);
@@ -74,17 +74,14 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
         : { kind: "install" };
   }
 
-  let env: UpdatePlan["env"] = null;
-  if (envFile) {
+  const envs = envFiles.map((envFile) => {
     const text = (files: Map<string, Buffer>) => files.get(envFile.from)?.toString("utf8") ?? "";
-    const baseExample = text(before.files);
-    const targetExample = text(after.files);
     const local = current.get(envFile.to)?.toString("utf8");
-    const update = local === undefined ? null : updateEnvFile(local, baseExample, targetExample);
-    env = { path: envFile.to, update, changed: update !== null && update.text !== local };
-  }
+    const update = local === undefined ? null : updateEnvFile(local, text(before.files), text(after.files));
+    return { path: envFile.to, update, changed: update !== null && update.text !== local };
+  });
 
-  return { project, actions, lockfile, env };
+  return { project, actions, lockfile, envs };
 }
 
 /** Removes empty folders left behind by deleted files, up to the project root. */
@@ -140,5 +137,7 @@ export async function applyUpdate(plan: UpdatePlan): Promise<void> {
     }
   }
   if (plan.lockfile.kind === "replace") await writeFile(join(root, LOCKFILE), plan.lockfile.content);
-  if (plan.env?.update && plan.env.changed) await writeFile(join(root, plan.env.path), plan.env.update.text);
+  for (const env of plan.envs) {
+    if (env.update && env.changed) await writeFile(join(root, env.path), env.update.text);
+  }
 }

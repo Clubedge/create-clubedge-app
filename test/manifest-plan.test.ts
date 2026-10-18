@@ -5,18 +5,41 @@ import {
   parseTemplateManifest,
   readTemplateManifest,
 } from "../src/core/manifest.js";
-import { createPlan, describePlan, FrameworkError } from "../src/core/plan.js";
+import { createPlan, describePlan, StackError } from "../src/core/plan.js";
 import { frameworksManifest, manifest, temporaryDirectory, writeFiles } from "./helpers.js";
 
-/** Schema 1 Starters are read as a single Next.js framework in the app directory. */
+/** Schema 1 Starters are read as one Next.js stack filling the framework slot. */
 const parsedSchema1 = {
-  ...manifest,
-  defaultFramework: "next",
-  frameworks: {
-    next: { name: "Next.js", app: "apps/web", envExample: ".env.example", dockerfile: "Dockerfile" },
+  schemaVersion: 1,
+  name: manifest.name,
+  packageManager: "pnpm",
+  siteConfig: manifest.siteConfig,
+  dockerImage: manifest.dockerImage,
+  slots: {
+    framework: {
+      name: "Framework",
+      question: "Which framework should the app use?",
+      path: "apps/web",
+      env: manifest.env,
+      dockerfile: "Dockerfile",
+      roles: ["fullstack"],
+      default: "next",
+    },
+  },
+  stacks: {
+    next: {
+      name: "Next.js",
+      role: "fullstack",
+      slot: "framework",
+      app: "apps/web",
+      envExample: ".env.example",
+      dockerfile: "Dockerfile",
+      modules: {},
+    },
   },
   modules: {},
   conditional: [],
+  exclude: manifest.exclude,
 };
 
 describe("parseTemplateManifest", () => {
@@ -25,16 +48,25 @@ describe("parseTemplateManifest", () => {
   });
 
   it("reads a schema 2 manifest with several frameworks", () => {
-    expect(parseTemplateManifest(JSON.stringify(frameworksManifest))).toEqual({
-      ...frameworksManifest,
-      modules: {},
-      conditional: [],
+    const parsed = parseTemplateManifest(JSON.stringify(frameworksManifest));
+    expect(parsed.slots.framework).toMatchObject({ path: "apps/web", package: "@clubedge/web", default: "next" });
+    expect(parsed.stacks).toEqual({
+      next: { ...parsedSchema1.stacks.next },
+      "tanstack-start": {
+        name: "TanStack Start",
+        role: "fullstack",
+        slot: "framework",
+        app: "apps/start",
+        envExample: "apps/start/.env.example",
+        dockerfile: "apps/start/Dockerfile",
+        modules: {},
+      },
     });
   });
 
   it("asks for a newer CLI when the schema is newer than it supports", () => {
-    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 4 }))).toThrow(
-      /template schema 4.*@latest/,
+    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 5 }))).toThrow(
+      /template schema 5.*@latest/,
     );
   });
 
@@ -114,7 +146,7 @@ describe("createPlan", () => {
       "README.md",
       "apps/web/src/config/site.json",
     ]);
-    expect(plan.envFile).toEqual({ from: ".env.example", to: "apps/web/.env.local" });
+    expect(plan.envFiles).toEqual([{ from: ".env.example", to: "apps/web/.env.local" }]);
     // A single-framework Starter records no framework choice.
     expect(plan.provenance).toEqual({
       cliVersion: "9.9.9",
@@ -140,7 +172,7 @@ describe("createPlan", () => {
       "apps/web/src/app/layout.tsx",
       "apps/web/src/app/page.tsx",
     ]);
-    expect(plan.envFile).toBeNull();
+    expect(plan.envFiles).toEqual([]);
   });
 
   it("describes every step for --dry-run", () => {
@@ -191,7 +223,7 @@ describe("createPlan with several frameworks", () => {
   it("keeps the default framework in place and leaves the others out", () => {
     const plan = createPlan(input);
 
-    expect(plan.framework).toEqual({ id: "next", name: "Next.js" });
+    expect(plan.apps).toEqual([{ slot: "framework", slotName: "Framework", id: "next", name: "Next.js" }]);
     expect(plan.files.map(({ to }) => to)).toEqual([
       "package.json",
       "pnpm-lock.yaml",
@@ -207,13 +239,15 @@ describe("createPlan with several frameworks", () => {
       "pnpm-lock.yaml",
       "apps/web/src/config/site.json",
     ]);
-    expect(plan.provenance).toMatchObject({ framework: "next", frameworkName: "Next.js" });
+    expect(plan.provenance).toMatchObject({ stacks: { framework: "next" }, stackSummary: ["Framework: Next.js"] });
   });
 
   it("moves the selected framework's app, env example, and Dockerfile into place", () => {
-    const plan = createPlan({ ...input, framework: "tanstack-start" });
+    const plan = createPlan({ ...input, stacks: { framework: "tanstack-start" } });
 
-    expect(plan.framework).toEqual({ id: "tanstack-start", name: "TanStack Start" });
+    expect(plan.apps).toEqual([
+      { slot: "framework", slotName: "Framework", id: "tanstack-start", name: "TanStack Start" },
+    ]);
     expect(plan.files).toEqual([
       { from: "package.json", to: "package.json" },
       { from: "pnpm-lock.yaml", to: "pnpm-lock.yaml" },
@@ -224,7 +258,7 @@ describe("createPlan with several frameworks", () => {
       { from: "apps/start/src/routes/index.tsx", to: "apps/web/src/routes/index.tsx" },
       { from: "packages/core/src/index.ts", to: "packages/core/src/index.ts" },
     ]);
-    expect(plan.envFile).toEqual({ from: ".env.example", to: "apps/web/.env.local" });
+    expect(plan.envFiles).toEqual([{ from: ".env.example", to: "apps/web/.env.local" }]);
     expect(describePlan(plan)).toEqual([
       "Create /projects/my-product",
       "Use TanStack Start",
@@ -240,14 +274,14 @@ describe("createPlan with several frameworks", () => {
   });
 
   it("names the available frameworks when the requested one is unknown", () => {
-    expect(() => createPlan({ ...input, framework: "remix" })).toThrow(FrameworkError);
-    expect(() => createPlan({ ...input, framework: "remix" })).toThrow(
+    expect(() => createPlan({ ...input, stacks: { framework: "remix" } })).toThrow(StackError);
+    expect(() => createPlan({ ...input, stacks: { framework: "remix" } })).toThrow(
       'Unknown framework "remix". This Starter offers: next, tanstack-start.',
     );
   });
 
   it("offers only next for schema 1 Starters", () => {
-    expect(() => createPlan({ ...basePlanInput, source, framework: "tanstack-start" })).toThrow(
+    expect(() => createPlan({ ...basePlanInput, source, stacks: { framework: "tanstack-start" } })).toThrow(
       "This Starter offers: next.",
     );
   });

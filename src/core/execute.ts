@@ -48,8 +48,8 @@ export async function executePlan(plan: ScaffoldPlan, source: Pick<TemplateSourc
       const path = join(target, edit.path);
       await writeFile(path, edit.apply(await readFile(path, "utf8")));
     }
-    if (plan.envFile) {
-      await copyFile(join(target, plan.envFile.from), join(target, plan.envFile.to), constants.COPYFILE_EXCL);
+    for (const envFile of plan.envFiles) {
+      await copyFile(join(target, envFile.from), join(target, envFile.to), constants.COPYFILE_EXCL);
     }
   } catch (error) {
     if (created) await rm(target, { recursive: true, force: true });

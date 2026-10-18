@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathExists } from "../utils/fs.js";
 import { displayNameFromPackageName } from "../utils/names.js";
-import type { ProjectIdentity } from "./customize.js";
+import { recordedStacks, type ProjectIdentity } from "./customize.js";
 import type { TemplateManifest } from "./manifest.js";
 import type { FileMap } from "./merge.js";
 import { createPlan } from "./plan.js";
@@ -23,7 +23,8 @@ export interface Project {
   starterRef: string;
   /** Missing when the project was scaffolded from a local Starter folder outside Git. */
   starterCommit?: string;
-  framework: string;
+  /** The stack per slot, such as `{ framework: "next" }`. */
+  stacks: Record<string, string>;
   modules: Record<string, string>;
 }
 
@@ -36,7 +37,8 @@ export async function readProject(directory: string): Promise<Project> {
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
       const origin = manifest.clubedge;
       if (origin?.starterRef) {
-        if (!origin.framework || !origin.modules) {
+        // Projects record the framework only when the Starter offered a choice, but always their modules.
+        if (!origin.modules) {
           throw new ProjectError(
             "This project was created before create-clubedge-app 0.5.0 and does not record its modules, so it cannot be changed automatically.",
           );
@@ -48,7 +50,7 @@ export async function readProject(directory: string): Promise<Project> {
           starterRepository: origin.starterRepository,
           starterRef: origin.starterRef,
           starterCommit: origin.starterCommit,
-          framework: origin.framework,
+          stacks: recordedStacks(origin),
           modules: origin.modules,
         };
       }
@@ -67,15 +69,15 @@ export interface RenderInput {
   source: Pick<TemplateSource, "root" | "files" | "repository" | "ref" | "commit">;
   manifest: TemplateManifest;
   identity: ProjectIdentity;
-  framework: string;
+  stacks: Record<string, string>;
   modules: Record<string, string>;
   cliVersion: string;
 }
 
 export interface RenderedProject {
   files: FileMap;
-  /** The environment example and the local env file the CLI creates from it. */
-  envFile: { from: string; to: string } | null;
+  /** Each app's environment example and the local env file the CLI creates from it. */
+  envFiles: Array<{ from: string; to: string }>;
 }
 
 /** The files the CLI generates for this selection, without writing anything. */
@@ -87,7 +89,7 @@ export async function renderProject(input: RenderInput): Promise<RenderedProject
     const content = files.get(edit.path);
     if (content) files.set(edit.path, Buffer.from(edit.apply(content.toString("utf8"))));
   }
-  return { files, envFile: plan.envFile };
+  return { files, envFiles: plan.envFiles };
 }
 
 /** Reads the project's copies of the given paths; missing files are left out. */

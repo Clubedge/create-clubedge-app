@@ -11,7 +11,7 @@ import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js"
 import { compareVersions } from "./core/health.js";
 import { countConflicts, type MergeAction } from "./core/merge.js";
 import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
-import { selectModules } from "./core/plan.js";
+import { moduleChoices, selectModules, selectStacks } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
 import {
   downloadGitHubTemplate,
@@ -95,10 +95,13 @@ async function assertSafeToChange(project: Project, args: CliArgs, interactive: 
   if (isCancel(proceed) || !proceed) throw new UsageError("Cancelled; nothing was changed.");
 }
 
-/** Whether an option's requirements hold for the project's other modules. */
+/** Whether the project's stacks implement an option and its requirements hold for the other modules. */
 function available(manifest: TemplateManifest, project: Project, moduleId: string, optionId: string) {
   const option = manifest.modules[moduleId]!.options[optionId]!;
-  return Object.entries(option.requires).every(([other, allowed]) => allowed.includes(project.modules[other] ?? ""));
+  return (
+    moduleChoices(manifest, selectStacks(manifest, project.stacks), moduleId).includes(optionId) &&
+    Object.entries(option.requires).every(([other, allowed]) => allowed.includes(project.modules[other] ?? ""))
+  );
 }
 
 /**
@@ -203,8 +206,9 @@ export function changedModules(manifest: TemplateManifest, project: Project, com
     }
     requested[id] = option;
   }
-  // Validates requirements between modules, such as Supabase Storage needing Supabase Auth.
-  return selectModules(manifest, requested);
+  // Validates requirements between modules, such as Supabase Storage needing Supabase Auth, and
+  // that the project's stacks implement the new options.
+  return selectModules(manifest, requested, selectStacks(manifest, project.stacks));
 }
 
 /**
@@ -228,7 +232,7 @@ export function upgradedModules(manifest: TemplateManifest, project: Project, cl
     }
   }
   const dropped = Object.keys(project.modules).filter((id) => !manifest.modules[id]);
-  return { modules: selectModules(manifest, requested), introduced, dropped };
+  return { modules: selectModules(manifest, requested, selectStacks(manifest, project.stacks)), introduced, dropped };
 }
 
 const verbs: Record<MergeAction["kind"], string> = {
@@ -244,14 +248,14 @@ function describe(plan: UpdatePlan): string {
   const lines = plan.actions.map((action) => `${verbs[action.kind].padEnd(8)} ${action.path}`);
   if (plan.lockfile.kind === "replace") lines.push(`${"update".padEnd(8)} pnpm-lock.yaml`);
   if (plan.lockfile.kind === "install") lines.push(`${"install".padEnd(8)} pnpm-lock.yaml ${dim("(pnpm install reconciles your dependency changes)")}`);
-  const env = plan.env?.update;
-  if (plan.env && env && plan.env.changed) {
+  for (const { path, update: env, changed } of plan.envs) {
+    if (!env || !changed) continue;
     const parts = [
       env.added.length ? `adds ${env.added.join(", ")}` : "",
       env.updated.length ? `updates ${env.updated.join(", ")}` : "",
       env.removed.length ? `removes ${env.removed.join(", ")}` : "",
     ].filter(Boolean);
-    lines.push(`${"update".padEnd(8)} ${plan.env.path} ${dim(`(${parts.join("; ")})`)}`);
+    lines.push(`${"update".padEnd(8)} ${path} ${dim(`(${parts.join("; ")})`)}`);
   }
   return lines.join("\n");
 }
@@ -284,17 +288,19 @@ function report(plan: UpdatePlan) {
         .join("\n")}`,
     );
   }
-  if (plan.env && !plan.env.update) {
-    log.info(`${plan.env.path} does not exist yet; create it from the example file.`);
-  }
-  const env = plan.env?.update;
-  if (plan.env && env?.customized.length) {
-    log.info(
-      `You set your own ${env.customized.join(", ")} in ${plan.env.path}; the example's value changed, so check whether yours still fits.`,
-    );
-  }
-  if (plan.env && env?.unused.length) {
-    log.info(`The project no longer uses ${env.unused.join(", ")}, which you set in ${plan.env.path}. Remove them when you no longer need them.`);
+  for (const { path, update: env } of plan.envs) {
+    if (!env) {
+      log.info(`${path} does not exist yet; create it from the example file.`);
+      continue;
+    }
+    if (env.customized.length) {
+      log.info(
+        `You set your own ${env.customized.join(", ")} in ${path}; the example's value changed, so check whether yours still fits.`,
+      );
+    }
+    if (env.unused.length) {
+      log.info(`The project no longer uses ${env.unused.join(", ")}, which you set in ${path}. Remove them when you no longer need them.`);
+    }
   }
 }
 

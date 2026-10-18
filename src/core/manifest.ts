@@ -1,19 +1,76 @@
-import { readFile } from "node:fs/promises";
+// How a Starter describes itself to the CLI. Every schema the CLI has shipped is read into one
+// model, so the rest of the CLI never branches on schema versions:
+//
+// - Schema 1 to 3 (manifest-legacy.ts): one clubedge.template.json listing every framework and
+//   every module file. Projects created from those Starters still add, remove, and upgrade.
+// - Schema 4 (manifest-packs.ts): clubedge.template.json names the slots and modules, and each
+//   app describes itself in its own clubedge.stack.json, a stack pack. Adding a stack adds a
+//   folder; nothing shared changes.
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { FRAMEWORK_SLOT, ID, isRecord, MANIFEST_FILE, ManifestError, stackRoles, type StackRole } from "./manifest-fields.js";
+import { legacyManifest, parseLegacyManifest } from "./manifest-legacy.js";
+import { MODULES_DIRECTORY, parsePackManifest, STACK_FILE, STACKS_DIRECTORY, type Packs } from "./manifest-packs.js";
 
-export const MANIFEST_FILE = "clubedge.template.json";
-export const SUPPORTED_SCHEMA_VERSION = 3;
+export { FRAMEWORK_SLOT, legacyManifest, MANIFEST_FILE, ManifestError };
+export const SUPPORTED_SCHEMA_VERSION = 4;
 
-/** Where one framework's files live in the Starter repository. */
-export interface FrameworkTemplate {
+export { stackRoles, type StackRole };
+
+/**
+ * A place for one app in generated projects, such as the web app in apps/web. The selected
+ * stack's app, environment example, and Dockerfile move here. Slots without a default are
+ * optional: "none" leaves them out.
+ */
+export interface TemplateSlot {
+  /** Display name, such as "Framework"; the README and errors use it. */
+  name: string;
+  /** The prompt that offers its stacks. */
+  question: string;
+  /** The app's directory in generated projects. */
+  path: string;
+  /** The app's package name in generated projects, when the Starter defines one. */
+  package?: string;
+  env: { example: string; target: string };
+  /** Where the app's Dockerfile goes in generated projects. */
+  dockerfile: string;
+  /** The roles of the stacks it takes. */
+  roles: StackRole[];
+  /** The stack used when none is requested; absent for optional slots. */
+  default?: string;
+}
+
+/**
+ * The tools a stack needs beyond the workspace's pnpm install, such as uv for a Python API.
+ * Data, not code: a stack in a new language brings its toolchain with it.
+ */
+export interface Toolchain {
+  /** Display name, such as "uv". */
+  name: string;
+  /** A command that succeeds when the tool is installed, such as ["uv", "--version"]. */
+  check: string[];
+  /** Installs the app's dependencies, run in the app's directory after pnpm install. */
+  install: string[];
+  /** Where to get the tool, shown when it is missing. */
+  url: string;
+}
+
+/** One app implementation in the Starter (a stack pack), such as Next.js in apps/web. */
+export interface TemplateStack {
   /** Display name, such as "TanStack Start". */
   name: string;
-  /** The framework's application directory in the Starter. Moved to `app` when selected. */
+  role: StackRole;
+  /** The slot it fills, from its role. */
+  slot: string;
+  /** Its directory in the Starter. Moved to the slot's path when selected. */
   app: string;
-  /** The framework's environment example. Moved to `env.example` when selected. */
+  /** Its environment example in the Starter. Moved to the slot's env.example when selected. */
   envExample: string;
-  /** The framework's Dockerfile. Moved to the project root when selected. */
+  /** Its Dockerfile in the Starter. Moved to the slot's dockerfile when selected. */
   dockerfile: string;
+  /** The module options it implements, by module. Modules it does not list do not involve it. */
+  modules: Record<string, string[]>;
+  toolchain?: Toolchain;
 }
 
 /** One choice within a module, such as `storage: s3`. Paths use the Starter's layout. */
@@ -36,72 +93,35 @@ export interface TemplateModule {
   name: string;
   default: string;
   options: Record<string, ModuleOption>;
+  /**
+   * "app": apps implement it, so a selected stack must implement the chosen option.
+   * "project": it is about the project as a whole (local infrastructure, deployment).
+   */
+  scope: "app" | "project";
 }
 
-/**
- * How a Starter describes itself to the CLI (clubedge.template.json). Top-level paths describe
- * the generated project; `frameworks` says where each framework's files live in the Starter,
- * and `modules` (schema 3) describes the optional parts.
- */
 export interface TemplateManifest {
   schemaVersion: number;
   name: string;
+  /** The workspace's package manager; every app has a package.json, whatever its language. */
   packageManager: "pnpm";
-  /** The application directory in generated projects. */
-  app: string;
-  /** The application package name in generated projects, when the Starter defines one. */
-  appPackage?: string;
-  /** JSON file holding the project name and description. */
+  /** JSON file in generated projects holding the project name and description. */
   siteConfig: string;
-  env: { example: string; target: string };
   /** Docker image name used by the root docker:* scripts. */
   dockerImage: string;
-  defaultFramework: string;
-  frameworks: Record<string, FrameworkTemplate>;
+  slots: Record<string, TemplateSlot>;
+  stacks: Record<string, TemplateStack>;
   /** Optional parts of the app; empty before schema 3. */
   modules: Record<string, TemplateModule>;
-  /** Text files with `clubedge:if` blocks, kept or dropped by the selected framework and modules. */
+  /** Text files with `clubedge:if` blocks, kept or dropped by the selected stacks and modules. */
   conditional: string[];
   /** Template files that should not be copied into generated projects. */
   exclude: string[];
 }
 
-/** Schema 1 Starters ship a single Next.js app at the generated location. */
-function singleNextFramework(app: string, envExample: string) {
-  return {
-    defaultFramework: "next",
-    frameworks: { next: { name: "Next.js", app, envExample, dockerfile: "Dockerfile" } },
-  };
-}
-
-/** Starter releases before v0.3.0 have no manifest; this describes their layout. */
-export const legacyManifest: TemplateManifest = {
-  schemaVersion: 1,
-  name: "clubedge-starter",
-  packageManager: "pnpm",
-  app: "apps/web",
-  siteConfig: "apps/web/src/config/site.json",
-  env: { example: ".env.example", target: "apps/web/.env.local" },
-  dockerImage: "clubedge-starter",
-  ...singleNextFramework("apps/web", ".env.example"),
-  modules: {},
-  conditional: [],
-  exclude: [],
-};
-
-export class ManifestError extends Error {
-  override name = "ManifestError";
-}
-
-export function parseTemplateManifest(source: string): TemplateManifest {
-  let data: unknown;
-  try {
-    data = JSON.parse(source);
-  } catch {
-    throw new ManifestError(`${MANIFEST_FILE} is not valid JSON.`);
-  }
+/** The schema version of a manifest file, checked against what this CLI reads. */
+function readSchemaVersion(data: unknown): number {
   if (!isRecord(data)) throw new ManifestError(`${MANIFEST_FILE} must contain an object.`);
-
   const { schemaVersion } = data;
   if (typeof schemaVersion !== "number" || !Number.isInteger(schemaVersion)) {
     throw new ManifestError(`${MANIFEST_FILE} is missing a numeric schemaVersion.`);
@@ -112,173 +132,124 @@ export function parseTemplateManifest(source: string): TemplateManifest {
         "Run the latest CLI: pnpm dlx @clubedge/create-clubedge-app@latest",
     );
   }
-
-  const env = data.env;
-  if (data.packageManager !== "pnpm") {
-    throw new ManifestError(`${MANIFEST_FILE}: packageManager must be "pnpm".`);
-  }
-  if (!isRecord(env)) throw new ManifestError(`${MANIFEST_FILE}: env must be an object.`);
-  if (data.exclude !== undefined && !isStringArray(data.exclude)) {
-    throw new ManifestError(`${MANIFEST_FILE}: exclude must be an array of paths.`);
-  }
-
-  const app = requireString(data, "app");
-  const envExample = requireString(env, "example", "env.");
-  return {
-    schemaVersion,
-    name: requireString(data, "name"),
-    packageManager: "pnpm",
-    app,
-    ...(schemaVersion >= 2 ? { appPackage: requireString(data, "appPackage") } : {}),
-    siteConfig: requireString(data, "siteConfig"),
-    env: { example: envExample, target: requireString(env, "target", "env.") },
-    dockerImage: requireString(data, "dockerImage"),
-    ...(schemaVersion >= 2 ? parseFrameworks(data) : singleNextFramework(app, envExample)),
-    modules: schemaVersion >= 3 ? parseModules(data.modules) : {},
-    conditional: schemaVersion >= 3 ? optionalStringArray(data, "conditional") : [],
-    exclude: data.exclude ?? [],
-  };
+  return schemaVersion;
 }
 
-const ID = /^[a-z][a-z0-9-]*$/;
-
-function parseModules(value: unknown): Record<string, TemplateModule> {
-  if (value === undefined) return {};
-  if (!isRecord(value)) throw new ManifestError(`${MANIFEST_FILE}: modules must be an object.`);
-
-  const modules: Record<string, TemplateModule> = {};
-  for (const [id, entry] of Object.entries(value)) {
-    if (!ID.test(id) || id === "framework") {
-      throw new ManifestError(`${MANIFEST_FILE}: "${id}" is not a valid module id.`);
-    }
-    if (!isRecord(entry)) throw new ManifestError(`${MANIFEST_FILE}: modules.${id} must be an object.`);
-    const prefix = `modules.${id}.`;
-    const optionsValue = entry.options;
-    if (!isRecord(optionsValue) || Object.keys(optionsValue).length === 0) {
-      throw new ManifestError(`${MANIFEST_FILE}: ${prefix}options must describe at least one option.`);
-    }
-
-    const options: Record<string, ModuleOption> = {};
-    for (const [optionId, option] of Object.entries(optionsValue)) {
-      const optionPrefix = `${prefix}options.${optionId}.`;
-      if (!ID.test(optionId)) {
-        throw new ManifestError(`${MANIFEST_FILE}: "${optionId}" is not a valid option id in ${prefix.slice(0, -1)}.`);
-      }
-      if (!isRecord(option)) throw new ManifestError(`${MANIFEST_FILE}: ${optionPrefix.slice(0, -1)} must be an object.`);
-      options[optionId] = {
-        name: requireString(option, "name", optionPrefix),
-        packages: optionalStringRecord(option, "packages", optionPrefix),
-        files: optionalStringArray(option, "files", optionPrefix),
-        replace: optionalStringRecord(option, "replace", optionPrefix),
-        requires: parseRequires(option.requires, optionPrefix),
-        scripts: optionalStringRecord(option, "scripts", optionPrefix),
-      };
-    }
-
-    const defaultOption = requireString(entry, "default", prefix);
-    if (!options[defaultOption]) {
-      throw new ManifestError(`${MANIFEST_FILE}: ${prefix}default "${defaultOption}" is not in its options.`);
-    }
-    modules[id] = { name: requireString(entry, "name", prefix), default: defaultOption, options };
+function parseJson(source: string, file: string): unknown {
+  try {
+    return JSON.parse(source);
+  } catch {
+    throw new ManifestError(`${file} is not valid JSON.`);
   }
-
-  // Requirements must name real modules and options, or a selection could never be valid.
-  for (const [id, module] of Object.entries(modules)) {
-    for (const [optionId, option] of Object.entries(module.options)) {
-      for (const [requiredModule, allowed] of Object.entries(option.requires)) {
-        const unknown = allowed.find((value) => !modules[requiredModule]?.options[value]);
-        if (unknown !== undefined) {
-          throw new ManifestError(
-            `${MANIFEST_FILE}: modules.${id}.options.${optionId}.requires names unknown option ${requiredModule}=${unknown}.`,
-          );
-        }
-      }
-    }
-  }
-  return modules;
 }
 
-function parseRequires(value: unknown, prefix: string): Record<string, string[]> {
-  if (value === undefined) return {};
-  if (!isRecord(value)) throw new ManifestError(`${MANIFEST_FILE}: ${prefix}requires must be an object.`);
-  const requires: Record<string, string[]> = {};
-  for (const [module, allowed] of Object.entries(value)) {
-    const list = typeof allowed === "string" ? [allowed] : allowed;
-    if (!isStringArray(list) || list.length === 0) {
-      throw new ManifestError(`${MANIFEST_FILE}: ${prefix}requires.${module} must name one or more options.`);
-    }
-    requires[module] = list;
-  }
-  return requires;
+/**
+ * Reads a manifest from its text. Schema 4 manifests also need their packs, the stack and
+ * module descriptors, which readTemplateManifest collects from the Starter.
+ */
+export function parseTemplateManifest(source: string, packs?: Packs): TemplateManifest {
+  const data = parseJson(source, MANIFEST_FILE);
+  const schemaVersion = readSchemaVersion(data);
+  const manifest =
+    schemaVersion >= 4
+      ? parsePackManifest(data as Record<string, unknown>, packs ?? { stacks: [], modules: {} })
+      : parseLegacyManifest(data as Record<string, unknown>, schemaVersion);
+  return validateManifest(manifest);
 }
 
-function optionalStringArray(record: Record<string, unknown>, key: string, prefix = ""): string[] {
-  const value = record[key];
-  if (value === undefined) return [];
-  if (!isStringArray(value)) throw new ManifestError(`${MANIFEST_FILE}: ${prefix}${key} must be an array of paths.`);
-  return value;
+async function readOptional(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (isRecord(error) && (error.code === "ENOENT" || error.code === "ENOTDIR")) return null;
+    throw error;
+  }
 }
 
-function optionalStringRecord(record: Record<string, unknown>, key: string, prefix = ""): Record<string, string> {
-  const value = record[key];
-  if (value === undefined) return {};
-  if (!isRecord(value) || !Object.values(value).every((item) => typeof item === "string" && item)) {
-    throw new ManifestError(`${MANIFEST_FILE}: ${prefix}${key} must map names to paths.`);
+/** The stack and module descriptors of a schema 4 Starter. */
+async function readPacks(templateRoot: string, data: Record<string, unknown>): Promise<Packs> {
+  const stacks: Packs["stacks"] = [];
+  let entries: string[] = [];
+  try {
+    entries = (await readdir(join(templateRoot, STACKS_DIRECTORY), { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if (!(isRecord(error) && error.code === "ENOENT")) throw error;
   }
-  return value as Record<string, string>;
-}
-
-function parseFrameworks(data: Record<string, unknown>) {
-  const { frameworks } = data;
-  if (!isRecord(frameworks) || Object.keys(frameworks).length === 0) {
-    throw new ManifestError(`${MANIFEST_FILE}: frameworks must describe at least one framework.`);
-  }
-
-  const parsed: Record<string, FrameworkTemplate> = {};
-  for (const [id, entry] of Object.entries(frameworks)) {
-    if (!ID.test(id)) {
-      throw new ManifestError(`${MANIFEST_FILE}: "${id}" is not a valid framework id.`);
-    }
-    if (!isRecord(entry)) throw new ManifestError(`${MANIFEST_FILE}: frameworks.${id} must be an object.`);
-    const prefix = `frameworks.${id}.`;
-    parsed[id] = {
-      name: requireString(entry, "name", prefix),
-      app: requireString(entry, "app", prefix),
-      envExample: requireString(entry, "envExample", prefix),
-      dockerfile: requireString(entry, "dockerfile", prefix),
-    };
+  for (const name of entries) {
+    const directory = `${STACKS_DIRECTORY}/${name}`;
+    const source = await readOptional(join(templateRoot, directory, STACK_FILE));
+    if (source !== null) stacks.push({ directory, data: parseJson(source, `${directory}/${STACK_FILE}`) });
   }
 
-  const defaultFramework = requireString(data, "defaultFramework");
-  if (!parsed[defaultFramework]) {
-    throw new ManifestError(`${MANIFEST_FILE}: defaultFramework "${defaultFramework}" is not in frameworks.`);
+  const modules: Packs["modules"] = {};
+  const ids = Array.isArray(data.modules) ? data.modules.filter((id) => typeof id === "string") : [];
+  for (const id of ids) {
+    // Checked before reading, so a module id never reaches outside clubedge/modules.
+    if (!ID.test(id)) throw new ManifestError(`${MANIFEST_FILE}: "${id}" is not a valid module id.`);
+    const file = `${MODULES_DIRECTORY}/${id}.json`;
+    const source = await readOptional(join(templateRoot, file));
+    if (source === null) throw new ManifestError(`${MANIFEST_FILE}: module "${id}" has no ${file}.`);
+    modules[id] = parseJson(source, file);
   }
-  return { defaultFramework, frameworks: parsed };
+  return { stacks, modules };
 }
 
 export async function readTemplateManifest(templateRoot: string): Promise<TemplateManifest> {
-  let source: string;
-  try {
-    source = await readFile(join(templateRoot, MANIFEST_FILE), "utf8");
-  } catch (error) {
-    if (isRecord(error) && error.code === "ENOENT") return legacyManifest;
-    throw error;
+  const source = await readOptional(join(templateRoot, MANIFEST_FILE));
+  if (source === null) return legacyManifest;
+  const data = parseJson(source, MANIFEST_FILE);
+  if (readSchemaVersion(data) < 4) return parseTemplateManifest(source);
+  return parseTemplateManifest(source, await readPacks(templateRoot, data as Record<string, unknown>));
+}
+
+/**
+ * Checks what no single file can: slots, stacks, and modules refer to each other correctly, so
+ * every selection the CLI offers can be generated.
+ */
+function validateManifest(manifest: TemplateManifest): TemplateManifest {
+  const fail = (message: string): never => {
+    throw new ManifestError(`${MANIFEST_FILE}: ${message}`);
+  };
+  const { slots, stacks, modules } = manifest;
+
+  for (const id of Object.keys(slots)) {
+    if (modules[id]) fail(`"${id}" names both a slot and a module.`);
   }
-  return parseTemplateManifest(source);
-}
-
-function requireString(record: Record<string, unknown>, key: string, prefix = ""): string {
-  const value = record[key];
-  if (typeof value !== "string" || !value) {
-    throw new ManifestError(`${MANIFEST_FILE}: ${prefix}${key} must be a non-empty string.`);
+  for (const [id, stack] of Object.entries(stacks)) {
+    if (!slots[stack.slot]) fail(`stack "${id}" has no slot for the ${stack.role} role.`);
+    for (const [moduleId, options] of Object.entries(stack.modules)) {
+      const module = modules[moduleId] ?? fail(`stack "${id}" implements unknown module "${moduleId}".`);
+      const unknown = options.find((option) => !module.options[option]);
+      if (unknown !== undefined) fail(`stack "${id}" implements unknown option ${moduleId}=${unknown}.`);
+    }
   }
-  return value;
-}
+  for (const [id, slot] of Object.entries(slots)) {
+    if (slot.default !== undefined && stacks[slot.default]?.slot !== id) {
+      fail(`slot "${id}" defaults to "${slot.default}", which is not one of its stacks.`);
+    }
+  }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  for (const [id, module] of Object.entries(modules)) {
+    for (const [optionId, option] of Object.entries(module.options)) {
+      // Requirements must name real modules and options, or a selection could never be valid.
+      for (const [requiredModule, allowed] of Object.entries(option.requires)) {
+        const unknown = allowed.find((value) => !modules[requiredModule]?.options[value]);
+        if (unknown !== undefined) {
+          fail(`modules.${id}.options.${optionId}.requires names unknown option ${requiredModule}=${unknown}.`);
+        }
+      }
+      // An option no stack implements could never be selected: usually a missing stack entry.
+      if (
+        module.scope === "app" &&
+        Object.keys(stacks).length > 0 &&
+        !Object.values(stacks).some((stack) => stack.modules[id]?.includes(optionId))
+      ) {
+        fail(`no stack implements ${id}=${optionId}.`);
+      }
+    }
+  }
+  return manifest;
 }

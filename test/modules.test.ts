@@ -169,7 +169,7 @@ describe("createPlan with modules", () => {
   });
 
   it("swaps in variants, drops owned files, and removes unused packages", () => {
-    const plan = createPlan({ ...input, framework: "tanstack-start", modules: { auth: "none", storage: "none" } });
+    const plan = createPlan({ ...input, stacks: { framework: "tanstack-start" }, modules: { auth: "none", storage: "none" } });
 
     expect(plan.files).toEqual([
       { from: "package.json", to: "package.json" },
@@ -186,7 +186,7 @@ describe("createPlan with modules", () => {
         "Use TanStack Start",
         "Use Authentication: None, File storage: None",
         "Edit pnpm-lock.yaml: Keep only the TanStack Start app and the selected modules in the lockfile",
-        "Edit .env.example: Keep the sections for the selected framework and modules",
+        "Edit .env.example: Keep the sections for the selected stacks and modules",
       ]),
     );
   });
@@ -202,7 +202,7 @@ describe("createPlan with modules", () => {
   });
 
   it("applies the edits for the selection", () => {
-    const plan = createPlan({ ...input, framework: "tanstack-start", modules: { auth: "none", storage: "none" } });
+    const plan = createPlan({ ...input, stacks: { framework: "tanstack-start" }, modules: { auth: "none", storage: "none" } });
     // Apply every edit for a path in order, as executePlan does.
     const edit = (path: string) => ({
       apply: (text: string) =>

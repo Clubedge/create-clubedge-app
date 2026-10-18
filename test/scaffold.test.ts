@@ -26,7 +26,7 @@ async function scaffold(
     identity: { packageName: "my-product", displayName: "My Product" },
     source,
     manifest,
-    framework,
+    stacks: framework ? { framework } : undefined,
     modules,
     cliVersion: "9.9.9",
     git: false,

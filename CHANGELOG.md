@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## Unreleased
+
+- **Stack packs** (template schema 4): a Starter can describe each app in its own `clubedge.stack.json` and each module in `clubedge/modules/<id>.json`, so adding a stack adds a folder and changes nothing shared. See [docs/stack-packs.md](docs/stack-packs.md).
+  - Slots place apps in generated projects: `--framework` for the web app and, for Starters that offer one, `--api` for a separate API. A frontend needs an API, and a full-stack app takes none.
+  - The CLI checks that the selected stacks implement each chosen module option, and only offers those options in prompts and `add`.
+  - Stacks outside Node.js declare a toolchain, such as uv, whose install runs after `pnpm install`.
+  - Starters with schema 1 to 3 are read into the same model, and projects created from them still add, remove, and upgrade. Projects generated from the same selection are byte-identical to before.
+
 ## 0.32.0
 
 - **Pluggable authentication**: default to Starter `v0.21.0` (#93). Authentication now has four providers behind one interface, so the pages, settings, payments, and jobs stay the same whichever signs users in:

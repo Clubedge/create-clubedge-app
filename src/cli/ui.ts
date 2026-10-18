@@ -1,5 +1,6 @@
 import process from "node:process";
 import type { TemplateManifest } from "../core/manifest.js";
+import { NO_STACK, stacksIn } from "../core/plan.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "../package-info.js";
 
 // Each glyph is 6 rows tall. Rows are padded to a common width when rendered.
@@ -83,11 +84,11 @@ export function selectionHelp(manifest: TemplateManifest | null): string {
       line("--<module> <option>", "A module option, such as --auth none; the Starter lists its modules"),
     ].join("\n");
   }
-  const frameworks = Object.keys(manifest.frameworks);
   return [
-    ...(frameworks.length > 1
-      ? [line("--framework <id>", `App framework: ${choices(frameworks, manifest.defaultFramework)}`)]
-      : []),
+    ...Object.entries(manifest.slots).flatMap(([id, slot]) => {
+      const stacks = [...stacksIn(manifest, id), ...(slot.default === undefined ? [NO_STACK] : [])];
+      return stacks.length > 1 ? [line(`--${id} <id>`, `${slot.name}: ${choices(stacks, slot.default ?? NO_STACK)}`)] : [];
+    }),
     ...Object.entries(manifest.modules).map(([id, module]) =>
       line(`--${id} <id>`, `${module.name}: ${choices(Object.keys(module.options), module.default)}`),
     ),

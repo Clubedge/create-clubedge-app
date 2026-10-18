@@ -30,6 +30,8 @@ const root = {
       env: { example: "apps/api/.env.example", target: "apps/api/.env.local" },
       dockerfile: "apps/api/Dockerfile",
       roles: ["api"],
+      siteConfig: "apps/api/src/config/site.json",
+      packages: { "@clubedge/contract": "packages/contract" },
     },
   },
   modules: ["auth", "deploy"],
@@ -186,6 +188,29 @@ describe("selecting stacks", () => {
   });
 });
 
+describe("slot packages", () => {
+  const plan = (stacks: Record<string, string>) =>
+    createPlan({
+      targetDirectory: "/projects/my-product",
+      identity: { packageName: "my-product", displayName: "My Product" },
+      source: {
+        repository: "Clubedge/clubedge-starter",
+        ref: "v1.0.0",
+        files: ["package.json", "apps/web/package.json", "packages/contract/package.json"].map((path) => ({ from: path, to: path })),
+      },
+      manifest,
+      stacks,
+      cliVersion: "9.9.9",
+      git: false,
+      install: false,
+    });
+
+  it("keeps a slot's packages only when the slot is filled", () => {
+    expect(plan({ framework: "vite", api: "fastapi" }).files.map(({ to }) => to)).toContain("packages/contract/package.json");
+    expect(plan({ framework: "next" }).files.map(({ to }) => to)).not.toContain("packages/contract/package.json");
+  });
+});
+
 describe("modules with stacks", () => {
   const decoupled = selectStacks(manifest, { framework: "vite", api: "fastapi" });
 
@@ -216,6 +241,8 @@ describe("modules with stacks", () => {
           "apps/api-python/pyproject.toml",
           "apps/api-python/.env.example",
           "apps/api-python/Dockerfile",
+          "apps/api-python/src/config/site.json",
+          "packages/contract/package.json",
           "clubedge/modules/auth.json",
         ].map((path) => ({ from: path, to: path })),
       },
@@ -232,7 +259,10 @@ describe("modules with stacks", () => {
       "apps/api/pyproject.toml",
       "apps/api/.env.example",
       "apps/api/Dockerfile",
+      "apps/api/src/config/site.json",
+      "packages/contract/package.json",
     ]);
+    expect(plan.edits.map(({ path }) => path)).toContain("apps/api/src/config/site.json");
     expect(plan.envFiles).toEqual([
       { from: ".env.example", to: "apps/web/.env.local" },
       { from: "apps/api/.env.example", to: "apps/api/.env.local" },

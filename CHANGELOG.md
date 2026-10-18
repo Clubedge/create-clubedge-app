@@ -8,6 +8,8 @@ All notable changes to `create-clubedge-app` are documented here.
   - Slots place apps in generated projects: `--framework` for the web app and, for Starters that offer one, `--api` for a separate API. A frontend needs an API, and a full-stack app takes none.
   - The CLI checks that the selected stacks implement each chosen module option, and only offers those options in prompts and `add`.
   - Stacks outside Node.js declare a toolchain, such as uv, whose install runs after `pnpm install`.
+  - A slot can name packages only its apps use, left out when it is empty, and its own site config, named after the project.
+  - `deploy` explains that it sets up one app when a project has a frontend and a separate API.
   - Starters with schema 1 to 3 are read into the same model, and projects created from them still add, remove, and upgrade. Projects generated from the same selection are byte-identical to before.
 
 ## 0.32.0

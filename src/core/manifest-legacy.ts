@@ -18,6 +18,7 @@ const frameworkSlot = (
   dockerfile: "Dockerfile",
   roles: ["fullstack"],
   default: defaultFramework,
+  packages: {},
 });
 
 const fullstack = (name: string, app: string, envExample: string, dockerfile: string): TemplateStack => ({

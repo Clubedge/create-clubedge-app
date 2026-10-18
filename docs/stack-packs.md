@@ -20,6 +20,10 @@ A slot is a place for one app in generated projects. The Starter declares:
 | `framework` | `apps/web` | `fullstack`, `frontend` | `--framework` |
 | `api`       | `apps/api` | `api`                   | `--api`       |
 
+A slot may also name `packages` only its apps use (the API contract, for example), left out
+when it is empty, and its own `siteConfig`, which the CLI names after the project like the
+framework's.
+
 A stack has one role, which puts it in one slot. A slot without a `default` is optional:
 `--api none` leaves it empty. The roles must fit together: a `frontend` calls an API, so it
 needs an `api` stack, and a `fullstack` app has its own server, so it takes none.

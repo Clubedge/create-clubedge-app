@@ -24,6 +24,7 @@ const parsedSchema1 = {
       dockerfile: "Dockerfile",
       roles: ["fullstack"],
       default: "next",
+      packages: {},
     },
   },
   stacks: {

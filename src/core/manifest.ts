@@ -38,6 +38,13 @@ export interface TemplateSlot {
   roles: StackRole[];
   /** The stack used when none is requested; absent for optional slots. */
   default?: string;
+  /**
+   * The app's own site config in generated projects, named like the project, for slots other
+   * than the framework slot (which uses the manifest's siteConfig).
+   */
+  siteConfig?: string;
+  /** Workspace packages (name to directory) only this slot's apps use; left out when it is empty. */
+  packages: Record<string, string>;
 }
 
 /**

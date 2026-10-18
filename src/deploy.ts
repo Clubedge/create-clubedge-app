@@ -9,6 +9,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { FRAMEWORK_SLOT } from "./core/manifest.js";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
@@ -227,6 +228,13 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
+  // A frontend and its API are two services; deploy sets up one app so far.
+  const separateApps = Object.keys(project.stacks).filter((slot) => slot !== FRAMEWORK_SLOT);
+  if (separateApps.length) {
+    throw new UsageError(
+      `deploy sets up one app, and this project has a frontend and ${separateApps.join(", ")}. Build each app's Dockerfile (Dockerfile and apps/${separateApps[0]}/Dockerfile) and run them on any container host; SETUP.md describes it.`,
+    );
+  }
   if (args.preview) return await deployPreview(args, project, cli, await readDeployEnv(args, project));
   if (platform === "fly") return await deployToFly(args, project, cli, await readDeployEnv(args, project));
   if (platform === "vercel") return await deployToVercel(args, project, cli, await readDeployEnv(args, project));

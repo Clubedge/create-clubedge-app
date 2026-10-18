@@ -268,8 +268,11 @@ function placement(selected: Array<{ slot: TemplateSlot; stack: TemplateStack }>
   };
 }
 
-/** Works out which files, packages, and variants the selected module options keep. */
-function resolveModuleFiles(manifest: TemplateManifest, selection: Selection) {
+/**
+ * Works out which files, packages, and variants the selected module options keep. A slot's own
+ * packages, such as the API contract, are kept when the slot is filled.
+ */
+function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, stacks: Selection) {
   const ownedPaths = new Set<string>();
   const keptPaths = new Set<string>();
   const usedPackages = new Map<string, string>();
@@ -293,6 +296,13 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection) {
         variantSources.add(variant);
         if (selected) replacements.set(variant, target);
       }
+    }
+  }
+
+  for (const [slotId, slot] of Object.entries(manifest.slots)) {
+    for (const [name, directory] of Object.entries(slot.packages)) {
+      offeredPackages.set(name, directory);
+      if (manifest.stacks[stacks[slotId] ?? ""]) usedPackages.set(name, directory);
     }
   }
 
@@ -332,7 +342,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
   const others = Object.entries(manifest.stacks)
     .filter(([id]) => !selectedIds.has(id))
     .map(([, other]) => other);
-  const moduleFiles = resolveModuleFiles(manifest, selection);
+  const moduleFiles = resolveModuleFiles(manifest, selection, stacks);
 
   // A slot is recorded when it offers a choice, so add, remove, and upgrade render the same apps.
   const recorded = selected.filter(
@@ -472,6 +482,16 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
         apply: (text) => customizeLegacySource(text, identity),
       });
     }
+  }
+  // Other apps name the project in their own site config, such as the API's health response.
+  for (const { slot } of selected) {
+    const path = slot.siteConfig;
+    if (!path || path === manifest.siteConfig || !has(path)) continue;
+    edits.push({
+      path,
+      description: `Set the project name to "${identity.displayName}"`,
+      apply: (text) => customizeSiteConfig(text, identity),
+    });
   }
 
   return {

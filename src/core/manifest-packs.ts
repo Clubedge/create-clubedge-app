@@ -100,6 +100,7 @@ function parseSlot(id: string, entry: unknown): TemplateSlot {
   }
   const packageName = read.optionalString(slot, "package");
   const defaultStack = read.optionalString(slot, "default");
+  const siteConfig = read.optionalString(slot, "siteConfig");
   return {
     name: read.requireString(slot, "name"),
     question: read.requireString(slot, "question"),
@@ -112,6 +113,8 @@ function parseSlot(id: string, entry: unknown): TemplateSlot {
     dockerfile: read.requireString(slot, "dockerfile"),
     roles: roles as StackRole[],
     ...(defaultStack ? { default: defaultStack } : {}),
+    ...(siteConfig ? { siteConfig } : {}),
+    packages: read.optionalStringRecord(slot, "packages"),
   };
 }
 

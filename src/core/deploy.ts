@@ -278,17 +278,20 @@ export const railwayIacPath = ".railway/railway.ts";
  */
 export function railwayIacSource(service: string, services?: Record<string, ProjectService>): string {
   if (services && Object.keys(services).length > 1) {
+    const identifier = (slot: string) => slot.replace(/[^a-zA-Z0-9_$]/g, "_");
+    const apiEntry = Object.entries(services).find(([, item]) => item.role === "api");
+    const api = apiEntry?.[1];
+    const apiIdentifier = apiEntry ? identifier(apiEntry[0]) : null;
     const ordered = Object.entries(services).sort(([, a], [, b]) => Number(a.role === "frontend") - Number(b.role === "frontend"));
     const resources = ordered.map(([slot, item]) => {
       const name = serviceName(`${service}-${item.id}`);
       const dockerfilePath = item.dockerfile;
       const healthcheck = item.healthPath;
       const migration = item.role === "api" ? 'preDeploy: "node /app/migrate.mjs",' : "";
-      const api = services.api;
-      const env = item.role === "frontend" && api
-        ? `env: { API_URL: \`http://\${api.env.RAILWAY_PRIVATE_DOMAIN}:${api.port}\` },`
+      const env = item.role === "frontend" && api && apiIdentifier
+        ? `env: { API_URL: \`http://\${${apiIdentifier}.env.RAILWAY_PRIVATE_DOMAIN}:${api.port}\` },`
         : "";
-      return `  const ${slot.replace(/[^a-zA-Z0-9_$]/g, "_")} = service(${JSON.stringify(name)}, {
+      return `  const ${identifier(slot)} = service(${JSON.stringify(name)}, {
     build: { builder: "DOCKERFILE", dockerfilePath: ${JSON.stringify(dockerfilePath)} },
     ${migration}
     ${env}
@@ -296,7 +299,7 @@ export function railwayIacSource(service: string, services?: Record<string, Proj
     healthcheckTimeout: 60,
   });`;
     });
-    const resourceNames = Object.keys(services).map((slot) => slot.replace(/[^a-zA-Z0-9_$]/g, "_")).join(", ");
+    const resourceNames = Object.keys(services).map(identifier).join(", ");
     return `// Generated from the selected stack packs; each app runs as its own Railway service.
 import { defineRailway, project, service } from "railway/iac";
 

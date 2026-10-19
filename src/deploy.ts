@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
+import { FRAMEWORK_SLOT } from "./core/manifest.js";
 import {
   appPort,
   databaseVariables,
@@ -249,13 +250,13 @@ async function deployRailwayServices(
   };
   const keys = exampleKeys(await readFile(join(project.root, ".env.example"), "utf8").catch(() => ""));
   const external = Object.keys(externalDatabaseUrls(project.modules, envFile));
-  const databases = databasesFor(project.modules, external);
+  const requestedDatabases = databasesFor(project.modules, external);
   const serviceSummary = `${frontendSlot} (${frontendStack.dockerfile}) and ${apiSlot} (${apiStack.dockerfile})`;
   if (args.dryRun) {
     log.message([
       `Railway will create two services: ${names.frontend} (public, port ${frontendStack.port}) and ${names.api} (private, port ${apiStack.port}).`,
       `The frontend proxies /api to ${names.api} over Railway's private network.`,
-      ...(databases.length ? [`Databases: ${databases.map((db) => railwayDatabases[db]).join(", ")}.`] : []),
+      ...(requestedDatabases.length ? [`Databases: ${requestedDatabases.map((db) => railwayDatabases[db]).join(", ")}.`] : []),
       `Dockerfiles: ${frontendStack.dockerfile}, ${apiStack.dockerfile}. API migrations run before its release.`,
       `Variables from .env.production are applied to their corresponding services; ${railwayIacPath} records both service configurations.`,
     ].join("\n"));
@@ -290,6 +291,17 @@ async function deployRailwayServices(
   }
   let existing: string[] = [];
   try { existing = serviceNames(JSON.parse(status ?? "{}")); } catch { /* unknown status: add missing services */ }
+
+  const listedApiVars = await attempt(() => railway(rw, ["variable", "list", "--service", names.api, "--json"]));
+  if (listedApiVars === null && existing.includes(names.api)) {
+    throw new Error(`Railway didn't list the variables of the API service "${names.api}", so deploy changed nothing. Run deploy again; if it keeps failing, check \`railway variable list --service ${names.api}\`.`);
+  }
+  const apiVars = parseVariables(listedApiVars ?? "");
+  const kept = databasesFor(project.modules, external)
+    .filter((database) => apiVars[databaseVariables[database]] && !existing.includes(railwayDatabases[database]))
+    .map((database) => databaseVariables[database]);
+  const databases = databasesFor(project.modules, [...external, ...kept]);
+
   for (const database of databases) {
     const name = railwayDatabases[database];
     if (!existing.includes(name)) await railway(rw, ["add", "--database", database]);
@@ -305,7 +317,6 @@ async function deployRailwayServices(
   if (!domain) throw new Error("Railway created no frontend domain. Create one in its settings, then run deploy again.");
   const url = `https://${domain}`;
 
-  const apiVars = parseVariables(await attempt(() => railway(rw, ["variable", "list", "--service", names.api, "--json"])) ?? "");
   const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_")));
   const apiPlan = planVariables({
     modules: project.modules,
@@ -387,6 +398,12 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
   const separateApps = Object.entries(project.services).filter(([, service]) => service.role !== "fullstack");
+  const decoupledSlots = Object.keys(project.stacks).filter((slot) => slot !== FRAMEWORK_SLOT);
+  if (decoupledSlots.length && separateApps.length < 2) {
+    throw new UsageError(
+      `This project has a frontend and ${decoupledSlots.join(", ")}, but does not record deployment services for them. Upgrade it to a Starter release whose stacks declare deployment, or build each app's Dockerfile and run them on any container host.`,
+    );
+  }
   if (args.preview) return await deployPreview(args, project, cli, await readDeployEnv(args, project));
   if (separateApps.length > 1 && platform === "railway") {
     return await deployRailwayServices(args, project, cli, await readDeployEnv(args, project));

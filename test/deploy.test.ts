@@ -227,6 +227,33 @@ describe("Railway configuration as code", () => {
     expect(source).toContain("variables: { managed: false }");
     expect(source).not.toContain("replicas");
   });
+
+  it("connects the frontend to the API by stack role, not by its slot name", () => {
+    const source = railwayIacSource("edge-notes", {
+      framework: {
+        id: "vite",
+        role: "frontend",
+        app: "apps/web",
+        dockerfile: "apps/web/Dockerfile",
+        port: 3000,
+        healthPath: "/",
+        platforms: ["railway"],
+      },
+      backend: {
+        id: "fastapi",
+        role: "api",
+        app: "apps/api",
+        dockerfile: "apps/api/Dockerfile",
+        port: 3001,
+        healthPath: "/api/health",
+        platforms: ["railway"],
+      },
+    });
+
+    expect(source).toContain("const backend = service(");
+    expect(source).toContain("API_URL: `http://${backend.env.RAILWAY_PRIVATE_DOMAIN}:3001`");
+    expect(source).toContain("resources: [framework, backend]");
+  });
 });
 
 describe("Fly.io", () => {

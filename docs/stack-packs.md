@@ -37,6 +37,7 @@ needs an `api` stack, and a `fullstack` app has its own server, so it takes none
   "role": "fullstack",
   "envExample": "../../.env.example",
   "dockerfile": "../../Dockerfile",
+  "deployment": { "id": "web", "port": 3000, "healthPath": "/api/health", "platforms": ["docker", "railway"] },
   "conditional": ["next.config.ts"],
   "modules": {
     "auth": {
@@ -67,6 +68,10 @@ needs an `api` stack, and a `fullstack` app has its own server, so it takes none
 
   Every app still has a `package.json` with `dev`, `build`, `lint`, `typecheck`, and `test`
   scripts (calling its own tools), so the workspace runs every app the same way.
+- `deployment` (optional) records a service id, listening port, health path, and supported deploy
+  platforms. The CLI records these facts by slot in `package.json` under `clubedge.services`.
+  `deploy` uses them to render Docker Compose or Railway services, preserving the API as a private
+  service behind the frontend proxy.
 
 ## Module scope
 
@@ -80,10 +85,35 @@ stacks implement when they don't implement the default. A full-stack stack imple
 option; a frontend lists only the modules it takes part in, and an API lists what it
 implements so far (at least one option of each app module).
 
+For modules shared by a frontend and API, each selected stack contributes its own part. The Vite
+Supabase option owns the browser session and adds its access token to contract requests. The Hono
+and FastAPI Supabase options verify that token server-side and normalize the user to the contract's
+`User` type. Only the publishable key is sent to the browser; provider secrets stay in the API env.
+
+## Deployment services
+
+Stacks can declare deployment facts without teaching the CLI stack-specific rules:
+
+```json
+"deployment": {
+  "id": "api",
+  "port": 3001,
+  "healthPath": "/api/health",
+  "platforms": ["docker", "railway"]
+}
+```
+
+The CLI records the selected services under `package.json` → `clubedge.services`. For Docker, it
+uses each app's Dockerfile to write a Compose topology: the frontend is public and proxies `/api`
+to the private API service. For Railway, it creates a public frontend service and a private API
+service, configures their health checks and API migrations, and connects them over Railway's
+private network. The generated `.railway/railway.ts` is the source of truth for those service
+settings.
+
 ## Adding a stack
 
 1. Add `apps/<name>/` with the app, its `package.json` scripts, `.env.example`, `Dockerfile`,
-   and `clubedge.stack.json`.
+   `clubedge.stack.json`, and its deployment service facts where applicable.
 2. Implement the module options it supports, as files in its folder, and list them.
 3. Run the Starter's `scripts/template-manifest.test.ts`, then generate a project with
    `--template-dir` and run its checks.

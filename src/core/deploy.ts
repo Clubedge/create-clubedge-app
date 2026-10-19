@@ -1,6 +1,7 @@
 // What `deploy` sets up on Railway for a project, as pure functions: the service name, the
 // production variables, and reading the Railway CLI's output. src/deploy.ts runs the CLI.
 import { isNeonPooledUrl, neonDirectUrl } from "./neon.js";
+import type { ProjectService } from "./manifest.js";
 
 /** The port the production image listens on (the Starter's Dockerfile sets PORT=3000). */
 export const appPort = 3000;
@@ -12,6 +13,25 @@ export const railwayDatabases = { postgres: "Postgres", redis: "Redis" } as cons
 export function serviceName(packageName: string): string {
   const name = packageName.replace(/^@[^/]+\//, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
   return name || "web";
+}
+
+/** A Docker Compose production topology rendered from the selected stack service descriptors. */
+export function dockerComposeSource(services: Record<string, ProjectService>): string {
+  const api = Object.values(services).find((service) => service.role === "api");
+  const rows = Object.entries(services).map(([slot, service]) => {
+    const name = service.id;
+    const frontend = service.role === "frontend";
+    const buildArgs = frontend
+      ? `\n      args:\n        VITE_SUPABASE_URL: \${VITE_SUPABASE_URL:-}\n        VITE_SUPABASE_PUBLISHABLE_KEY: \${VITE_SUPABASE_PUBLISHABLE_KEY:-}`
+      : "";
+    const env = frontend && api
+      ? `\n    environment:\n      API_URL: http://${api.id}:${api.port}`
+      : `\n    env_file:\n      - path: .env.production\n        required: false`;
+    const ports = frontend ? `\n    ports:\n      - "${service.port}:${service.port}"` : `\n    expose:\n      - "${service.port}"`;
+    const depends = frontend && api ? `\n    depends_on:\n      - ${api.id}` : "";
+    return `  ${name}:\n    build:\n      context: .\n      dockerfile: ${service.dockerfile}${buildArgs}${env}${ports}${depends}`;
+  });
+  return `# Generated from Clubedge stack descriptors. Build and start every app service together.\nservices:\n${rows.join("\n")}\n`;
 }
 
 /** The variable each database's URL goes in. */
@@ -101,12 +121,14 @@ export function planVariables(input: {
   databases?: Record<string, string>;
   /** Variables the platform sets itself (Fly's `postgres attach` sets DATABASE_URL). */
   attached?: string[];
+  /** Per-service listening port. */
+  port?: number;
 }): VariablePlan {
-  const { modules, keys, url, envFile, secret, attached = [] } = input;
+  const { modules, keys, url, envFile, secret, attached = [], port = appPort } = input;
   const existing = { ...input.existing, ...Object.fromEntries(attached.map((key) => [key, "(attached)"])) };
   const external = externalDatabaseUrls(modules, envFile);
   const databases = input.databases ?? railwayReferences(databasesFor(modules, Object.keys(external)));
-  const provided: Record<string, string> = { NODE_ENV: "production", PORT: String(appPort), ...databases };
+  const provided: Record<string, string> = { NODE_ENV: "production", PORT: String(port), ...databases };
   // The public URL under both names: TanStack Start reads APP_URL, Next.js NEXT_PUBLIC_APP_URL.
   const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
   if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
@@ -254,7 +276,41 @@ export const railwayIacPath = ".railway/railway.ts";
  * Railway stops reading railway.json on 2026-12-01. Railway builds the root Dockerfile by itself,
  * the variables stay managed by `deploy` and the dashboard, and the region is Railway's default.
  */
-export function railwayIacSource(service: string): string {
+export function railwayIacSource(service: string, services?: Record<string, ProjectService>): string {
+  if (services && Object.keys(services).length > 1) {
+    const ordered = Object.entries(services).sort(([, a], [, b]) => Number(a.role === "frontend") - Number(b.role === "frontend"));
+    const resources = ordered.map(([slot, item]) => {
+      const name = serviceName(`${service}-${item.id}`);
+      const dockerfilePath = item.dockerfile;
+      const healthcheck = item.healthPath;
+      const migration = item.role === "api" ? 'preDeploy: "node /app/migrate.mjs",' : "";
+      const api = services.api;
+      const env = item.role === "frontend" && api
+        ? `env: { API_URL: \`http://\${api.env.RAILWAY_PRIVATE_DOMAIN}:${api.port}\` },`
+        : "";
+      return `  const ${slot.replace(/[^a-zA-Z0-9_$]/g, "_")} = service(${JSON.stringify(name)}, {
+    build: { builder: "DOCKERFILE", dockerfilePath: ${JSON.stringify(dockerfilePath)} },
+    ${migration}
+    ${env}
+    healthcheck: ${JSON.stringify(healthcheck)},
+    healthcheckTimeout: 60,
+  });`;
+    });
+    const resourceNames = Object.keys(services).map((slot) => slot.replace(/[^a-zA-Z0-9_$]/g, "_")).join(", ");
+    return `// Generated from the selected stack packs; each app runs as its own Railway service.
+import { defineRailway, project, service } from "railway/iac";
+
+export const partial = ${JSON.stringify(service)};
+
+export default defineRailway(() => {
+${resources.join("\n\n")}
+  return project(${JSON.stringify(service)}, {
+    variables: { managed: false },
+    resources: [${resourceNames}],
+  });
+});
+`;
+  }
   const name = JSON.stringify(service);
   return `// Railway's configuration for this project, applied with \`railway config apply\` (pnpm clubedge
 // deploy does it before each release). It replaces railway.json, which Railway stops reading on

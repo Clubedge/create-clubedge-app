@@ -62,6 +62,20 @@ export interface Toolchain {
   url: string;
 }
 
+/** Runtime facts for one generated service, declared by its stack rather than the CLI. */
+export interface StackDeployment {
+  id: string;
+  port: number;
+  healthPath: string;
+  platforms: string[];
+}
+
+export interface ProjectService extends StackDeployment {
+  role: StackRole;
+  app: string;
+  dockerfile: string;
+}
+
 /** One app implementation in the Starter (a stack pack), such as Next.js in apps/web. */
 export interface TemplateStack {
   /** Display name, such as "TanStack Start". */
@@ -78,6 +92,7 @@ export interface TemplateStack {
   /** The module options it implements, by module. Modules it does not list do not involve it. */
   modules: Record<string, string[]>;
   toolchain?: Toolchain;
+  deployment?: StackDeployment;
 }
 
 /** One choice within a module, such as `storage: s3`. Paths use the Starter's layout. */

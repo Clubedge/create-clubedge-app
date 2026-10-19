@@ -19,7 +19,7 @@ import {
   stackRoles,
   type StackRole,
 } from "./manifest-fields.js";
-import type { TemplateManifest, TemplateModule, TemplateSlot, TemplateStack, Toolchain } from "./manifest.js";
+import type { StackDeployment, TemplateManifest, TemplateModule, TemplateSlot, TemplateStack, Toolchain } from "./manifest.js";
 
 export const STACKS_DIRECTORY = "apps";
 export const STACK_FILE = "clubedge.stack.json";
@@ -185,6 +185,7 @@ function parseStack(
   }
 
   const toolchain = data.toolchain === undefined ? undefined : parseToolchain(file, data.toolchain);
+  const deployment = data.deployment === undefined ? undefined : parseDeployment(file, data.deployment);
   return {
     id,
     stack: {
@@ -196,8 +197,27 @@ function parseStack(
       dockerfile: resolve(read.requireString(data, "dockerfile"), "dockerfile"),
       modules: implemented,
       ...(toolchain ? { toolchain } : {}),
+      ...(deployment ? { deployment } : {}),
     },
     files,
+  };
+}
+
+function parseDeployment(file: string, value: unknown): StackDeployment {
+  const read = fields(file, "deployment.");
+  if (!isRecord(value)) read.fail("deployment must be an object.");
+  const deployment = value as Record<string, unknown>;
+  const port = deployment.port;
+  if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
+    read.fail("deployment.port must be an integer from 1 to 65535.");
+  }
+  const platforms = read.optionalStringArray(deployment, "platforms");
+  if (!platforms.length) read.fail("deployment.platforms must list at least one platform.");
+  return {
+    id: read.requireId(read.requireString(deployment, "id"), "deployment service"),
+    port: port as number,
+    healthPath: read.requireString(deployment, "healthPath"),
+    platforms,
   };
 }
 

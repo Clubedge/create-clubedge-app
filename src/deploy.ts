@@ -9,12 +9,12 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { FRAMEWORK_SLOT } from "./core/manifest.js";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   appPort,
   databaseVariables,
+  dockerComposeSource,
   databasesFor,
   deploymentStatus,
   exampleKeys,
@@ -224,18 +224,194 @@ async function agree(args: CliArgs, service: string, databases: Array<keyof type
   return !isCancel(answer) && answer;
 }
 
+async function deployRailwayServices(
+  args: CliArgs,
+  project: Project,
+  cli: string,
+  envFile: Record<string, string>,
+): Promise<void> {
+  const selected = Object.entries(project.services);
+  const frontend = selected.find(([, item]) => item.role === "frontend");
+  const api = selected.find(([, item]) => item.role === "api");
+  if (!frontend || !api || selected.length !== 2) {
+    throw new UsageError("Railway deployment currently supports one frontend and one API service in a decoupled project.");
+  }
+  const unsupported = selected.filter(([, service]) => !service.platforms.includes("railway"));
+  if (unsupported.length) {
+    throw new UsageError(`The selected stacks do not declare Railway deployment support for ${unsupported.map(([slot]) => slot).join(", ")}.`);
+  }
+  const [frontendSlot, frontendStack] = frontend;
+  const [apiSlot, apiStack] = api;
+  const baseName = serviceName(project.identity.packageName);
+  const names = {
+    frontend: serviceName(`${baseName}-${frontendStack.id}`),
+    api: serviceName(`${baseName}-${apiStack.id}`),
+  };
+  const keys = exampleKeys(await readFile(join(project.root, ".env.example"), "utf8").catch(() => ""));
+  const external = Object.keys(externalDatabaseUrls(project.modules, envFile));
+  const databases = databasesFor(project.modules, external);
+  const serviceSummary = `${frontendSlot} (${frontendStack.dockerfile}) and ${apiSlot} (${apiStack.dockerfile})`;
+  if (args.dryRun) {
+    log.message([
+      `Railway will create two services: ${names.frontend} (public, port ${frontendStack.port}) and ${names.api} (private, port ${apiStack.port}).`,
+      `The frontend proxies /api to ${names.api} over Railway's private network.`,
+      ...(databases.length ? [`Databases: ${databases.map((db) => railwayDatabases[db]).join(", ")}.`] : []),
+      `Dockerfiles: ${frontendStack.dockerfile}, ${apiStack.dockerfile}. API migrations run before its release.`,
+      `Variables from .env.production are applied to their corresponding services; ${railwayIacPath} records both service configurations.`,
+    ].join("\n"));
+    outro("Dry run: nothing was created. Run again without --dry-run to deploy.");
+    return;
+  }
+  note(
+    `This creates or updates Railway services ${names.frontend} and ${names.api}; publishes only the frontend, connects the services over Railway's private network, and runs migrations before the API release. Railway bills usage on your plan.`,
+    "Deploy frontend and API to Railway",
+  );
+  if (!args.yes) {
+    if (!process.stdin.isTTY) throw new UsageError("deploy creates Railway resources. Run it in a terminal to confirm, or pass --yes.");
+    const answer = await confirm({ message: "Deploy?", initialValue: true });
+    if (isCancel(answer) || !answer) return cancel("Nothing was deployed.");
+  }
+
+  const progress = spinner();
+  progress.start("Preparing the Railway CLI");
+  const rw = await railwayCli();
+  process.chdir(project.root);
+  if (!(await attempt(() => railway(rw, ["whoami"])))) {
+    progress.stop("Signing in to Railway");
+    if (!process.stdin.isTTY) throw new UsageError("Sign in to Railway first with `railway login`, or set RAILWAY_API_TOKEN.");
+    await railway(rw, ["login"], { inherit: true });
+    progress.start("Signed in");
+  }
+  progress.message("Finding or creating the Railway project");
+  let status = await attempt(() => railway(rw, ["status", "--json"]));
+  if (!status) {
+    await railway(rw, ["init", "--name", baseName, "--json"]);
+    status = await attempt(() => railway(rw, ["status", "--json"]));
+  }
+  let existing: string[] = [];
+  try { existing = serviceNames(JSON.parse(status ?? "{}")); } catch { /* unknown status: add missing services */ }
+  for (const database of databases) {
+    const name = railwayDatabases[database];
+    if (!existing.includes(name)) await railway(rw, ["add", "--database", database]);
+  }
+  for (const name of Object.values(names)) {
+    if (!existing.includes(name)) await railway(rw, ["add", "--service", name]);
+  }
+
+  const listed = await attempt(() => railway(rw, ["domain", "list", "--service", names.frontend]));
+  const domain = parseRailwayDomain(listed ?? "") ?? parseRailwayDomain(
+    await railway(rw, ["domain", "--service", names.frontend, "--port", String(frontendStack.port), "--json"]),
+  );
+  if (!domain) throw new Error("Railway created no frontend domain. Create one in its settings, then run deploy again.");
+  const url = `https://${domain}`;
+
+  const apiVars = parseVariables(await attempt(() => railway(rw, ["variable", "list", "--service", names.api, "--json"])) ?? "");
+  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_")));
+  const apiPlan = planVariables({
+    modules: project.modules,
+    keys: keys.filter((key) => !key.startsWith("VITE_")),
+    url,
+    existing: apiVars,
+    envFile: apiEnv,
+    secret: () => randomBytes(32).toString("hex"),
+    databases: railwayReferences(databases),
+    port: apiStack.port,
+  });
+  apiPlan.set.FRONTEND_URL = url;
+  if (apiPlan.unset.length) {
+    log.warn(`Not set on the API service: ${apiPlan.unset.join(", ")}. Pass --env-file to supply values before deployment.`);
+    if (process.stdin.isTTY && !args.yes) {
+      const proceed = await confirm({ message: "Deploy anyway?", initialValue: true });
+      if (isCancel(proceed) || !proceed) return cancel("Nothing was uploaded. Set the variables, then run deploy again.");
+    }
+  }
+  for (const [key, value] of Object.entries(apiPlan.set)) {
+    if (apiVars[key] !== value) await railway(rw, ["variable", "set", key, "--stdin", "--service", names.api, "--skip-deploys"], { input: value });
+  }
+  const webVars = parseVariables(await attempt(() => railway(rw, ["variable", "list", "--service", names.frontend, "--json"])) ?? "");
+  const missingWebBuildVars = keys.filter((key) => key.startsWith("VITE_") && !envFile[key] && !webVars[key]);
+  if (missingWebBuildVars.length) {
+    log.warn(`Not set on the frontend service: ${missingWebBuildVars.join(", ")}. Pass --env-file to provide them.`);
+    if (process.stdin.isTTY && !args.yes) {
+      const proceed = await confirm({ message: "Deploy anyway?", initialValue: true });
+      if (isCancel(proceed) || !proceed) return cancel("Nothing was uploaded. Set the variables, then run deploy again.");
+    }
+  }
+  const webSet = { PORT: String(frontendStack.port), ...Object.fromEntries(Object.entries(envFile).filter(([key, value]) => key.startsWith("VITE_") && value)) };
+  for (const [key, value] of Object.entries(webSet)) {
+    if (webVars[key] !== value) await railway(rw, ["variable", "set", key, "--stdin", "--service", names.frontend, "--skip-deploys"], { input: value });
+  }
+
+  await mkdir(join(project.root, ".railway"), { recursive: true });
+  const iacFile = join(project.root, railwayIacPath);
+  const existingIac = await readFile(iacFile, "utf8").catch(() => "");
+  if (existingIac && !existingIac.includes("The Railway service is named after the package") && !existingIac.includes("Generated from the selected stack packs")) {
+    throw new UsageError(`${railwayIacPath} contains custom configuration. Review it and merge the generated two-service configuration before deploying.`);
+  }
+  await writeFile(iacFile, railwayIacSource(baseName, project.services));
+  const packageJson = JSON.parse(await readFile(join(project.root, "package.json"), "utf8"));
+  if (!packageJson.devDependencies?.railway && !packageJson.dependencies?.railway) {
+    const pnpm = await resolvePnpm();
+    if (!pnpm) throw new UsageError("pnpm was not found. Enable it with `corepack enable`, then run deploy again.");
+    const [command, ...prefix] = pnpm;
+    await run(command!, [...prefix, "add", "--save-dev", "--workspace-root", "railway"], project.root);
+  }
+  progress.message("Applying the two-service Railway configuration");
+  await railway(rw, ["config", "apply", "--yes"]);
+
+  const deployments = [] as Array<{ name: string; id: string | null; started: Date }>;
+  for (const name of [names.api, names.frontend]) {
+    progress.message(`Uploading ${name}`);
+    const started = new Date();
+    deployments.push({ name, id: parseDeploymentId(await railway(rw, ["up", "--service", name, "--detach"])), started });
+  }
+  for (const item of deployments) {
+    let state = "QUEUED";
+    const deadline = Date.now() + 45 * 60_000;
+    while (!(finalStatuses as readonly string[]).includes(state) && Date.now() < deadline) {
+      progress.message(`Railway ${item.name}: ${state.toLowerCase()}`);
+      await new Promise((wait) => setTimeout(wait, 10_000));
+      const list = await attempt(() => railway(rw, ["deployment", "list", "--service", item.name, "--json"]));
+      state = deploymentStatus(list ?? "", item.id, item.started)?.status ?? state;
+    }
+    if (state !== "SUCCESS") throw new Error(`Railway's ${item.name} deployment ended as ${state}. Read its build and runtime logs with railway logs --service ${item.name}.`);
+  }
+  progress.stop("Both Railway services are healthy");
+  note(`${bold("Frontend")} ${url}\n${bold("Services")} ${names.frontend} and ${names.api}\n${bold("API")}      private to Railway`, "Deployed to Railway");
+  outro(`${dim("Frontend logs")} railway logs --service ${names.frontend}\n${dim("API logs")}      railway logs --service ${names.api}\n${dim("Again")}          ${cli} deploy`);
+  log.info(`Configured: ${serviceSummary}.`);
+}
+
 export async function deployProject(args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
   const cli = await cliCommand(project);
   const platform = project.modules.deploy ?? "docker";
-  // A frontend and its API are two services; deploy sets up one app so far.
-  const separateApps = Object.keys(project.stacks).filter((slot) => slot !== FRAMEWORK_SLOT);
-  if (separateApps.length) {
-    throw new UsageError(
-      `deploy sets up one app, and this project has a frontend and ${separateApps.join(", ")}. Build each app's Dockerfile (Dockerfile and apps/${separateApps[0]}/Dockerfile) and run them on any container host; SETUP.md describes it.`,
-    );
-  }
+  const separateApps = Object.entries(project.services).filter(([, service]) => service.role !== "fullstack");
   if (args.preview) return await deployPreview(args, project, cli, await readDeployEnv(args, project));
+  if (separateApps.length > 1 && platform === "railway") {
+    return await deployRailwayServices(args, project, cli, await readDeployEnv(args, project));
+  }
+  if (separateApps.length > 1 && platform === "docker") {
+    const unsupported = separateApps.filter(([, service]) => !service.platforms.includes("docker"));
+    if (unsupported.length) {
+      throw new UsageError(`The selected stacks do not declare Docker deployment support for ${unsupported.map(([slot]) => slot).join(", ")}.`);
+    }
+    const compose = dockerComposeSource(Object.fromEntries(separateApps));
+    if (args.dryRun) {
+      log.message(`Docker Compose will start ${separateApps.map(([slot, service]) => `${slot} (${service.dockerfile}, port ${service.port})`).join(" and ")}; the frontend proxies /api to the API over the Compose network.`);
+      outro("Dry run: nothing was written. Run deploy to generate compose.yaml.");
+      return;
+    }
+    const path = join(project.root, "compose.yaml");
+    if (await pathExists(path)) throw new UsageError("compose.yaml already exists. Review it and remove it before generating the stack configuration again.");
+    await writeFile(path, compose);
+    note(`Generated compose.yaml for ${separateApps.map(([slot]) => slot).join(" and ")}.`, "Docker Compose deployment");
+    outro(`Copy .env.example to .env.production and set its values, then run from the project root:\n  docker compose --env-file .env.production up --build -d\n\nThe frontend is published on its declared port; the API stays on the private Compose network.`);
+    return;
+  }
+  if (separateApps.length > 1) {
+    throw new UsageError(`The ${platform} deploy adapter does not yet support the selected ${separateApps.map(([slot]) => slot).join(" + ")} services. Select Docker Compose with \`${cli} add deploy docker\`, or deploy each Dockerfile separately.`);
+  }
   if (platform === "fly") return await deployToFly(args, project, cli, await readDeployEnv(args, project));
   if (platform === "vercel") return await deployToVercel(args, project, cli, await readDeployEnv(args, project));
   if (platform === "netlify") return await deployToNetlify(args, project, cli, await readDeployEnv(args, project));

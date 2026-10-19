@@ -2,6 +2,7 @@
 // to test and lets --dry-run describe them without touching the disk.
 import { pruneOptionalPeers } from "./lockfile-peers.js";
 import { FRAMEWORK_SLOT } from "./manifest-fields.js";
+import type { ProjectService } from "./manifest.js";
 
 export interface ProjectIdentity {
   packageName: string;
@@ -20,6 +21,8 @@ export interface Provenance {
   stackSummary?: string[];
   /** The selected option per module, such as `{ auth: "none" }`. */
   modules?: Record<string, string>;
+  /** Runtime service plan contributed by the selected stacks. */
+  services?: Record<string, ProjectService>;
   /** Readable module choices for the README, such as `Authentication: None`. */
   moduleSummary?: string[];
 }
@@ -72,6 +75,7 @@ export function customizeRootManifest(
     ...(provenance.starterCommit ? { starterCommit: provenance.starterCommit } : {}),
     ...recordStacks(provenance.stacks ?? {}),
     ...(provenance.modules ? { modules: provenance.modules } : {}),
+    ...(provenance.services && Object.keys(provenance.services).length ? { services: provenance.services } : {}),
   };
 
   for (const script of ["docker:build", "docker:start"]) {

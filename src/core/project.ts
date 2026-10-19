@@ -6,6 +6,7 @@ import { pathExists } from "../utils/fs.js";
 import { displayNameFromPackageName } from "../utils/names.js";
 import { recordedStacks, type ProjectIdentity } from "./customize.js";
 import type { TemplateManifest } from "./manifest.js";
+import type { ProjectService } from "./manifest.js";
 import type { FileMap } from "./merge.js";
 import { createPlan } from "./plan.js";
 import type { TemplateSource } from "./source.js";
@@ -26,6 +27,7 @@ export interface Project {
   /** The stack per slot, such as `{ framework: "next" }`. */
   stacks: Record<string, string>;
   modules: Record<string, string>;
+  services: Record<string, ProjectService>;
 }
 
 /** Finds the generated project that contains `directory` and reads its provenance. */
@@ -52,6 +54,7 @@ export async function readProject(directory: string): Promise<Project> {
           starterCommit: origin.starterCommit,
           stacks: recordedStacks(origin),
           modules: origin.modules,
+          services: origin.services && typeof origin.services === "object" ? origin.services : {},
         };
       }
     }
@@ -104,4 +107,3 @@ export async function readProjectFiles(root: string, paths: Iterable<string>): P
   }
   return files;
 }
-

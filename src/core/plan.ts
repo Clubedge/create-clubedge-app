@@ -355,6 +355,18 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     option,
     optionName: manifest.modules[id]!.options[option]!.name,
   }));
+  const services = Object.fromEntries(
+    selected.flatMap(({ slotId, slot, stack }) =>
+      stack.deployment
+        ? [[slotId, {
+            ...stack.deployment,
+            role: stack.role,
+            app: slot.path,
+            dockerfile: slot.dockerfile,
+          }]]
+        : [],
+    ),
+  );
   const provenance: Provenance = {
     cliVersion: input.cliVersion,
     starterRepository: source.repository,
@@ -372,18 +384,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
           moduleSummary: modules.map(({ name, optionName }) => `${name}: ${optionName}`),
         }
       : {}),
-    services: Object.fromEntries(
-      selected.flatMap(({ slotId, slot, stack }) =>
-        stack.deployment
-          ? [[slotId, {
-              ...stack.deployment,
-              role: stack.role,
-              app: slot.path,
-              dockerfile: slot.dockerfile,
-            }]]
-          : [],
-      ),
-    ),
+    ...(Object.keys(services).length ? { services } : {}),
   };
   const place = placement(selected, others);
   const envTargets = Object.values(manifest.slots).map((slot) => slot.env.target);

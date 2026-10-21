@@ -4,7 +4,7 @@
 
 # create-clubedge-app
 
-**Create a production-ready Next.js or TanStack Start app with one command, and keep it up to date.**
+**Create a production-ready React app with one command: Next.js, TanStack Start, or Vite with a separate API.**
 
 Pick only the modules you need: auth, storage, email, payments, jobs, observability, deployment.<br>
 Add, remove, or upgrade them later without losing your own changes.
@@ -53,7 +53,7 @@ The default Starter release ships inside the CLI package, so GitHub is only cont
 
 ## Choosing a framework
 
-The Starter ships the same application for two React frameworks. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively:
+For full-stack apps, the Starter ships the same application for Next.js and TanStack Start. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively:
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
@@ -86,7 +86,7 @@ They meet at one HTTP contract, `packages/contract/openapi.yaml`: the frontend c
 
 With `--auth supabase`, the Vite app owns the browser session and attaches its access token to contract requests. Hono or FastAPI verifies that token with Supabase Auth and returns the contract's shared user shape. Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in the generated env examples; no Supabase service-role key goes to the browser.
 
-The decoupled stacks currently support Supabase Auth (or `none`), memory cache, and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy `.env.example` to `.env.production`, fill in its values, and run `docker compose --env-file .env.production up --build -d`. With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
+The decoupled stacks support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy `.env.example` to `.env.production`, fill in its values, and run `docker compose --env-file .env.production up --build -d`. With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
 
 ## Choosing modules
 
@@ -94,7 +94,7 @@ Authentication, file storage, caching, email, payments, background jobs, observa
 
 | Flag        | Options                                    | Default    |
 | ----------- | ------------------------------------------ | ---------- |
-| `--auth`    | `supabase`, `better-auth`, `none`          | `supabase` |
+| `--auth`    | `supabase`, `better-auth`, `firebase`, `appwrite`, `none` | `supabase` |
 | `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
 | `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
 | `--email`   | `smtp` (any provider, or a local inbox), `resend`, `none` | `smtp` |

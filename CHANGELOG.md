@@ -4,8 +4,14 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.35.0
 
-- Deploy frontend and API stack packs (#103).
-- Default to Starter `v0.24.0` (#105).
+- **Deploy a frontend and its separate API** (#103):
+  - `--deploy docker` generates a Compose setup with the Vite frontend and API as separate services. The frontend is public; the API stays on the internal network, and the generated configuration includes each service's port and health check.
+  - `--deploy railway` provisions the frontend and API services, wires the frontend to the private API URL, configures service variables, and runs database migrations before releasing the API.
+  - Deployment capabilities now live in each stack's descriptor, including supported platforms, ports, and health checks. See [docs/stack-packs.md](docs/stack-packs.md).
+- **Default to Starter `v0.24.0`** (#105), which brings all four auth providers to React + Vite with either Hono or FastAPI:
+  - Supabase, Better Auth, Firebase, and Appwrite each have frontend flows and API-side token or session verification.
+  - Generated-project and auth-flow CI covers every provider with both APIs; Docker and Railway deploy configuration is checked for both combinations.
+  - FastAPI now has a committed `uv.lock` for reproducible Python installs. Pull request previews can also deploy the Vite frontend and API as separate Render services.
 
 ## 0.34.0
 

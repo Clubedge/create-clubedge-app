@@ -4,7 +4,7 @@
 
 # create-clubedge-app
 
-**Create a production-ready Next.js or TanStack Start app with one command, and keep it up to date.**
+**Create a production-ready React app with one command: Next.js, TanStack Start, or Vite with a separate API.**
 
 Pick only the modules you need: auth, storage, email, payments, jobs, observability, deployment.<br>
 Add, remove, or upgrade them later without losing your own changes.
@@ -53,7 +53,7 @@ The default Starter release ships inside the CLI package, so GitHub is only cont
 
 ## Choosing a framework
 
-The Starter ships the same application for two React frameworks. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively:
+For full-stack apps, the Starter ships the same application for Next.js and TanStack Start. Next.js is the default; pick TanStack Start with `--framework`, or choose interactively:
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
@@ -86,7 +86,7 @@ They meet at one HTTP contract, `packages/contract/openapi.yaml`: the frontend c
 
 With `--auth supabase`, the Vite app owns the browser session and attaches its access token to contract requests. Hono or FastAPI verifies that token with Supabase Auth and returns the contract's shared user shape. Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in the generated env examples; no Supabase service-role key goes to the browser.
 
-The decoupled stacks currently support Supabase Auth (or `none`), memory cache, and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy `.env.example` to `.env.production`, fill in its values, and run `docker compose --env-file .env.production up --build -d`. With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
+The decoupled stacks support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy `.env.example` to `.env.production`, fill in its values, and run `docker compose --env-file .env.production up --build -d`. With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
 
 ## Choosing modules
 
@@ -94,7 +94,7 @@ Authentication, file storage, caching, email, payments, background jobs, observa
 
 | Flag        | Options                                    | Default    |
 | ----------- | ------------------------------------------ | ---------- |
-| `--auth`    | `supabase`, `better-auth`, `none`          | `supabase` |
+| `--auth`    | `supabase`, `better-auth`, `firebase`, `appwrite`, `none` | `supabase` |
 | `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
 | `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
 | `--email`   | `smtp` (any provider, or a local inbox), `resend`, `none` | `smtp` |
@@ -282,7 +282,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.34.0
+create-clubedge-app v0.35.0
         |
         v
 Clubedge Starter v0.24.0
@@ -293,7 +293,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.34.0` | `clubedge-starter@v0.24.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.35.0` | `clubedge-starter@v0.24.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -402,6 +402,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.32.0 | v0.21.0 | Pluggable authentication: `--auth firebase` and `--auth appwrite` next to Supabase and Better Auth, and a conformance suite every provider passes |
 | 0.33.0 | v0.22.0 | Starter v0.22.0: stack packs (template schema 4), and a React + Vite frontend with a separate Hono API (`--framework vite --api hono`) |
 | 0.34.0 | v0.23.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
+| 0.35.0 | v0.24.0 | Deploy frontend and API stack packs; Default to Starter v0.24.0 |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

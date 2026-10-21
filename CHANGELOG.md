@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.36.0
+
+- Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group (#104).
+- Bump giget from 2.0.0 to 3.3.1 (#69).
+- Bump @types/node from 22.20.5 to 26.6.5 (#68).
+- Default to Starter `v0.24.1` (#107).
+
 ## 0.35.0
 
 - **Deploy a frontend and its separate API** (#103):

@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.35.0
+
+- Deploy frontend and API stack packs (#103).
+- Default to Starter `v0.24.0` (#105).
+
 ## 0.34.0
 
 - **A FastAPI API**: default to Starter `v0.23.0` (#101). `--framework vite --api fastapi` creates the React + Vite frontend with an API in Python, managed with [uv](https://docs.astral.sh/uv/):

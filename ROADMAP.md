@@ -39,6 +39,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 30 | 0.32.0 | Starter v0.21.0: pluggable auth, with `--auth firebase` (Auth Emulator in development) and `--auth appwrite` (Cloud or self-hosted), and `@clubedge/auth/conformance`, which every provider passes |
 | 31 | 0.33.0 | Starter v0.22.0: stack packs (template schema 4), and a React + Vite frontend with a separate Hono API (`--framework vite --api hono`) |
 | 32 | 0.34.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
+| 33 | 0.35.0 | Deploy frontend and API stack packs; Default to Starter v0.24.0 |
 
 ## CLI improvements
 

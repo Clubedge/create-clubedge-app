@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const baseUrl = process.env.APP_BASE_URL ?? "http://127.0.0.1:3000";
 const timeout = Date.now() + 60_000;
@@ -7,6 +9,7 @@ const timeout = Date.now() + 60_000;
 // Run from the generated project; its package.json records the selected modules.
 const { clubedge } = JSON.parse(await readFile("package.json", "utf8"));
 const hasAuth = clubedge?.modules?.auth !== "none";
+const isVite = clubedge?.framework === "vite";
 
 async function get(path) {
   let lastError;
@@ -22,7 +25,9 @@ async function get(path) {
     }
   }
 
-  throw new Error(`The generated app did not respond at ${baseUrl}: ${lastError}`);
+  throw new Error(
+    `The generated app did not respond at ${baseUrl}: ${lastError}`,
+  );
 }
 
 /**
@@ -38,21 +43,78 @@ async function getOnceUp(path) {
   return response;
 }
 
+async function assertViteLoginRoute(path, headingName, message) {
+  // Resolve Playwright from the generated project, where CI installs its browser dependencies.
+  const generatedRequire = createRequire(
+    resolve(process.cwd(), "package.json"),
+  );
+  const playwrightTestPath = generatedRequire.resolve("@playwright/test");
+  const playwrightRequire = createRequire(playwrightTestPath);
+  const { chromium } = playwrightRequire("playwright");
+  const browser = await chromium.launch();
+
+  try {
+    const page = await browser.newPage();
+    const response = await page.goto(new URL(path, baseUrl).href);
+    assert.equal(response?.status(), 200, message);
+    await page
+      .getByRole("heading", { name: headingName })
+      .waitFor({ state: "visible" });
+  } finally {
+    await browser.close();
+  }
+}
+
 const landing = await get("/");
 assert.equal(landing.status, 200, "the landing page should render");
-assert.match(await landing.text(), /Generated App/, "the generated project name should be rendered");
+assert.match(
+  await landing.text(),
+  /Generated App/,
+  "the generated project name should be rendered",
+);
 
 if (hasAuth) {
   const login = await get("/login?mode=signup");
   assert.equal(login.status, 200, "the sign-up page should render");
-  assert.match(await login.text(), /Create your account/, "the sign-up view should be available");
+  if (isVite) {
+    await assertViteLoginRoute(
+      "/login?mode=signup",
+      "Create your account",
+      "the sign-up view should be available",
+    );
+  } else {
+    assert.match(
+      await login.text(),
+      /Create your account/,
+      "the sign-up view should be available",
+    );
+  }
 } else {
-  // A server-rendered app answers 404; a single-page app serves its shell for every path and
-  // renders "not found" in the browser. Either way, there is no sign-in form.
+  // A server-rendered app answers 404; Vite serves its shell and renders the not-found route in
+  // the browser.
   const login = await get("/login");
-  if (login.status !== 404) {
-    assert.equal(login.status, 200, "projects without auth should have no login page");
-    assert.doesNotMatch(await login.text(), /Create your account|Sign in/, "projects without auth should have no login page");
+  if (isVite) {
+    assert.equal(
+      login.status,
+      200,
+      "the Vite app should serve its SPA shell for the login route",
+    );
+    await assertViteLoginRoute(
+      "/login",
+      "Page not found",
+      "the no-auth route should render",
+    );
+  } else if (login.status !== 404) {
+    assert.equal(
+      login.status,
+      200,
+      "projects without auth should have no login page",
+    );
+    assert.doesNotMatch(
+      await login.text(),
+      /Create your account|Sign in/,
+      "projects without auth should have no login page",
+    );
   }
 }
 
@@ -61,7 +123,11 @@ assert.equal(dashboard.status, 200, "the dashboard should render");
 
 const health = await getOnceUp("/api/health");
 assert.equal(health.status, 200, "the health endpoint should respond");
-assert.equal((await health.json()).status, "ok", "the health endpoint should report success");
+assert.equal(
+  (await health.json()).status,
+  "ok",
+  "the health endpoint should report success",
+);
 
 const logo = await get("/.well-known/logo.svg");
 assert.equal(logo.status, 200, "the Clubedge logo should be served");
@@ -70,4 +136,6 @@ assert.match(logo.headers.get("content-type") ?? "", /image\/svg\+xml/);
 const favicon = await get("/favicon.ico");
 assert.equal(favicon.status, 200, "the favicon should be served");
 
-console.log("Generated app smoke checks passed: pages, health endpoint, logo, and favicon");
+console.log(
+  "Generated app smoke checks passed: pages, health endpoint, logo, and favicon",
+);

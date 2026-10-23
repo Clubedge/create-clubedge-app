@@ -8,6 +8,7 @@ import {
   changelogSection,
   insertChangelog,
   mergedPullRequests,
+  releaseSummary,
   updatePinDocs,
   updateVersionDocs,
 } from "../scripts/release-lib.mjs";
@@ -119,5 +120,13 @@ describe("release tables", () => {
     const { readme, roadmap } = addRoadmapRows({ readme: docs.readme, roadmap: file("ROADMAP.md") }, "99.0.0", "v0.15.0", "Release tooling");
     expect(readme.indexOf("| 99.0.0 | v0.15.0 | Release tooling |")).toBeGreaterThan(readme.indexOf(lastRow));
     expect(roadmap).toMatch(/^\| \d+ \| 99\.0\.0 \| Release tooling \|$/m);
+  });
+
+  it("leaves dependency bumps out of a row unless that is all there is", () => {
+    const bump = { number: 68, title: "chore(deps): bump @types/node from 22.20.5 to 26.6.5" };
+    const devBump = { number: 104, title: "chore(deps-dev): bump vitest from 5.0.3 to 5.0.5" };
+    const pin = { number: 107, title: "feat: default to Starter v0.24.1" };
+    expect(releaseSummary([bump, pin, devBump])).toBe("Default to Starter v0.24.1");
+    expect(releaseSummary([bump, devBump])).toBe("Dependency updates");
   });
 });

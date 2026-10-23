@@ -39,13 +39,12 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 30 | 0.32.0 | Starter v0.21.0: pluggable auth, with `--auth firebase` (Auth Emulator in development) and `--auth appwrite` (Cloud or self-hosted), and `@clubedge/auth/conformance`, which every provider passes |
 | 31 | 0.33.0 | Starter v0.22.0: stack packs (template schema 4), and a React + Vite frontend with a separate Hono API (`--framework vite --api hono`) |
 | 32 | 0.34.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
-| 33 | 0.35.0 | Deploy frontend and API stack packs; Default to Starter v0.24.0 |
-| 34 | 0.36.0 | Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group; Bump giget from 2.0.0 to 3.3.1; Bump @types/node from 22.20.5 to 26.6.5; Default to Starter v0.24.1 |
-| 35 | 0.37.0 | Add MCP server and agent skill |
+| 33 | 0.35.0 | `deploy` for a frontend and its API (Docker Compose, Railway); Starter v0.24.0: all four auth providers on React + Vite with Hono or FastAPI |
+| 34 | 0.36.0 | Starter v0.24.1: security update of FastAPI's `certifi`; dependency updates |
+| 35 | 0.37.0 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
 
 ## CLI improvements
 
 These are independent of the Starter's modules and can land in any order.
 
-- **Incoming version of a conflicted file:** after `add`, `remove`, or `upgrade`, offer the Starter's version of each conflicted file (the target render) next to yours, for comparing by hand.
-- **Interactive several-module changes:** let the `add` menu pick more than one module before applying them together.
+- **MCP progress during installs:** `create_project` with `install_dependencies` runs `pnpm install` and toolchains such as `uv sync`, which can outlast an MCP client's request timeout. Send progress notifications while they run.

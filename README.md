@@ -337,7 +337,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.36.0
+create-clubedge-app v0.37.0
         |
         v
 Clubedge Starter v0.24.1
@@ -348,7 +348,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.36.0` | `clubedge-starter@v0.24.1` | The CLI's required, tested default |
+| `create-clubedge-app@0.37.0` | `clubedge-starter@v0.24.1` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -459,6 +459,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.34.0 | v0.23.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
 | 0.35.0 | v0.24.0 | Deploy frontend and API stack packs; Default to Starter v0.24.0 |
 | 0.36.0 | v0.24.1 | Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group; Bump giget from 2.0.0 to 3.3.1; Bump @types/node from 22.20.5 to 26.6.5; Default to Starter v0.24.1 |
+| 0.37.0 | v0.24.1 | Add MCP server and agent skill |
 | next | | Show the Starter's version of a conflicted file next to yours |
 
 ## Community

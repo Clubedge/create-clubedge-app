@@ -29,7 +29,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app
 
 ## MCP server
 
-Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested.
+Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested, and makes no network calls of its own: with `infra: neon`, `plan_project` lists `pnpm clubedge neon create` as a next step and `create_project` returns it as a warning, since the database is left for you to create.
 
 Run it from the workspace where projects should be created:
 
@@ -102,7 +102,7 @@ pnpm dev
 
 Or start it with npm: `npx @clubedge/create-clubedge-app my-app`. The generated project is a pnpm workspace, so dependencies are installed with pnpm either way; the CLI falls back to `corepack pnpm` when `pnpm` is not on your path. Without a destination, the CLI asks where to create the project.
 
-The generated project includes `apps/web/.env.local`, created from the example and pointing at the local services you chose. Its `SETUP.md` describes every variable and provider. The root route is a landing page named after your project, and the dashboard is at `/dashboard`.
+The generated project includes `apps/web/.env.local` (and `apps/api/.env.local` with a separate API), created from the example and pointing at the local services you chose. Its `SETUP.md` describes every variable and provider. The root route is a landing page named after your project, and the dashboard is at `/dashboard`.
 
 The default Starter release ships inside the CLI package, so GitHub is only contacted when you pass `--ref`. Internet access is needed to install dependencies.
 
@@ -141,7 +141,7 @@ They meet at one HTTP contract, `packages/contract/openapi.yaml`: the frontend c
 
 With `--auth supabase`, the Vite app owns the browser session and attaches its access token to contract requests. Hono or FastAPI verifies that token with Supabase Auth and returns the contract's shared user shape. Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in the generated env examples; no Supabase service-role key goes to the browser.
 
-The decoupled stacks support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy `.env.example` to `.env.production`, fill in its values, and run `docker compose --env-file .env.production up --build -d`. With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
+The decoupled stacks support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache, any local infrastructure (the API's `apps/api/.env.local` holds `DATABASE_URL`, since the API owns the database), and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy the variables of `.env.example` and `apps/api/.env.example` to `.env.production`, fill in their values, and run `docker compose --env-file .env.production up --build -d`. The frontend's `VITE_*` values are build arguments, compiled into its bundle; with Better Auth, its Node server also gets the auth variables (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the email settings). With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
 
 ## Choosing modules
 
@@ -153,8 +153,8 @@ Authentication, file storage, caching, email, payments, background jobs, observa
 | `--storage` | `s3`, `supabase` (needs Supabase Auth), `none` | `s3`   |
 | `--cache`   | `redis` (falls back to memory without `REDIS_URL`), `memory` | `redis` |
 | `--email`   | `smtp` (any provider, or a local inbox), `resend`, `none` | `smtp` |
-| `--payments` | `stripe`, `none` (needs an auth module) | `none` |
-| `--jobs` | `pg-boss`, `none` | `none` |
+| `--payments` | `stripe` (needs an auth module), `none` | `none` |
+| `--jobs` | `pg-boss`, `bullmq` (needs the `redis` cache), `inngest`, `none` | `none` |
 | `--observability` | `otel` (OpenTelemetry, to any OTLP collector), `sentry`, `none` | `none` |
 | `--deploy`  | `docker` (any container host), `fly`, `railway`, `render`, `vercel`, `netlify` | `docker` |
 | `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `local` (no Docker: PGlite and a local folder), `neon` (a free hosted Neon database), `none` | `docker` |
@@ -234,7 +234,7 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 - Files you never changed are updated, added, or deleted.
 - Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve. The Starter's whole new version of each such file is saved in `.clubedge/incoming/` to compare with yours (`git diff --no-index <file> .clubedge/incoming/<file>`); Git ignores that folder, so delete it when you are done.
 - Your own files are never touched.
-- `apps/web/.env.local` keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
+- Each app's local env file (`apps/web/.env.local`, and `apps/api/.env.local` with a separate API) keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
 - `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.
 
 Several modules in one command are applied as one change, and their requirements are checked together, so `add auth supabase storage supabase` works even though Supabase Storage needs Supabase Auth. When lines conflict, the CLI lists each file with its number of conflict blocks. Before an upgrade, it lists the Starter releases it crosses with the sections of their release notes, such as `v0.13.0  Observability, Tests, Also`.
@@ -252,7 +252,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The CLI creates a free database through Neon's [claimable Postgres](https://neon.com/docs/reference/claimable-postgres) and writes two URLs into `apps/web/.env.local`: `DATABASE_URL`, the pooled connection the app uses, and `DATABASE_URL_DIRECT`, the direct one that migrations and the background jobs worker use, since a transaction pooler can break them. Neon keeps an unclaimed database for 72 hours, with up to 100 MB:
+The CLI creates a free database through Neon's [claimable Postgres](https://neon.com/docs/reference/claimable-postgres) and writes two URLs into the env file of the app that owns the database, `apps/web/.env.local`, or `apps/api/.env.local` in a project with a separate API (a Vite frontend whose Better Auth server connects too gets the same `DATABASE_URL`): `DATABASE_URL`, the pooled connection the app uses, and `DATABASE_URL_DIRECT`, the direct one that migrations and the background jobs worker use, since a transaction pooler can break them. Neon keeps an unclaimed database for 72 hours, with up to 100 MB:
 
 ```sh
 pnpm clubedge neon           # where it stands and how long it has left
@@ -273,7 +273,7 @@ pnpm clubedge status    # Starter release, modules, Git state, and whether a new
 pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and pnpm check:services
 ```
 
-`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that `apps/web/.env.local` has every variable in `.env.example`, then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
+`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that each app's local env file has every variable in its example (`apps/web/.env.local` and `.env.example`, and `apps/api/.env.local` and `apps/api/.env.example` with a separate API), then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
 
 ## Try it on a Railway VM (experimental)
 
@@ -302,7 +302,7 @@ pnpm clubedge deploy --env-file .env.staging      # with another file of product
 pnpm clubedge deploy --dry-run                    # show the plan, create nothing
 ```
 
-With [Railway's CLI](https://docs.railway.com/cli) (the installed `railway`, or `npx @railway/cli`) and your Railway login, it creates or reuses a project named after the package and the databases selected by the modules. Full-stack projects get one public app service. A Vite project gets two services: the frontend has the public `*.up.railway.app` domain, and the API stays private; the frontend's Caddy proxy connects to it over Railway's private network. API variables, including `FRONTEND_URL`, go on the API service; `VITE_*` values go on the frontend service for its build. The API's migration command runs before the API release, and the frontend and API deployments are both awaited. Database variables are references to Railway's Postgres and Redis by default. Values from `.env.production` (or `--env-file`) take precedence; external database URLs stay external, and localhost URLs are ignored. `.railway/railway.ts` describes the selected service topology and health checks; `deploy` applies it and adds Railway's TypeScript SDK (`railway`) as a dev dependency. Commit the generated file and package changes. It needs Railway CLI 5.42.1 or newer. Running `deploy` again reuses the services, so it also adds variables and ships new releases. Railway bills usage on your plan.
+With [Railway's CLI](https://docs.railway.com/cli) (the installed `railway`, or `npx @railway/cli`) and your Railway login, it creates or reuses a project named after the package and the databases selected by the modules. Full-stack projects get one public app service. A Vite project gets two services: the frontend has the public `*.up.railway.app` domain, and the API stays private; the frontend's Node server (`node server.mjs`) forwards the API routes to it over Railway's private network. API variables, including `FRONTEND_URL`, go on the API service; `VITE_*` values go on the frontend service for its build. With Better Auth, the frontend's Node server runs auth: it gets the same `DATABASE_URL` as the API, a generated `BETTER_AUTH_SECRET`, the email settings, and `BETTER_AUTH_URL`, the public frontend URL both services use. Each service's unset variables are reported from its own env example. The API's migration command runs before the API release, and the frontend and API deployments are both awaited. Database variables are references to Railway's Postgres and Redis by default. Values from `.env.production` (or `--env-file`) take precedence; external database URLs stay external, and localhost URLs are ignored. `.railway/railway.ts` describes the selected service topology and health checks; `deploy` applies it and adds Railway's TypeScript SDK (`railway`) as a dev dependency. Commit the generated file and package changes. It needs Railway CLI 5.42.1 or newer. Running `deploy` again reuses the services, so it also adds variables and ships new releases. Railway bills usage on your plan.
 
 ### Deploy to Fly.io (experimental)
 
@@ -328,7 +328,7 @@ In a project that deploys to Vercel or Railway, `pnpm clubedge deploy --preview`
 NEON_API_KEY=... NEON_PROJECT_ID=... pnpm clubedge deploy --preview
 ```
 
-With `NEON_API_KEY` and `NEON_PROJECT_ID` (in the shell, or in the env file), the preview gets its own [Neon branch](https://neon.com/docs/introduction/branching), `preview/<git branch>`: a copy of the production database made in seconds that shares its storage until it changes. `deploy` creates it, or reuses it on later runs, applies this branch's migrations to it, and points the preview's `DATABASE_URL` and `DATABASE_URL_DIRECT` at it. On Vercel, the preview is a preview deployment with the project's Preview variables, and the branch's URLs are set as Preview variables of your Git branch, which needs the Vercel project connected to its Git repository; without the Neon settings, it uses the Preview `DATABASE_URL`. On Railway, it is an environment named `preview-<git branch>`, copied from production with its own domain; without the Neon settings, it gets its own empty copy of Railway's Postgres, and when production's database comes from elsewhere, `deploy --preview` refuses, since the copy would use production's data. Production is not changed.
+With `NEON_API_KEY` and `NEON_PROJECT_ID` (in the shell, or in the env file), the preview gets its own [Neon branch](https://neon.com/docs/introduction/branching), `preview/<git branch>`: a copy of the production database made in seconds that shares its storage until it changes. `deploy` creates it, or reuses it on later runs, applies this branch's migrations to it, and points the preview's `DATABASE_URL` and `DATABASE_URL_DIRECT` at it. On Vercel, the preview is a preview deployment with the project's Preview variables, and the branch's URLs are set as Preview variables of your Git branch, which needs the Vercel project connected to its Git repository; without the Neon settings, it uses the Preview `DATABASE_URL`. On Railway, it is an environment named `preview-<git branch>`, copied from production with its own domain; without the Neon settings, it gets its own empty copy of Railway's Postgres, and when production's database comes from elsewhere, `deploy --preview` refuses, since the copy would use production's data. Production is not changed. It deploys a single app for now: a Vite frontend and its API are two services, so `deploy --preview` refuses them and explains how to copy production's Railway environment yourself.
 
 Projects created with `--infra neon` also have `.github/workflows/preview.yml`, which does this for every pull request in CI: a Neon branch per pull request with its migrations, the schema diff as a comment, a Vercel or Railway preview, and cleanup when the pull request closes. The Starter's SETUP.md lists the secrets it needs.
 

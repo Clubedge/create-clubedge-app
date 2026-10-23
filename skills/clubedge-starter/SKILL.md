@@ -28,7 +28,7 @@ For a new app:
 3. Validate that module requirements are met. For example, module compatibility can depend on the selected framework or another module.
 4. Preview with the CLI's `--dry-run` when the requested changes or destination are unclear. For MCP, describe the exact target directory and options before creating if the user has not made them clear.
 5. Create only in a new or empty directory. The MCP tool only accepts paths under its configured working directory. The CLI also refuses to overwrite an existing project.
-6. Report the target path, selected stacks and modules, and any actions that still need to be run, such as dependency installation or starting local infrastructure.
+6. Report the target path, selected stacks and modules, and any actions that still need to be run, such as dependency installation or starting local infrastructure. Relay the MCP result's `warnings` and `nextSteps`: with `infra: neon`, MCP creates no database, so the user runs `pnpm clubedge neon create` in the project (after `pnpm install`), then `pnpm db:migrate`.
 
 CLI example:
 
@@ -50,7 +50,7 @@ Check the project's Git state first. These commands preserve user edits and can 
 
 ## Project guidance
 
-- Keep secrets in the project's environment file and never print or commit secret values.
+- Keep secrets in the project's environment files and never print or commit secret values. With a separate API, the database URLs belong in `apps/api/.env.local`, since the API owns the database.
 - Do not claim a project was created, installed, migrated, or deployed until the corresponding action succeeded.
 - If an install or provider setup fails, report the exact failed step and the next command needed to resume; do not silently present a partially configured project as ready.
 - Consult the generated `SETUP.md` and the official docs at https://starter.clubedge.live/docs for provider-specific configuration.

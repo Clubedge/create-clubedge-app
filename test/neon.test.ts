@@ -22,12 +22,16 @@ import {
   neonStatePath,
   parseNeonState,
   previewBranchName,
+  neonSetupStep,
   savedDatabaseFor,
+  setDeclaredEnvValues,
   setEnvValues,
   type NeonDatabase,
 } from "../src/core/neon.js";
+import type { ProjectService } from "../src/core/manifest.js";
+import { databaseEnvFile, projectEnvFiles, type Project } from "../src/core/project.js";
 import { projectTryProblem, tryCreateArgs, tryModules, tryScript } from "../src/core/railway.js";
-import { previewName } from "../src/deploy-preview.js";
+import { deployPreview, previewName } from "../src/deploy-preview.js";
 
 const pooled = "postgresql://neondb_owner:p%40ss@ep-cool-name-a1b2c3-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require";
 const direct = "postgresql://neondb_owner:p%40ss@ep-cool-name-a1b2c3.eu-central-1.aws.neon.tech/neondb?sslmode=require";
@@ -156,6 +160,56 @@ describe("setEnvValues", () => {
 
   it("keeps Windows line endings and adds a final newline", () => {
     expect(setEnvValues("A=1\r\nB=2", { B: "3", C: "4" })).toBe("A=1\r\nB=3\r\nC=4\r\n");
+  });
+
+  it("sets only the variables another app's env file declares", () => {
+    const values = { DATABASE_URL: pooled, DATABASE_URL_DIRECT: direct };
+    expect(setDeclaredEnvValues("BETTER_AUTH_SECRET=s\nDATABASE_URL=postgresql://local\n", values)).toBe(
+      `BETTER_AUTH_SECRET=s\nDATABASE_URL=${pooled}\n`,
+    );
+    expect(setDeclaredEnvValues("VITE_API_URL=\n", values)).toBeNull();
+  });
+
+  it("replaces exported assignments and keeps their export", () => {
+    const text = "export DATABASE_URL=postgresql://local\n";
+    expect(setEnvValues(text, { DATABASE_URL: pooled })).toBe(`export DATABASE_URL=${pooled}\n`);
+    expect(setDeclaredEnvValues(text, { DATABASE_URL: pooled })).toBe(`export DATABASE_URL=${pooled}\n`);
+  });
+});
+
+describe("the database's env file", () => {
+  const service = (role: ProjectService["role"], id: string, app: string): ProjectService => ({
+    id,
+    role,
+    app,
+    dockerfile: `${app}/Dockerfile`,
+    port: 3000,
+    healthPath: "/",
+    platforms: ["railway"],
+  });
+  const fullStack: Pick<Project, "services" | "stacks"> = { stacks: { framework: "next" }, services: { framework: service("fullstack", "web", "apps/web") } };
+  const pair: Pick<Project, "services" | "stacks"> = {
+    stacks: { framework: "vite", api: "hono" },
+    services: { framework: service("frontend", "web", "apps/web"), api: service("api", "api", "apps/api") },
+  };
+
+  it("is the web app's for a full-stack app", () => {
+    expect(databaseEnvFile(fullStack)).toEqual({ example: ".env.example", local: "apps/web/.env.local" });
+    expect(projectEnvFiles(fullStack)).toEqual([{ example: ".env.example", local: "apps/web/.env.local" }]);
+    expect(databaseEnvFile({ stacks: {}, services: {} }).local).toBe("apps/web/.env.local");
+  });
+
+  it("is the API's when the project has one, since the API owns the database", () => {
+    expect(databaseEnvFile(pair)).toEqual({ example: "apps/api/.env.example", local: "apps/api/.env.local" });
+    expect(projectEnvFiles(pair).map(({ local }) => local)).toEqual(["apps/web/.env.local", "apps/api/.env.local"]);
+    // Starter 0.22 recorded the API's stack, but no services.
+    expect(databaseEnvFile({ stacks: pair.stacks, services: {} }).local).toBe("apps/api/.env.local");
+  });
+
+  it("is named in MCP's next step for --infra neon, which creates no database", () => {
+    const neon = { id: "infra", name: "Local infrastructure", option: "neon", optionName: "Neon" };
+    expect(neonSetupStep({ modules: [neon], databaseEnvFile: "apps/api/.env.local" })).toMatch(/pnpm clubedge neon create.*apps\/api\/\.env\.local/);
+    expect(neonSetupStep({ modules: [{ ...neon, option: "docker" }], databaseEnvFile: "apps/web/.env.local" })).toBeNull();
   });
 });
 
@@ -318,6 +372,23 @@ describe("preview branches", () => {
   it("names the setting to check when Neon refuses", async () => {
     const { fetcher } = fakeNeon({ "/branches?search=preview%2Ffeature": [{ status: 401, body: { message: "authentication required" } }] });
     await expect(ensureNeonBranch(input, fetcher)).rejects.toThrow(/NEON_API_KEY/);
+  });
+
+  it("refuses a frontend and an API, which are two services", async () => {
+    const service = { port: 3000, healthPath: "/", platforms: ["railway"] };
+    const project = {
+      root: process.cwd(),
+      identity: { packageName: "edge-notes", displayName: "Edge Notes" },
+      modules: { deploy: "railway", infra: "neon" },
+      stacks: { framework: "vite", api: "hono" },
+      services: {
+        framework: { ...service, id: "web", role: "frontend", app: "apps/web", dockerfile: "apps/web/Dockerfile" },
+        api: { ...service, id: "api", role: "api", app: "apps/api", dockerfile: "apps/api/Dockerfile" },
+      },
+    } as unknown as Project;
+    await expect(deployPreview(parseCliArgs(["deploy", "--preview"]), project, "pnpm clubedge", {})).rejects.toThrow(
+      /single app for now.*edge-notes-web and edge-notes-api/,
+    );
   });
 
   it("parses --preview for deploy only", () => {

@@ -34,8 +34,8 @@ import {
   type TrySource,
 } from "./core/railway.js";
 import { parseEnvFile } from "./core/deploy.js";
-import { ProjectError, readProject, type Project } from "./core/project.js";
-import { createNeonDatabase, localEnvPath } from "./neon.js";
+import { databaseEnvFile, ProjectError, readProject, type Project } from "./core/project.js";
+import { createNeonDatabase } from "./neon.js";
 import { uploadableFiles } from "./core/upload.js";
 import { cliVersion } from "./package-info.js";
 import { openUrl } from "./utils/open.js";
@@ -194,9 +194,10 @@ async function plan(args: CliArgs): Promise<Plan> {
   // Env files stay here, so the VM gets the hosted database's URLs on their own.
   let database: Database | undefined;
   if (project.modules.infra === "neon") {
-    const env = parseEnvFile(await readFile(join(project.root, localEnvPath), "utf8").catch(() => ""));
+    const envPath = databaseEnvFile(project).local;
+    const env = parseEnvFile(await readFile(join(project.root, envPath), "utf8").catch(() => ""));
     if (!env.DATABASE_URL) {
-      throw new UsageError(`${localEnvPath} has no DATABASE_URL for the VM to use. Create a free Neon database with \`pnpm clubedge neon create\`, then run try again.`);
+      throw new UsageError(`${envPath} has no DATABASE_URL for the VM to use. Create a free Neon database with \`pnpm clubedge neon create\`, then run try again.`);
     }
     database = { url: env.DATABASE_URL, directUrl: env.DATABASE_URL_DIRECT || env.DATABASE_URL };
   }

@@ -44,6 +44,11 @@ export interface ScaffoldPlan {
   edits: FileEdit[];
   /** Environment examples copied to each app's local env file, when the template has them. */
   envFiles: Array<{ from: string; to: string }>;
+  /**
+   * The local env file with the database URLs: the API's when the project has one, since the API
+   * owns the database, else the app's. Null when the template has no env files.
+   */
+  databaseEnvFile: string | null;
   /** Apps whose own tools install their dependencies after pnpm install, such as uv. */
   toolchains: Array<{ directory: string; app: string; toolchain: Toolchain }>;
   git: boolean;
@@ -507,6 +512,13 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     });
   }
 
+  const envFiles = selected
+    .map(({ slot }) => ({ from: slot.env.example, to: slot.env.target }))
+    .filter(({ from }) => has(from));
+  // The API's env file even when its example is missing, as databaseEnvFile(project) resolves it
+  // later from the API's service, so the URLs written at creation are where commands look.
+  const apiEnvFile = selected.find(({ stack }) => stack.role === "api")?.slot.env.target;
+
   return {
     targetDirectory: input.targetDirectory,
     identity,
@@ -515,9 +527,8 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     modules,
     files,
     edits,
-    envFiles: selected
-      .map(({ slot }) => ({ from: slot.env.example, to: slot.env.target }))
-      .filter(({ from }) => has(from)),
+    envFiles,
+    databaseEnvFile: apiEnvFile ?? envFiles[0]?.to ?? null,
     toolchains: selected.flatMap(({ slot, stack }) =>
       stack.toolchain ? [{ directory: slot.path, app: stack.name, toolchain: stack.toolchain }] : [],
     ),

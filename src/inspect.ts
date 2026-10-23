@@ -20,15 +20,12 @@ import {
 } from "./core/health.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { neonDatabaseState } from "./core/neon.js";
-import { readProject } from "./core/project.js";
+import { databaseEnvFile, projectEnvFiles, readProject } from "./core/project.js";
 import { savedDatabaseForUrl } from "./neon.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
 import { pathExists } from "./utils/fs.js";
 import { commandSucceeds, run, runCapture } from "./utils/process.js";
-
-/** Where generated projects keep their env files. */
-const ENV_PATHS = { example: ".env.example", local: "apps/web/.env.local" };
 
 async function readText(path: string): Promise<string | null> {
   try {
@@ -124,22 +121,20 @@ export async function runDoctor(args: CliArgs): Promise<void> {
   );
   if (pnpm) check(checkLockfile(await lockfileError(root, pnpm)));
 
-  check(
-    checkEnvFile(
-      await readText(join(root, ENV_PATHS.example)),
-      await readText(join(root, ENV_PATHS.local)),
-      ENV_PATHS,
-    ),
-  );
+  // Each app's env file; the database URLs are in the one of the app that owns the database.
+  for (const paths of projectEnvFiles(project)) {
+    check(checkEnvFile(await readText(join(root, paths.example)), await readText(join(root, paths.local)), paths));
+  }
 
-  const env = parseEnvFile((await readText(join(root, ENV_PATHS.local))) ?? "");
+  const envPath = databaseEnvFile(project).local;
+  const env = parseEnvFile((await readText(join(root, envPath))) ?? "");
   const saved = await savedDatabaseForUrl(env.DATABASE_URL);
   const database = checkDatabaseUrls({
     env,
     infra: project.modules.infra,
     claimable: saved ? await neonDatabaseState(saved) : null,
     cli: await cliCommand(project),
-    envPath: ENV_PATHS.local,
+    envPath,
   });
   if (database) check(database);
 

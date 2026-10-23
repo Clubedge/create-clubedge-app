@@ -7,6 +7,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod/v4";
 import { executePlan } from "./core/execute.js";
 import { readTemplateManifest } from "./core/manifest.js";
+import { neonSetupStep } from "./core/neon.js";
 import { createPlan, describePlan } from "./core/plan.js";
 import { resolveTemplateSource } from "./core/source.js";
 import { cliVersion, cliUrl, siteUrl } from "./package-info.js";
@@ -214,6 +215,7 @@ function createServer() {
             install: toolchain.install,
           })),
           actions: describePlan(plan),
+          nextSteps: [neonSetupStep(plan)].filter(Boolean),
         });
       } catch (error) {
         return result({ valid: false, error: error instanceof Error ? error.message : String(error) });
@@ -238,6 +240,9 @@ function createServer() {
       await executePlan(plan, source);
 
       const warnings: string[] = [];
+      // The CLI creates the free Neon database itself; MCP makes no network calls, so it is left to the user.
+      const neon = neonSetupStep(plan);
+      if (neon) warnings.push(neon);
       if (initialize_git) {
         try {
           await initializeGit(target, mcpStdio);

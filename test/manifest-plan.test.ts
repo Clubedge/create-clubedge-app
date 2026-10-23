@@ -148,6 +148,7 @@ describe("createPlan", () => {
       "apps/web/src/config/site.json",
     ]);
     expect(plan.envFiles).toEqual([{ from: ".env.example", to: "apps/web/.env.local" }]);
+    expect(plan.databaseEnvFile).toBe("apps/web/.env.local");
     // A single-framework Starter records no framework choice.
     expect(plan.provenance).toEqual({
       cliVersion: "9.9.9",
@@ -174,6 +175,7 @@ describe("createPlan", () => {
       "apps/web/src/app/page.tsx",
     ]);
     expect(plan.envFiles).toEqual([]);
+    expect(plan.databaseEnvFile).toBeNull();
   });
 
   it("describes every step for --dry-run", () => {

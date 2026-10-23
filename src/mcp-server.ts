@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import type { StdioOptions } from "node:child_process";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -18,6 +19,9 @@ type ProjectOptions = {
   stacks?: Record<string, string>;
   modules?: Record<string, string>;
 };
+
+// Keep subprocess output off the MCP JSON-RPC stdout stream, and don't let children read MCP input.
+const mcpStdio: StdioOptions = ["ignore", process.stderr, process.stderr];
 
 const selectionSchema = {
   stacks: z.record(z.string(), z.string()).optional().describe("Stack id by slot, such as { framework: 'next', api: 'hono' }."),
@@ -147,6 +151,7 @@ function createServer() {
     {
       description: "Discover the frameworks, API stacks, modules, defaults, and compatibility choices supported by this CLI's pinned Clubedge Starter release.",
       inputSchema: z.object({}),
+      annotations: { readOnlyHint: true },
     },
     async () => withTemplate(async (source) => result(capabilities(await readTemplateManifest(source.root), source))),
   );
@@ -156,6 +161,7 @@ function createServer() {
     {
       description: "Check requested stack and module choices against the pinned Starter. This does not write files.",
       inputSchema: z.object(selectionSchema),
+      annotations: { readOnlyHint: true },
     },
     async (options) => withTemplate(async (source) => {
       try {
@@ -190,7 +196,7 @@ function createServer() {
       const warnings: string[] = [];
       if (initialize_git) {
         try {
-          await initializeGit(target);
+          await initializeGit(target, mcpStdio);
         } catch (error) {
           warnings.push(`Project created, but Git initialization failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -201,7 +207,7 @@ function createServer() {
           warnings.push("Project created, but pnpm was not found. Install pnpm and run it in the project directory.");
         } else {
           try {
-            await installDependencies(target, pnpm);
+            await installDependencies(target, pnpm, [], mcpStdio);
             for (const { directory: appDirectory, app, toolchain } of plan.toolchains) {
               const [check, ...checkArgs] = toolchain.check;
               if (!(await commandSucceeds(check!, checkArgs))) {
@@ -210,7 +216,7 @@ function createServer() {
               }
               const [command, ...args] = toolchain.install;
               try {
-                await run(command!, args, resolve(target, appDirectory));
+                await run(command!, args, resolve(target, appDirectory), mcpStdio);
               } catch (error) {
                 warnings.push(`${app} dependencies did not install: ${error instanceof Error ? error.message : String(error)}`);
               }

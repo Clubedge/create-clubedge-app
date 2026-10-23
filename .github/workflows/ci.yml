@@ -28,6 +28,31 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  mcp-package-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm bundle-template
+      - name: Pack and install the published package shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm pack --pack-destination "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/packed-cli"
+          tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
+          npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
+      - name: Exercise the packed MCP server and skill
+        run: node scripts/smoke-mcp-package.mjs "$RUNNER_TEMP/packed-cli/package"
+
   # Windows runs commands through cmd.exe and has drive roots and CRLF checkouts, which have
   # broken the CLI before; these jobs keep it working there.
   check-windows:

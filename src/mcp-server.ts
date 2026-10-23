@@ -178,6 +178,50 @@ function createServer() {
   );
 
   server.registerTool(
+    "plan_project",
+    {
+      description: "Preview a complete scaffold plan using the pinned Starter. Validates stack and module compatibility and lists planned files and setup actions without writing to disk.",
+      inputSchema: z.object({
+        directory: z.string().min(1).describe("Destination path relative to the MCP server's working directory."),
+        ...selectionSchema,
+        initialize_git: z.boolean().default(false).describe("Include Git initialization in the plan."),
+        install_dependencies: z.boolean().default(false).describe("Include dependency installation in the plan."),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ directory, initialize_git, install_dependencies, ...options }) => withTemplate(async (source) => {
+      try {
+        const target = await workspaceDestination(directory);
+        const plan = await planProject(source, options, target, {
+          git: initialize_git,
+          install: install_dependencies,
+        });
+        return result({
+          valid: true,
+          directory: target,
+          destinationMustBeEmpty: true,
+          starterRef: plan.provenance.starterRef,
+          starterCommit: plan.provenance.starterCommit,
+          stacks: plan.apps.map(({ slot, id, name }) => ({ slot, id, name })),
+          modules: plan.modules.map(({ id, option, optionName }) => ({ id, option, name: optionName })),
+          fileCount: plan.files.length,
+          editCount: plan.edits.length,
+          environmentFiles: plan.envFiles.map(({ from, to }) => ({ source: from, destination: to })),
+          toolchains: plan.toolchains.map(({ directory: appDirectory, app, toolchain }) => ({
+            directory: appDirectory,
+            app,
+            name: toolchain.name,
+            install: toolchain.install,
+          })),
+          actions: describePlan(plan),
+        });
+      } catch (error) {
+        return result({ valid: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }),
+  );
+
+  server.registerTool(
     "create_project",
     {
       description: "Generate a Clubedge Starter project under the MCP server's working directory. The destination must be empty or absent. Git initialization and dependency installation are opt-in.",

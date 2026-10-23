@@ -102,11 +102,12 @@ try {
 
   const listed = await request("tools/list");
   const tools = new Map(listed.tools.map((tool) => [tool.name, tool]));
-  for (const name of ["get_starter_capabilities", "validate_project_config", "create_project"]) {
+  for (const name of ["get_starter_capabilities", "validate_project_config", "plan_project", "create_project"]) {
     assert.ok(tools.has(name), `MCP server did not register ${name}`);
   }
   assert.equal(tools.get("get_starter_capabilities").annotations?.readOnlyHint, true);
   assert.equal(tools.get("validate_project_config").annotations?.readOnlyHint, true);
+  assert.equal(tools.get("plan_project").annotations?.readOnlyHint, true);
 
   const capabilities = toolText(await callTool("get_starter_capabilities"));
   assert.ok(capabilities.starter?.ref, "Capabilities omitted the pinned Starter ref");
@@ -117,6 +118,25 @@ try {
   assert.equal(validation.valid, true, JSON.stringify(validation));
   const invalidValidation = toolText(await callTool("validate_project_config", { stacks: { framework: "not-a-stack" } }));
   assert.equal(invalidValidation.valid, false, JSON.stringify(invalidValidation));
+
+  const plan = toolText(await callTool("plan_project", { directory: "planned" }));
+  assert.equal(plan.valid, true, JSON.stringify(plan));
+  assert.equal(plan.directory, join(workspace, "planned"));
+  assert.equal(plan.destinationMustBeEmpty, true);
+  assert.ok(plan.fileCount > 0, "Project plan omitted the generated file count");
+  assert.ok(plan.actions.some((action) => action.startsWith("Create ")));
+  await assert.rejects(access(join(workspace, "planned")), "Planning unexpectedly created its destination");
+
+  const invalidPlan = toolText(await callTool("plan_project", {
+    directory: "invalid-plan",
+    stacks: { framework: "not-a-stack" },
+  }));
+  assert.equal(invalidPlan.valid, false, JSON.stringify(invalidPlan));
+  await assert.rejects(access(join(workspace, "invalid-plan")), "Invalid planning unexpectedly created its destination");
+
+  const outsidePlan = toolText(await callTool("plan_project", { directory: "../outside-plan" }));
+  assert.equal(outsidePlan.valid, false, JSON.stringify(outsidePlan));
+  await assert.rejects(access(resolve(workspace, "..", "outside-plan")));
 
   const outsideName = `clubedge-mcp-outside-${Date.now()}`;
   const outside = await callTool("create_project", { directory: `../${outsideName}` });
@@ -138,7 +158,7 @@ try {
   assert.ok(generatedPackage.name, "Scaffolded package has no name");
   await readFile(join(workspace, "generated", ".git", "HEAD"), "utf8");
 
-  console.log("MCP package smoke passed: initialize, tools, capabilities, validation, safe creation, path guard, overwrite refusal, bundled skill.");
+  console.log("MCP package smoke passed: initialize, tools, capabilities, validation, planning, safe creation, path guard, overwrite refusal, bundled skill.");
 } catch (error) {
   console.error(error);
   if (stderr) console.error(stderr);

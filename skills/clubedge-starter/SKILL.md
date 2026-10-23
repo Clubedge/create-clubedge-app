@@ -14,7 +14,7 @@ Create and manage Clubedge Starter projects through the supported CLI or MCP too
 ## Choose the interface
 
 - If the `clubedge-starter` MCP server is available, call `get_starter_capabilities` first. Treat its response as authoritative for framework/API choices, module options, defaults, and requirements.
-- Before scaffolding through MCP, call `validate_project_config` with the requested `stacks` and `modules`. Resolve any invalid combination with the user or use a compatible choice they already specified.
+- Before scaffolding through MCP, call `plan_project` with the destination `directory` and requested `stacks` and `modules`. It validates compatibility and previews the files and setup actions without writing to disk. Resolve invalid combinations and any open choices before creating the project. Use `validate_project_config` when only a compatibility check is needed and no destination plan is useful.
 - Use `create_project` to scaffold through MCP. Give `directory` as a relative path beneath the MCP server's working directory. Set `initialize_git` and `install_dependencies` to `true` only when appropriate for the user's request; both default to `false`.
 - If MCP is unavailable, use the CLI. Prefer the installed project-local executable when present; otherwise use `pnpm dlx @clubedge/create-clubedge-app <directory> --yes` and provide the requested options as CLI flags.
 - Use the CLI's `add`, `remove`, or `upgrade` commands for changes to an existing generated project. Do not reproduce those changes by manually copying Starter files.

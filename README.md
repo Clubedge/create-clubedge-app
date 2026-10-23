@@ -29,7 +29,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app
 
 ## MCP server
 
-Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, and `create_project`. Project creation does not initialize Git or install dependencies unless those options are requested.
+Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested.
 
 After publishing a release that includes the MCP server, run it from the workspace where projects should be created:
 

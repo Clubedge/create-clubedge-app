@@ -4,15 +4,24 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.37.0
 
-- Add MCP server and agent skill (#110).
+- **An MCP server for coding agents** (#110): `create-clubedge-app-mcp`, in the same package, lets an agent create projects with the CLI's pinned Starter and its compatibility rules. Run it from the workspace where projects should go:
+
+  ```sh
+  npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp
+  ```
+
+  - `get_starter_capabilities` lists the frameworks, API stacks, modules, defaults, and what each option requires.
+  - `validate_project_config` checks a choice of stacks and modules.
+  - `plan_project` previews a project: the stacks and modules, the files, the environment files, toolchains such as uv, and the setup steps. It writes nothing.
+  - `create_project` writes the project to a new or empty folder beneath the server's working directory. It refuses absolute paths, `..`, and symlinks that lead outside. Git and dependency installation are off unless asked for, and their output goes to stderr, never into the MCP stream.
+- **An agent skill**, `skills/clubedge-starter/SKILL.md`, in the package: it tells Codex, Claude Code, and other agents to plan before creating, to use `add`, `remove`, and `upgrade` for existing projects, and to fall back to the CLI without MCP. The README shows how to install it and connect the server.
+- CI and the release workflow start the MCP server from the packed package and call every tool.
 - Still on Starter `v0.24.1`.
 
 ## 0.36.0
 
-- Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group (#104).
-- Bump giget from 2.0.0 to 3.3.1 (#69).
-- Bump @types/node from 22.20.5 to 26.6.5 (#68).
-- Default to Starter `v0.24.1` (#107).
+- **Security: default to Starter `v0.24.1`** (#107). It updates the FastAPI API's locked `certifi` to 2026.10.19, for the critical advisory [GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2). If your project has `--api fastapi`, run `pnpm clubedge upgrade`, then `uv sync` in `apps/api`. The Starter's pull request previews also skip secret-backed deploys for Dependabot.
+- Dependency updates: giget 3.3.1 (#69), vitest 5.0.5 (#104), and @types/node 26.6.5 (#68).
 
 ## 0.35.0
 

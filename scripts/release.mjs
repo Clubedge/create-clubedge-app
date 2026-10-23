@@ -15,10 +15,10 @@ import {
   addRoadmapRows,
   bumpVersion,
   changelogEntry,
-  changelogLine,
   changelogSection,
   insertChangelog,
   mergedPullRequests,
+  releaseSummary,
   updatePinDocs,
   updateVersionDocs,
 } from "./release-lib.mjs";
@@ -94,7 +94,7 @@ function prepare(kind) {
   save("CONTRIBUTING.md", docs.contributing);
   let readme = docs.readme;
   if (kind !== "patch") {
-    const summary = pullRequests.map((pr) => changelogLine(pr.title)).join("; ");
+    const summary = releaseSummary(pullRequests);
     const rows = addRoadmapRows({ readme, roadmap: load("ROADMAP.md") }, next, starterRef, summary);
     readme = rows.readme;
     save("ROADMAP.md", rows.roadmap);

@@ -31,7 +31,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app
 
 Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested.
 
-After publishing a release that includes the MCP server, run it from the workspace where projects should be created:
+Run it from the workspace where projects should be created:
 
 ```sh
 npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp
@@ -50,7 +50,7 @@ The MCP server is included in the same package and uses the CLI's bundled Starte
 
 ### Agent skill
 
-The npm package includes the Agent Skill at [`skills/clubedge-starter/SKILL.md`](skills/clubedge-starter/SKILL.md). After the release is published, download and extract the package in PowerShell:
+The npm package includes the Agent Skill at [`skills/clubedge-starter/SKILL.md`](skills/clubedge-starter/SKILL.md). Download and extract the package in PowerShell:
 
 ```powershell
 $skillTarball = npm pack @clubedge/create-clubedge-app@latest
@@ -69,7 +69,7 @@ New-Item -ItemType Directory -Force "$HOME/.claude/skills/clubedge-starter" | Ou
 Copy-Item .\package\skills\clubedge-starter\SKILL.md "$HOME/.claude/skills/clubedge-starter/SKILL.md"
 ```
 
-These commands create `package/` in the current directory. Remove that extracted folder and tarball when the copy is done. Before publication, the same copy commands work from the repository root by replacing `package/skills/...` with `skills/...`.
+These commands create `package/` in the current directory. Remove that extracted folder and tarball when the copy is done. From a clone of this repository, the same copy commands work with `skills/...` instead of `package/skills/...`.
 
 For a repository-only install, use `.agents/skills/clubedge-starter/` for Codex or `.claude/skills/clubedge-starter/` for Claude Code instead of the `$HOME` paths. Restart the agent session after installing. In Codex, ask it to `Use the clubedge-starter skill to inspect the available stacks and modules. Do not create a project.` In Claude Code, invoke `/clubedge-starter` and give it the same request. The skill uses live MCP capabilities when available, so its choices follow the Starter release installed with the server.
 
@@ -457,10 +457,9 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.32.0 | v0.21.0 | Pluggable authentication: `--auth firebase` and `--auth appwrite` next to Supabase and Better Auth, and a conformance suite every provider passes |
 | 0.33.0 | v0.22.0 | Starter v0.22.0: stack packs (template schema 4), and a React + Vite frontend with a separate Hono API (`--framework vite --api hono`) |
 | 0.34.0 | v0.23.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
-| 0.35.0 | v0.24.0 | Deploy frontend and API stack packs; Default to Starter v0.24.0 |
-| 0.36.0 | v0.24.1 | Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group; Bump giget from 2.0.0 to 3.3.1; Bump @types/node from 22.20.5 to 26.6.5; Default to Starter v0.24.1 |
-| 0.37.0 | v0.24.1 | Add MCP server and agent skill |
-| next | | Show the Starter's version of a conflicted file next to yours |
+| 0.35.0 | v0.24.0 | `deploy` for a frontend and its API (Docker Compose, Railway); Starter v0.24.0: all four auth providers on React + Vite with Hono or FastAPI |
+| 0.36.0 | v0.24.1 | Starter v0.24.1: security update of FastAPI's `certifi`; dependency updates |
+| 0.37.0 | v0.24.1 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
 
 ## Community
 

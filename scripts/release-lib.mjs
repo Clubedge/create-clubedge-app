@@ -79,6 +79,14 @@ export function changelogLine(title) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** The release table's row text: the pull requests' lines, without dependency bumps unless that is all there is. */
+export function releaseSummary(pullRequests) {
+  const isBump = (pr) => /^(chore|build)\(deps(-dev)?\):/.test(pr.title);
+  const features = pullRequests.filter((pr) => !isBump(pr));
+  if (!features.length) return "Dependency updates";
+  return features.map((pr) => changelogLine(pr.title)).join("; ");
+}
+
 /** The draft entry for a release: one line per pull request, then the Starter it uses. */
 export function changelogEntry(version, pullRequests, starterRef, pinChanged) {
   // The Starter pin pull request ("feat: default to Starter vX") already says what the pin line would.

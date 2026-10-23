@@ -15,18 +15,36 @@ export function serviceName(packageName: string): string {
   return name || "web";
 }
 
-/** A Docker Compose production topology rendered from the selected stack service descriptors. */
-export function dockerComposeSource(services: Record<string, ProjectService>): string {
+/**
+ * A Docker Compose production topology rendered from the selected stack service descriptors.
+ * `frontendKeys` are the variables the frontend's env example lists: its VITE_* values become build
+ * arguments (Vite compiles them in), the others runtime variables, such as Better Auth's when the
+ * frontend's server runs auth. Compose reads their values from its --env-file.
+ */
+export function dockerComposeSource(services: Record<string, ProjectService>, frontendKeys: string[] = []): string {
   const api = Object.values(services).find((service) => service.role === "api");
-  const rows = Object.entries(services).map(([slot, service]) => {
+  const web = Object.values(services).find((service) => service.role === "frontend");
+  const mapping = (indent: string, values: Array<[string, string]>) => values.map(([key, value]) => `\n${indent}${key}: ${value}`).join("");
+  const fromEnv = (key: string, fallback = "") => `\${${key}:-${fallback}}`;
+  const buildKeys = frontendKeys.filter((key) => key.startsWith("VITE_"));
+  // API_URL is the API's address on the Compose network, and PORT the one the image declares.
+  const runtimeKeys = frontendKeys.filter((key) => !key.startsWith("VITE_") && key !== "API_URL" && key !== "PORT");
+  // Better Auth runs in the frontend's server: the API asks it for the session over the Compose network.
+  const authUrl = web && frontendKeys.includes("BETTER_AUTH_URL") ? `http://${web.id}:${web.port}` : null;
+  const rows = Object.entries(services).map(([, service]) => {
     const name = service.id;
     const frontend = service.role === "frontend";
-    const buildArgs = frontend
-      ? `\n      args:\n        VITE_SUPABASE_URL: \${VITE_SUPABASE_URL:-}\n        VITE_SUPABASE_PUBLISHABLE_KEY: \${VITE_SUPABASE_PUBLISHABLE_KEY:-}`
+    const buildArgs = frontend && buildKeys.length
+      ? `\n      args:${mapping("        ", buildKeys.map((key) => [key, fromEnv(key)]))}`
       : "";
+    // Better Auth's public URL defaults to the port Compose publishes.
+    const runtime = runtimeKeys.map((key): [string, string] => [key, fromEnv(key, key === "BETTER_AUTH_URL" ? `http://localhost:${service.port}` : "")]);
+    // The API listens on every interface, whatever HOST the env file has from development.
+    const apiValues: Array<[string, string]> = [["HOST", "0.0.0.0"], ...(authUrl ? [["BETTER_AUTH_URL", authUrl] as [string, string]] : [])];
+    const apiEnv = service.role === "api" ? `\n    environment:${mapping("      ", apiValues)}` : "";
     const env = frontend && api
-      ? `\n    environment:\n      API_URL: http://${api.id}:${api.port}`
-      : `\n    env_file:\n      - path: .env.production\n        required: false`;
+      ? `\n    environment:${mapping("      ", [["API_URL", `http://${api.id}:${api.port}`], ...runtime])}`
+      : `\n    env_file:\n      - path: .env.production\n        required: false${apiEnv}`;
     const ports = frontend ? `\n    ports:\n      - "${service.port}:${service.port}"` : `\n    expose:\n      - "${service.port}"`;
     const depends = frontend && api ? `\n    depends_on:\n      - ${api.id}` : "";
     return `  ${name}:\n    build:\n      context: .\n      dockerfile: ${service.dockerfile}${buildArgs}${env}${ports}${depends}`;
@@ -149,6 +167,56 @@ export function planVariables(input: {
   // Optional: without it, migrations and the jobs worker use DATABASE_URL.
   const unset = keys.filter((key) => set[key] === undefined && !existing[key] && key !== "DATABASE_URL_DIRECT");
   return { set, unset };
+}
+
+/**
+ * The variables of a frontend and an API deployed as two services. The API gets what planVariables
+ * provides with the env file's server values, and the frontend's URL. The frontend gets its port,
+ * the env file's VITE_* build values, and the runtime values its own example lists. With Better
+ * Auth the frontend's server runs auth: it gets the API's database, the secret (generated unless
+ * the service already has one), and BETTER_AUTH_URL, the public URL the API asks for the session.
+ * Each service's unset variables come from its own example.
+ */
+export function planServicePair(input: {
+  modules: Record<string, string>;
+  frontendKeys: string[];
+  apiKeys: string[];
+  url: string;
+  existing: { frontend: Record<string, string>; api: Record<string, string> };
+  envFile: Record<string, string>;
+  secret: () => string;
+  databases: Record<string, string>;
+  ports: { frontend: number; api: number };
+}): { frontend: VariablePlan; api: VariablePlan } {
+  const { modules, frontendKeys, apiKeys, url, existing, envFile, secret, databases, ports } = input;
+  const betterAuth = modules.auth === "better-auth";
+  // A development env file's localhost URL would send sign-in links to this machine.
+  const authUrl = envFile.BETTER_AUTH_URL && !isLocalUrl(envFile.BETTER_AUTH_URL) ? envFile.BETTER_AUTH_URL : url;
+
+  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_")));
+  const api = planVariables({ modules, keys: apiKeys, url, existing: existing.api, envFile: apiEnv, secret, databases, port: ports.api });
+  // Better Auth's secret belongs to the frontend's server; the API only asks it for the session.
+  if (!apiEnv.BETTER_AUTH_SECRET) delete api.set.BETTER_AUTH_SECRET;
+  api.set.FRONTEND_URL = url;
+  if (betterAuth) api.set.BETTER_AUTH_URL = authUrl;
+  // The image listens on every interface: its Dockerfile sets HOST.
+  api.unset = api.unset.filter((key) => api.set[key] === undefined && key !== "HOST");
+
+  // railway.ts sets API_URL to the API's private address; the platform provides the database.
+  const provided = ["API_URL", "PORT", "BETTER_AUTH_URL", ...Object.values(databaseVariables), "DATABASE_URL_DIRECT"];
+  const set: Record<string, string> = { PORT: String(ports.frontend) };
+  for (const [key, value] of Object.entries(envFile)) {
+    if (value && (key.startsWith("VITE_") || (frontendKeys.includes(key) && !provided.includes(key)))) set[key] = value;
+  }
+  if (betterAuth) {
+    const database = api.set.DATABASE_URL ?? existing.api.DATABASE_URL;
+    if (database) set.DATABASE_URL = database;
+    set.BETTER_AUTH_URL = authUrl;
+    if (!set.BETTER_AUTH_SECRET && !existing.frontend.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
+  }
+  // Optional: without VITE_API_URL the browser calls the API through the frontend's /api proxy.
+  const unset = frontendKeys.filter((key) => set[key] === undefined && !existing.frontend[key] && !["API_URL", "VITE_API_URL"].includes(key));
+  return { frontend: { set, unset }, api };
 }
 
 /**

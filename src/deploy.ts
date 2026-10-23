@@ -28,6 +28,7 @@ import {
   parseEnvFile,
   parseRailwayDomain,
   parseVariables,
+  planServicePair,
   planVariables,
   railwayCliVersion,
   railwayDatabases,
@@ -317,39 +318,37 @@ async function deployRailwayServices(
   if (!domain) throw new Error("Railway created no frontend domain. Create one in its settings, then run deploy again.");
   const url = `https://${domain}`;
 
-  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_")));
-  const apiPlan = planVariables({
+  const listedWebVars = await attempt(() => railway(rw, ["variable", "list", "--service", names.frontend, "--json"]));
+  if (listedWebVars === null && existing.includes(names.frontend)) {
+    throw new Error(`Railway didn't list the variables of the frontend service "${names.frontend}", so deploy changed nothing. Run deploy again; if it keeps failing, check \`railway variable list --service ${names.frontend}\`.`);
+  }
+  const webVars = parseVariables(listedWebVars ?? "");
+  const plan = planServicePair({
     modules: project.modules,
-    keys: keys.filter((key) => !key.startsWith("VITE_")),
+    frontendKeys: keys,
+    apiKeys: exampleKeys(await readFile(join(project.root, apiStack.app, ".env.example"), "utf8").catch(() => "")),
     url,
-    existing: apiVars,
-    envFile: apiEnv,
+    existing: { frontend: webVars, api: apiVars },
+    envFile,
     secret: () => randomBytes(32).toString("hex"),
     databases: railwayReferences(databases),
-    port: apiStack.port,
+    ports: { frontend: frontendStack.port, api: apiStack.port },
   });
-  apiPlan.set.FRONTEND_URL = url;
-  if (apiPlan.unset.length) {
-    log.warn(`Not set on the API service: ${apiPlan.unset.join(", ")}. Pass --env-file to supply values before deployment.`);
+  const unset = [
+    ...(plan.api.unset.length ? [`Not set on the API service: ${plan.api.unset.join(", ")}.`] : []),
+    ...(plan.frontend.unset.length ? [`Not set on the frontend service: ${plan.frontend.unset.join(", ")}.`] : []),
+  ];
+  if (unset.length) {
+    log.warn(`${unset.join("\n")}\nPass --env-file to supply values before deployment.`);
     if (process.stdin.isTTY && !args.yes) {
       const proceed = await confirm({ message: "Deploy anyway?", initialValue: true });
       if (isCancel(proceed) || !proceed) return cancel("Nothing was uploaded. Set the variables, then run deploy again.");
     }
   }
-  for (const [key, value] of Object.entries(apiPlan.set)) {
+  for (const [key, value] of Object.entries(plan.api.set)) {
     if (apiVars[key] !== value) await railway(rw, ["variable", "set", key, "--stdin", "--service", names.api, "--skip-deploys"], { input: value });
   }
-  const webVars = parseVariables(await attempt(() => railway(rw, ["variable", "list", "--service", names.frontend, "--json"])) ?? "");
-  const missingWebBuildVars = keys.filter((key) => key.startsWith("VITE_") && !envFile[key] && !webVars[key]);
-  if (missingWebBuildVars.length) {
-    log.warn(`Not set on the frontend service: ${missingWebBuildVars.join(", ")}. Pass --env-file to provide them.`);
-    if (process.stdin.isTTY && !args.yes) {
-      const proceed = await confirm({ message: "Deploy anyway?", initialValue: true });
-      if (isCancel(proceed) || !proceed) return cancel("Nothing was uploaded. Set the variables, then run deploy again.");
-    }
-  }
-  const webSet = { PORT: String(frontendStack.port), ...Object.fromEntries(Object.entries(envFile).filter(([key, value]) => key.startsWith("VITE_") && value)) };
-  for (const [key, value] of Object.entries(webSet)) {
+  for (const [key, value] of Object.entries(plan.frontend.set)) {
     if (webVars[key] !== value) await railway(rw, ["variable", "set", key, "--stdin", "--service", names.frontend, "--skip-deploys"], { input: value });
   }
 
@@ -413,7 +412,8 @@ export async function deployProject(args: CliArgs): Promise<void> {
     if (unsupported.length) {
       throw new UsageError(`The selected stacks do not declare Docker deployment support for ${unsupported.map(([slot]) => slot).join(", ")}.`);
     }
-    const compose = dockerComposeSource(Object.fromEntries(separateApps));
+    const frontendKeys = exampleKeys(await readFile(join(project.root, ".env.example"), "utf8").catch(() => ""));
+    const compose = dockerComposeSource(Object.fromEntries(separateApps), frontendKeys);
     if (args.dryRun) {
       log.message(`Docker Compose will start ${separateApps.map(([slot, service]) => `${slot} (${service.dockerfile}, port ${service.port})`).join(" and ")}; the frontend proxies /api to the API over the Compose network.`);
       outro("Dry run: nothing was written. Run deploy to generate compose.yaml.");
@@ -423,7 +423,8 @@ export async function deployProject(args: CliArgs): Promise<void> {
     if (await pathExists(path)) throw new UsageError("compose.yaml already exists. Review it and remove it before generating the stack configuration again.");
     await writeFile(path, compose);
     note(`Generated compose.yaml for ${separateApps.map(([slot]) => slot).join(" and ")}.`, "Docker Compose deployment");
-    outro(`Copy .env.example to .env.production and set its values, then run from the project root:\n  docker compose --env-file .env.production up --build -d\n\nThe frontend is published on its declared port; the API stays on the private Compose network.`);
+    const examples = [".env.example", ...separateApps.filter(([, service]) => service.role === "api").map(([, service]) => `${service.app}/.env.example`)];
+    outro(`Copy the variables of ${examples.join(" and ")} to .env.production and set their values, then run from the project root:\n  docker compose --env-file .env.production up --build -d\n\nThe frontend is published on its declared port; the API stays on the private Compose network.`);
     return;
   }
   if (separateApps.length > 1) {

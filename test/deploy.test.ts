@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import {
   databasesFor,
+  dockerComposeSource,
   externalDatabaseUrls,
   isLocalUrl,
   deploymentStatus,
@@ -16,6 +17,7 @@ import {
   parseRedisUrl,
   parseRailwayDomain,
   parseVariables,
+  planServicePair,
   planVariables,
   railwayCliVersion,
   railwayIacSource,
@@ -40,6 +42,7 @@ import {
   vercelIgnoreSource,
   vercelProductionUrl,
 } from "../src/core/deploy.js";
+import type { ProjectService } from "../src/core/manifest.js";
 
 describe("deploy plan", () => {
   it("names the service after the package", () => {
@@ -154,6 +157,132 @@ describe("deploy plan", () => {
 
   it("needs no secret without Better Auth", () => {
     expect(planVariables({ ...base, modules: { auth: "none", cache: "memory" } }).set).not.toHaveProperty("BETTER_AUTH_SECRET");
+  });
+});
+
+const pairServices: Record<string, ProjectService> = {
+  framework: { id: "web", role: "frontend", app: "apps/web", dockerfile: "Dockerfile", port: 3000, healthPath: "/", platforms: ["docker", "railway"] },
+  api: { id: "api", role: "api", app: "apps/api", dockerfile: "apps/api/Dockerfile", port: 3001, healthPath: "/api/health", platforms: ["docker", "railway"] },
+};
+const betterAuthFrontendKeys = [
+  "API_URL",
+  "VITE_API_URL",
+  "DATABASE_URL",
+  "BETTER_AUTH_SECRET",
+  "BETTER_AUTH_URL",
+  "RESEND_API_KEY",
+  "EMAIL_FROM",
+  "BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION",
+];
+
+describe("Docker Compose for a frontend and an API", () => {
+  it("builds the frontend with the VITE_* values its example lists", () => {
+    const firebase = dockerComposeSource(pairServices, ["API_URL", "VITE_API_URL", "VITE_FIREBASE_API_KEY", "VITE_FIREBASE_PROJECT_ID", "VITE_FIREBASE_AUTH_DOMAIN"]);
+    expect(firebase).toContain(
+      "      args:\n        VITE_API_URL: ${VITE_API_URL:-}\n        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}\n        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}\n        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}\n",
+    );
+    expect(firebase).not.toContain("VITE_SUPABASE_URL");
+    expect(firebase).toContain("    environment:\n      API_URL: http://api:3001\n    ports:");
+    expect(firebase).not.toContain("BETTER_AUTH_URL");
+
+    const appwrite = dockerComposeSource(pairServices, ["API_URL", "VITE_APPWRITE_ENDPOINT", "VITE_APPWRITE_PROJECT_ID"]);
+    expect(appwrite).toContain("        VITE_APPWRITE_ENDPOINT: ${VITE_APPWRITE_ENDPOINT:-}\n        VITE_APPWRITE_PROJECT_ID: ${VITE_APPWRITE_PROJECT_ID:-}");
+    expect(dockerComposeSource(pairServices)).not.toContain("args:");
+  });
+
+  it("gives the frontend's server Better Auth's runtime variables, and the API its address", () => {
+    const source = dockerComposeSource(pairServices, betterAuthFrontendKeys);
+    expect(source).toContain("      args:\n        VITE_API_URL: ${VITE_API_URL:-}\n    environment:");
+    expect(source).toContain(
+      [
+        "    environment:",
+        "      API_URL: http://api:3001",
+        "      DATABASE_URL: ${DATABASE_URL:-}",
+        "      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}",
+        "      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}",
+        "      RESEND_API_KEY: ${RESEND_API_KEY:-}",
+        "      EMAIL_FROM: ${EMAIL_FROM:-}",
+        "      BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION: ${BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION:-}",
+        "    ports:",
+      ].join("\n"),
+    );
+    // The API reads .env.production, and asks the frontend's server for the session over the Compose network.
+    expect(source).toContain(
+      "  api:\n    build:\n      context: .\n      dockerfile: apps/api/Dockerfile\n    env_file:\n      - path: .env.production\n        required: false\n    environment:\n      HOST: 0.0.0.0\n      BETTER_AUTH_URL: http://web:3000\n    expose:",
+    );
+  });
+});
+
+describe("Railway variables for a frontend and an API", () => {
+  const apiKeys = ["HOST", "PORT", "FRONTEND_URL", "DATABASE_URL", "DATABASE_URL_DIRECT", "BETTER_AUTH_URL"];
+  const pair = {
+    modules: { auth: "better-auth", cache: "memory" },
+    frontendKeys: betterAuthFrontendKeys,
+    apiKeys,
+    url: "https://notes-web.up.railway.app",
+    existing: { frontend: {}, api: {} },
+    envFile: {},
+    secret: () => "s3cret",
+    databases: { DATABASE_URL: "${{Postgres.DATABASE_URL}}" },
+    ports: { frontend: 3000, api: 3001 },
+  };
+
+  it("runs Better Auth in the frontend's server, with the API's database and the public URL", () => {
+    const plan = planServicePair({ ...pair, envFile: { RESEND_API_KEY: "re_x", EMAIL_FROM: "a@b.co", BETTER_AUTH_URL: "http://localhost:3000" } });
+    expect(plan.frontend.set).toEqual({
+      PORT: "3000",
+      RESEND_API_KEY: "re_x",
+      EMAIL_FROM: "a@b.co",
+      DATABASE_URL: "${{Postgres.DATABASE_URL}}",
+      BETTER_AUTH_URL: "https://notes-web.up.railway.app",
+      BETTER_AUTH_SECRET: "s3cret",
+    });
+    expect(plan.frontend.unset).toEqual(["BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION"]);
+    expect(plan.api.set).toMatchObject({
+      PORT: "3001",
+      DATABASE_URL: "${{Postgres.DATABASE_URL}}",
+      FRONTEND_URL: "https://notes-web.up.railway.app",
+      BETTER_AUTH_URL: "https://notes-web.up.railway.app",
+    });
+    // The secret is the frontend's; the API only asks it for the session.
+    expect(plan.api.set).not.toHaveProperty("BETTER_AUTH_SECRET");
+    // The API's own example decides what it reports; HOST comes from its image.
+    expect(plan.api.unset).toEqual([]);
+  });
+
+  it("keeps the frontend's secret, and a public Better Auth URL from the env file", () => {
+    const plan = planServicePair({
+      ...pair,
+      existing: { frontend: { BETTER_AUTH_SECRET: "kept" }, api: {} },
+      envFile: { BETTER_AUTH_URL: "https://app.example.com" },
+    });
+    expect(plan.frontend.set).not.toHaveProperty("BETTER_AUTH_SECRET");
+    expect(plan.frontend.set.BETTER_AUTH_URL).toBe("https://app.example.com");
+    expect(plan.api.set.BETTER_AUTH_URL).toBe("https://app.example.com");
+  });
+
+  it("gives the frontend the database the API keeps, or the hosted one from the env file", () => {
+    const kept = planServicePair({ ...pair, databases: {}, existing: { frontend: {}, api: { DATABASE_URL: "postgresql://u:p@db.neon.tech/app" } } });
+    expect(kept.frontend.set.DATABASE_URL).toBe("postgresql://u:p@db.neon.tech/app");
+    const hosted = planServicePair({ ...pair, envFile: { DATABASE_URL: "postgresql://u:p@db.supabase.co/postgres" } });
+    expect(hosted.frontend.set.DATABASE_URL).toBe("postgresql://u:p@db.supabase.co/postgres");
+    expect(hosted.api.set.DATABASE_URL).toBe("postgresql://u:p@db.supabase.co/postgres");
+  });
+
+  it("sends VITE_* values to the frontend only, and reports each service's unset variables from its own example", () => {
+    const plan = planServicePair({
+      ...pair,
+      modules: { auth: "supabase", cache: "memory" },
+      frontendKeys: ["API_URL", "VITE_API_URL", "VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY"],
+      apiKeys: ["HOST", "PORT", "FRONTEND_URL", "DATABASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"],
+      envFile: { VITE_SUPABASE_URL: "https://x.supabase.co", SUPABASE_URL: "https://x.supabase.co", API_URL: "http://127.0.0.1:3001" },
+    });
+    expect(plan.frontend.set).toEqual({ PORT: "3000", VITE_SUPABASE_URL: "https://x.supabase.co" });
+    expect(plan.frontend.unset).toEqual(["VITE_SUPABASE_PUBLISHABLE_KEY"]);
+    expect(plan.api.set).not.toHaveProperty("VITE_SUPABASE_URL");
+    expect(plan.api.set).toMatchObject({ SUPABASE_URL: "https://x.supabase.co" });
+    expect(plan.api.set).not.toHaveProperty("BETTER_AUTH_URL");
+    expect(plan.api.unset).toEqual(["SUPABASE_PUBLISHABLE_KEY"]);
   });
 });
 

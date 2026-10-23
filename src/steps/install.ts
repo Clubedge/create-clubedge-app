@@ -1,4 +1,5 @@
 import process from "node:process";
+import type { StdioOptions } from "node:child_process";
 import { commandSucceeds, run } from "../utils/process.js";
 
 /** The generated workspace relies on pnpm features (workspace:* and pnpm-workspace.yaml). */
@@ -14,7 +15,12 @@ export function detectLauncher(userAgent = process.env.npm_config_user_agent): s
   return name && ["npm", "pnpm", "yarn", "bun"].includes(name) ? name : null;
 }
 
-export async function installDependencies(directory: string, pnpm: string[], args: string[] = []): Promise<void> {
+export async function installDependencies(
+  directory: string,
+  pnpm: string[],
+  args: string[] = [],
+  stdio?: StdioOptions,
+): Promise<void> {
   const [command, ...prefix] = pnpm;
-  await run(command!, [...prefix, "install", ...args], directory);
+  await run(command!, [...prefix, "install", ...args], directory, stdio);
 }

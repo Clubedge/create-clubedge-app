@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions, type StdioOptions } from "node:child_process";
 import process from "node:process";
 
 // Package manager shims on Windows are .cmd files, which need a shell to start.
@@ -19,9 +19,9 @@ export function spawnCommand(command: string, args: string[], options: SpawnOpti
 }
 
 /** Runs a command with inherited output. Rejects on a non-zero exit. */
-export async function run(command: string, args: string[], cwd: string): Promise<void> {
+export async function run(command: string, args: string[], cwd: string, stdio: StdioOptions = "inherit"): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawnCommand(command, args, { cwd, stdio: "inherit" });
+    const child = spawnCommand(command, args, { cwd, stdio });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();

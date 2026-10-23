@@ -87,6 +87,7 @@ jobs:
                   mkdir -p "$package_dir" "$RUNNER_TEMP/generated-app"
                   tar -xzf "$package_tarball" -C "$package_dir"
                   npm install --prefix "$package_dir/package" --omit=dev --ignore-scripts
+                  node "$GITHUB_WORKSPACE/scripts/smoke-mcp-package.mjs" "$package_dir/package"
                   node "$package_dir/package/bin/create.mjs" \
                     "$RUNNER_TEMP/generated-app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --no-git --no-install --yes
                   test -f "$RUNNER_TEMP/generated-app/package.json"

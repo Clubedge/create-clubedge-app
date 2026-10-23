@@ -27,6 +27,61 @@ Add, remove, or upgrade them later without losing your own changes.
 pnpm dlx @clubedge/create-clubedge-app my-app
 ```
 
+## MCP server
+
+Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested.
+
+After publishing a release that includes the MCP server, run it from the workspace where projects should be created:
+
+```sh
+npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp
+```
+
+Configure an MCP client to launch `npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp` with its working directory set to the workspace. In Codex, add this to `~/.codex/config.toml` and replace the example with the absolute path of the workspace where projects should be created:
+
+```toml
+[mcp_servers.clubedge-starter]
+command = "npx"
+args = ["--yes", "--package", "@clubedge/create-clubedge-app", "create-clubedge-app-mcp"]
+cwd = "D:/path/to/workspace"
+```
+
+The MCP server is included in the same package and uses the CLI's bundled Starter and compatibility rules. Its create tool only writes beneath the configured working directory and refuses a non-empty destination.
+
+### Agent skill
+
+The npm package includes the Agent Skill at [`skills/clubedge-starter/SKILL.md`](skills/clubedge-starter/SKILL.md). After the release is published, download and extract the package in PowerShell:
+
+```powershell
+$skillTarball = npm pack @clubedge/create-clubedge-app@latest
+tar -xzf $skillTarball
+```
+
+Then install it for the current user:
+
+```powershell
+# Codex
+New-Item -ItemType Directory -Force "$HOME/.agents/skills/clubedge-starter" | Out-Null
+Copy-Item .\package\skills\clubedge-starter\SKILL.md "$HOME/.agents/skills/clubedge-starter/SKILL.md"
+
+# Claude Code
+New-Item -ItemType Directory -Force "$HOME/.claude/skills/clubedge-starter" | Out-Null
+Copy-Item .\package\skills\clubedge-starter\SKILL.md "$HOME/.claude/skills/clubedge-starter/SKILL.md"
+```
+
+These commands create `package/` in the current directory. Remove that extracted folder and tarball when the copy is done. Before publication, the same copy commands work from the repository root by replacing `package/skills/...` with `skills/...`.
+
+For a repository-only install, use `.agents/skills/clubedge-starter/` for Codex or `.claude/skills/clubedge-starter/` for Claude Code instead of the `$HOME` paths. Restart the agent session after installing. In Codex, ask it to `Use the clubedge-starter skill to inspect the available stacks and modules. Do not create a project.` In Claude Code, invoke `/clubedge-starter` and give it the same request. The skill uses live MCP capabilities when available, so its choices follow the Starter release installed with the server.
+
+To connect the MCP server in Claude Code, run this from the workspace where projects should be created:
+
+```sh
+claude mcp add --scope local --transport stdio clubedge-starter -- npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp
+claude mcp get clubedge-starter
+```
+
+Then open Claude Code in that workspace, invoke `/clubedge-starter`, and ask it to inspect the available stacks and modules without creating a project. In Codex, use the `cwd` in `~/.codex/config.toml` above, restart Codex, and ask the same prompt. To exercise project creation, ask the agent to create a named project in a new child folder with Git and dependency installation disabled; verify the folder and report before enabling those optional actions.
+
 ## Why create-clubedge-app
 
 Copying a starter is easy; living with it is not. You delete the services you don't use by hand, and once you've changed the code, every later improvement to the starter has to be copied over by hand too.

@@ -1,17 +1,19 @@
 {
   "name": "@clubedge/create-clubedge-app",
   "version": "0.36.0",
-  "description": "Create a React app with Next.js, TanStack Start, or Vite and a separate API from the Clubedge Starter.",
+  "description": "Create React apps from Clubedge Starter with a CLI or local MCP server.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
   "bin": {
-    "create-clubedge-app": "./bin/create.mjs"
+    "create-clubedge-app": "./bin/create.mjs",
+    "create-clubedge-app-mcp": "./bin/mcp.mjs"
   },
   "files": [
     "bin/",
     "dist/",
     "template/",
     "template.lock.json",
+    "skills/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -40,7 +42,10 @@
     "nextjs",
     "tanstack-start",
     "starter",
-    "scaffolding"
+    "scaffolding",
+    "mcp",
+    "model-context-protocol",
+    "ai-agent"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -52,10 +57,12 @@
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
     "@clack/prompts": "^1.8.1",
     "giget": "^3.3.1",
     "node-diff3": "^3.2.1",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "zod": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

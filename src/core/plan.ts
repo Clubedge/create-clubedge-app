@@ -513,8 +513,11 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
   }
 
   const envFiles = selected
-    .map(({ slot, stack }) => ({ from: slot.env.example, to: slot.env.target, role: stack.role }))
+    .map(({ slot }) => ({ from: slot.env.example, to: slot.env.target }))
     .filter(({ from }) => has(from));
+  // The API's env file even when its example is missing, as databaseEnvFile(project) resolves it
+  // later from the API's service, so the URLs written at creation are where commands look.
+  const apiEnvFile = selected.find(({ stack }) => stack.role === "api")?.slot.env.target;
 
   return {
     targetDirectory: input.targetDirectory,
@@ -524,8 +527,8 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     modules,
     files,
     edits,
-    envFiles: envFiles.map(({ from, to }) => ({ from, to })),
-    databaseEnvFile: (envFiles.find(({ role }) => role === "api") ?? envFiles[0])?.to ?? null,
+    envFiles,
+    databaseEnvFile: apiEnvFile ?? envFiles[0]?.to ?? null,
     toolchains: selected.flatMap(({ slot, stack }) =>
       stack.toolchain ? [{ directory: slot.path, app: stack.name, toolchain: stack.toolchain }] : [],
     ),

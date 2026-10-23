@@ -257,18 +257,21 @@ export function savedDatabaseFor(databases: NeonDatabase[], url: string | undefi
 
 /* ------------------------------ Env files ------------------------------ */
 
+/** A KEY= line, with or without `export`, as parseEnvFile reads it. */
+const assignment = (key: string, flags = "") => new RegExp(`^\\s*(export\\s+)?${key}\\s*=`, flags);
+
 /**
- * Sets variables in an env file's text: each KEY= line is replaced (the first one; a comment after
- * the value goes), and a missing variable is added at the end.
+ * Sets variables in an env file's text: each KEY= line is replaced (the first one, keeping its
+ * `export`; a comment after the value goes), and a missing variable is added at the end.
  */
 export function setEnvValues(text: string, values: Record<string, string>): string {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);
   const missing: string[] = [];
   for (const [key, value] of Object.entries(values)) {
-    const at = lines.findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
+    const at = lines.findIndex((line) => assignment(key).test(line));
     if (at === -1) missing.push(`${key}=${value}`);
-    else lines[at] = `${key}=${value}`;
+    else lines[at] = `${assignment(key).exec(lines[at]!)![1] ? "export " : ""}${key}=${value}`;
   }
   let result = lines.join(eol);
   if (missing.length) {
@@ -283,7 +286,7 @@ export function setEnvValues(text: string, values: Record<string, string>): stri
  * for another app that connects to the database too, such as Better Auth's server in a Vite frontend.
  */
 export function setDeclaredEnvValues(text: string, values: Record<string, string>): string | null {
-  const declared = Object.entries(values).filter(([key]) => new RegExp(`^\\s*${key}\\s*=`, "m").test(text));
+  const declared = Object.entries(values).filter(([key]) => assignment(key, "m").test(text));
   return declared.length ? setEnvValues(text, Object.fromEntries(declared)) : null;
 }
 

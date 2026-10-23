@@ -272,4 +272,35 @@ describe("modules with stacks", () => {
     expect(plan.provenance.stacks).toEqual({ framework: "vite", api: "fastapi" });
     expect(describePlan(plan)).toContain("Install the FastAPI app's dependencies in apps/api with uv");
   });
+
+  it("keeps the database in the API's env file when its example is missing", () => {
+    const plan = createPlan({
+      targetDirectory: "/projects/my-product",
+      identity: { packageName: "my-product", displayName: "My Product" },
+      source: {
+        repository: "Clubedge/clubedge-starter",
+        ref: "v1.0.0",
+        files: [
+          "package.json",
+          "apps/web/package.json",
+          "apps/vite/package.json",
+          "apps/vite/.env.example",
+          "apps/vite/clubedge.stack.json",
+          "apps/api-python/pyproject.toml",
+          "apps/api-python/Dockerfile",
+          "apps/api-python/src/config/site.json",
+          "packages/contract/package.json",
+          "clubedge/modules/auth.json",
+        ].map((path) => ({ from: path, to: path })),
+      },
+      manifest,
+      stacks: { framework: "vite", api: "fastapi" },
+      cliVersion: "9.9.9",
+      git: false,
+      install: true,
+    });
+    expect(plan.envFiles).toEqual([{ from: ".env.example", to: "apps/web/.env.local" }]);
+    // Where databaseEnvFile(project) looks later, from the API's service.
+    expect(plan.databaseEnvFile).toBe("apps/api/.env.local");
+  });
 });

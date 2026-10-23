@@ -169,6 +169,12 @@ describe("setEnvValues", () => {
     );
     expect(setDeclaredEnvValues("VITE_API_URL=\n", values)).toBeNull();
   });
+
+  it("replaces exported assignments and keeps their export", () => {
+    const text = "export DATABASE_URL=postgresql://local\n";
+    expect(setEnvValues(text, { DATABASE_URL: pooled })).toBe(`export DATABASE_URL=${pooled}\n`);
+    expect(setDeclaredEnvValues(text, { DATABASE_URL: pooled })).toBe(`export DATABASE_URL=${pooled}\n`);
+  });
 });
 
 describe("the database's env file", () => {

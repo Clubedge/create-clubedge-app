@@ -27,6 +27,28 @@ Add, remove, or upgrade them later without losing your own changes.
 pnpm dlx @clubedge/create-clubedge-app my-app
 ```
 
+## MCP server
+
+Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, and `create_project`. Project creation does not initialize Git or install dependencies unless those options are requested.
+
+After publishing a release that includes the MCP server, run it from the workspace where projects should be created:
+
+```sh
+npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp
+```
+
+Configure an MCP client to launch `npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp` with its working directory set to the workspace. For Codex, the equivalent command is:
+
+```sh
+codex mcp add clubedge-starter -- npx -y --package @clubedge/create-clubedge-app create-clubedge-app-mcp
+```
+
+The MCP server is included in the same package and uses the CLI's bundled Starter and compatibility rules. Its create tool only writes beneath the configured working directory and refuses a non-empty destination.
+
+### Agent skill
+
+The package also includes an installable Agent Skill at [`skills/clubedge-starter/SKILL.md`](skills/clubedge-starter/SKILL.md). Copy that directory into your agent's skills folder to teach it when and how to use the CLI or MCP server. The skill uses the live MCP capabilities when available, so its choices follow the Starter release installed with the server.
+
 ## Why create-clubedge-app
 
 Copying a starter is easy; living with it is not. You delete the services you don't use by hand, and once you've changed the code, every later improvement to the starter has to be copied over by hand too.

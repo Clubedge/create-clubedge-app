@@ -267,6 +267,8 @@ describe("modules with stacks", () => {
       { from: ".env.example", to: "apps/web/.env.local" },
       { from: "apps/api/.env.example", to: "apps/api/.env.local" },
     ]);
+    // The API owns the database, so --infra neon writes its URLs there.
+    expect(plan.databaseEnvFile).toBe("apps/api/.env.local");
     expect(plan.provenance.stacks).toEqual({ framework: "vite", api: "fastapi" });
     expect(describePlan(plan)).toContain("Install the FastAPI app's dependencies in apps/api with uv");
   });

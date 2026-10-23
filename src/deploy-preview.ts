@@ -56,6 +56,15 @@ async function migrate(root: string, branch: NeonBranch) {
 }
 
 export async function deployPreview(args: CliArgs, project: Project, cli: string, envFile: Record<string, string>): Promise<void> {
+  // A preview is one service named after the package; a frontend and an API are two.
+  const separate = Object.values(project.services).filter(({ role }) => role !== "fullstack");
+  if (separate.length > 1) {
+    const base = serviceName(project.identity.packageName);
+    const services = separate.map(({ id }) => serviceName(`${base}-${id}`)).join(" and ");
+    throw new UsageError(
+      `deploy --preview works with a single app for now, and this project runs its frontend and API as separate services (${services}). Deploy production with \`${cli} deploy\`; for a preview on Railway, copy production with \`railway environment new <name> --duplicate production\`, then run \`railway up --service <service> --environment <name>\` for each service.`,
+    );
+  }
   const platform = project.modules.deploy ?? "docker";
   if (platform !== "vercel" && platform !== "railway") {
     throw new UsageError(`deploy --preview works with Vercel and Railway, and this project deploys with "${platform}". Its pull requests still get a Neon branch from .github/workflows/preview.yml.`);

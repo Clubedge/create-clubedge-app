@@ -174,6 +174,7 @@ async function createProject(args: CliArgs): Promise<void> {
   // The spinner runs while the manifest is read and again while files are written.
   let spinning: "preparing" | "writing" | null = "preparing";
   let neonEnvFile: string | null = null;
+  let sharedEnvFiles: string[] = [];
   let toolchains: ScaffoldPlan["toolchains"] = [];
   try {
     const manifest = await readTemplateManifest(source.root);
@@ -202,9 +203,11 @@ async function createProject(args: CliArgs): Promise<void> {
       install: args.install,
     });
 
-    // --infra neon: a free Neon database, its URLs written into the new env file.
+    // --infra neon: a free Neon database, its URLs written into the env file of the app that owns
+    // the database (the API, when the project has one).
     toolchains = plan.toolchains;
-    neonEnvFile = plan.modules.some(({ id, option }) => id === "infra" && option === "neon") && args.neon ? (plan.envFiles[0]?.to ?? null) : null;
+    neonEnvFile = plan.modules.some(({ id, option }) => id === "infra" && option === "neon") && args.neon ? plan.databaseEnvFile : null;
+    sharedEnvFiles = plan.envFiles.map(({ to }) => to);
     if (args.dryRun) {
       const lines = [...describePlan(plan), ...(neonEnvFile ? [`Create a free Neon database and set its URLs in ${neonEnvFile}`] : [])];
       log.message(lines.map((line) => `• ${line}`).join("\n"));
@@ -230,7 +233,7 @@ async function createProject(args: CliArgs): Promise<void> {
   if (neonEnvFile) {
     progress.start("Creating a free Neon database");
     try {
-      const created = await provisionNeonDatabase(targetDirectory, neonEnvFile);
+      const created = await provisionNeonDatabase(targetDirectory, neonEnvFile, sharedEnvFiles);
       progress.stop(describeNewDatabase(created, "pnpm clubedge"));
       migrate = "db:migrate";
     } catch (error) {

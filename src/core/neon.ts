@@ -3,6 +3,7 @@
 // and the pooled and direct URLs a project needs. src/neon.ts runs the `neon` command.
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ScaffoldPlan } from "./plan.js";
 
 export const neonClaimableApi = "https://claimable.neon.tech/v1";
 export const neonConsoleUrl = "https://console.neon.tech";
@@ -275,6 +276,25 @@ export function setEnvValues(text: string, values: Record<string, string>): stri
     result += missing.join(eol) + eol;
   }
   return result;
+}
+
+/**
+ * Sets only the variables an env file already declares, or returns null when it declares none:
+ * for another app that connects to the database too, such as Better Auth's server in a Vite frontend.
+ */
+export function setDeclaredEnvValues(text: string, values: Record<string, string>): string | null {
+  const declared = Object.entries(values).filter(([key]) => new RegExp(`^\\s*${key}\\s*=`, "m").test(text));
+  return declared.length ? setEnvValues(text, Object.fromEntries(declared)) : null;
+}
+
+/**
+ * What is left to do for --infra neon when the project was created without a database, as MCP's
+ * create_project does (it makes no network calls), or null for other infrastructure.
+ */
+export function neonSetupStep(plan: Pick<ScaffoldPlan, "modules" | "databaseEnvFile">): string | null {
+  if (!plan.modules.some(({ id, option }) => id === "infra" && option === "neon")) return null;
+  const where = plan.databaseEnvFile ? ` in ${plan.databaseEnvFile}` : "";
+  return `The project uses Neon and has no database yet: after pnpm install, run \`pnpm clubedge neon create\` in the project for a free one (it sets DATABASE_URL and DATABASE_URL_DIRECT${where}), then \`pnpm db:migrate\`.`;
 }
 
 /* ------------------------------ Branches (Neon API) ------------------------------ */

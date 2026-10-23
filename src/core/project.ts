@@ -68,6 +68,38 @@ export async function readProject(directory: string): Promise<Project> {
   }
 }
 
+/** An app's environment example and the local env file made from it, relative to the project. */
+export interface ProjectEnvFile {
+  example: string;
+  local: string;
+}
+
+/** The web app's: every project has it, with its example at the root. */
+const webEnvFile: ProjectEnvFile = { example: ".env.example", local: "apps/web/.env.local" };
+const appEnvFile = (app: string): ProjectEnvFile => ({ example: `${app}/.env.example`, local: `${app}/.env.local` });
+
+/** The directory of the project's separate API, or null when the app is full-stack. */
+function apiDirectory(project: Pick<Project, "services" | "stacks">): string | null {
+  const api = Object.values(project.services).find(({ role }) => role === "api");
+  // Projects from Starter 0.22 record the API's stack but no services; the API is in apps/api.
+  return api?.app ?? (project.stacks.api ? "apps/api" : null);
+}
+
+/** Each app's env files: the web app's, then the API's, which keeps both in its own folder. */
+export function projectEnvFiles(project: Pick<Project, "services" | "stacks">): ProjectEnvFile[] {
+  const api = apiDirectory(project);
+  return [webEnvFile, ...(api ? [appEnvFile(api)] : [])];
+}
+
+/**
+ * The env file with the database URLs: the API's when the project has one, since the API owns
+ * the database (its migrations, its jobs), else the web app's. Matches the plan's databaseEnvFile.
+ */
+export function databaseEnvFile(project: Pick<Project, "services" | "stacks">): ProjectEnvFile {
+  const api = apiDirectory(project);
+  return api ? appEnvFile(api) : webEnvFile;
+}
+
 export interface RenderInput {
   source: Pick<TemplateSource, "root" | "files" | "repository" | "ref" | "commit">;
   manifest: TemplateManifest;

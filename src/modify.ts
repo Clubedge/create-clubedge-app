@@ -22,7 +22,7 @@ import {
 import { applyUpdate, INCOMING_DIR, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
 import { cliVersion, starterPin } from "./package-info.js";
 import { parseEnvFile } from "./core/deploy.js";
-import { describeNewDatabase, localEnvPath, provisionNeonDatabase } from "./neon.js";
+import { describeNewDatabase, projectDatabaseEnv, provisionNeonDatabase } from "./neon.js";
 import { installDependencies, resolvePnpm } from "./steps/install.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
@@ -374,19 +374,20 @@ async function planChange(
  * is when it still held the old infra's example value. A URL the developer set stays.
  */
 async function addNeonDatabase(project: Project, args: CliArgs, cli: string) {
-  const env = parseEnvFile(await readFile(join(project.root, localEnvPath), "utf8").catch(() => ""));
+  const { envPath, shared } = projectDatabaseEnv(project);
+  const env = parseEnvFile(await readFile(join(project.root, envPath), "utf8").catch(() => ""));
   if (env.DATABASE_URL) {
-    log.info(`DATABASE_URL in ${localEnvPath} is yours, so it stays. Run \`${cli} neon create\` for a free Neon database instead.`);
+    log.info(`DATABASE_URL in ${envPath} is yours, so it stays. Run \`${cli} neon create\` for a free Neon database instead.`);
     return;
   }
   if (!args.neon) {
-    log.info(`Set DATABASE_URL in ${localEnvPath}, or run \`${cli} neon create\` for a free Neon database.`);
+    log.info(`Set DATABASE_URL in ${envPath}, or run \`${cli} neon create\` for a free Neon database.`);
     return;
   }
   const progress = spinner();
   progress.start("Creating a free Neon database");
   try {
-    const created = await provisionNeonDatabase(project.root);
+    const created = await provisionNeonDatabase(project.root, envPath, shared);
     progress.stop(describeNewDatabase(created, cli));
   } catch (error) {
     progress.stop("Neon created no database");

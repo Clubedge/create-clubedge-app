@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.37.0
+
+- Add MCP server and agent skill (#110).
+- Still on Starter `v0.24.1`.
+
 ## 0.36.0
 
 - Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group (#104).

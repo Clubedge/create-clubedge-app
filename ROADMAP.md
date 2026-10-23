@@ -41,6 +41,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 32 | 0.34.0 | Starter v0.23.0: a FastAPI API in Python (`--framework vite --api fastapi`), generated with no CLI change |
 | 33 | 0.35.0 | Deploy frontend and API stack packs; Default to Starter v0.24.0 |
 | 34 | 0.36.0 | Bump vitest from 5.0.3 to 5.0.5 in the minor-and-patch group; Bump giget from 2.0.0 to 3.3.1; Bump @types/node from 22.20.5 to 26.6.5; Default to Starter v0.24.1 |
+| 35 | 0.37.0 | Add MCP server and agent skill |
 
 ## CLI improvements
 

@@ -67,7 +67,7 @@ the stacks that fit the answers so far.
   with nothing of its own (`"none": {}`). A key can name several options that share files.
 - `files` are kept only when a selected option owns them; `replace` copies a variant over the
   default file when its option is selected.
-- `conditional` lists the stack's files with `clubedge:if` blocks.
+- `conditional` lists the stack's files with `clubedge:if` blocks. A variant listed there has its blocks kept for the selection where it lands, over the default it replaces.
 - `toolchain` (optional) installs the app's own dependencies after `pnpm install`, for stacks
   outside Node.js:
 

@@ -485,7 +485,10 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
   }
   const context: Selection = { ...stacks, ...selection };
   for (const path of manifest.conditional) {
-    const target = moduleFiles.replacedTargets.has(path) ? null : place(path);
+    // A selected variant is edited where it lands, over the default it replaces; the replaced
+    // default and the variants left out are not copied at all.
+    const replaced = moduleFiles.replacements.get(path);
+    const target = replaced !== undefined ? place(replaced) : moduleFiles.replacedTargets.has(path) ? null : place(path);
     if (target === null || !has(target)) continue;
     edits.push({
       path: target,

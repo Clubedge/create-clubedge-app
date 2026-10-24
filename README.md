@@ -461,7 +461,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.36.0 | v0.24.1 | Starter v0.24.1: security update of FastAPI's `certifi`; dependency updates |
 | 0.37.0 | v0.24.1 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
 | 0.38.0 | v0.24.2 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
-| 0.39.0 | v0.25.0 | Default to Starter v0.25.0 |
+| 0.39.0 | v0.25.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
 
 ## Community
 

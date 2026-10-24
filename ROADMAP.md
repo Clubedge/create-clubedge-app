@@ -43,7 +43,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 34 | 0.36.0 | Starter v0.24.1: security update of FastAPI's `certifi`; dependency updates |
 | 35 | 0.37.0 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
 | 36 | 0.38.0 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
-| 37 | 0.39.0 | Default to Starter v0.25.0 |
+| 37 | 0.39.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
 
 ## CLI improvements
 

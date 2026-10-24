@@ -2,6 +2,21 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.39.0
+
+- **Every module on React + Vite with Hono**: default to Starter `v0.25.0` (#118). `--framework vite --api hono` now offers every module option the full-stack apps have, each running in the API with the matching UI in the frontend:
+  - `--storage s3` (or a local folder with `--infra local`) and `--storage supabase`.
+  - `--cache redis`, for the rate limits and cache.
+  - `--email smtp` and `--email resend`; Better Auth's emails in the frontend's server use them too.
+  - `--observability otel` and `--observability sentry`, with browser error reporting.
+  - `--payments stripe`: the billing card, Checkout, the customer portal, and webhooks through the frontend.
+  - `--jobs pg-boss`, `--jobs bullmq`, and `--jobs inngest`, with the worker inside the API and a jobs card on the dashboard.
+  - New Vite + Hono projects get the same defaults as the full-stack apps: S3 storage, Redis cache, and SMTP email.
+  - `deploy` needs no change: Railway and Docker Compose already send each variable to the service that reads it.
+- **Account settings on React + Vite**: projects with authentication get the settings page (display name, password change, account deletion). With FastAPI it offers the password change.
+- FastAPI is unchanged: the CLI still refuses the module options it doesn't implement, with the message that names them.
+- Generated React + Vite projects' own CI builds and checks the API's image too.
+
 ## 0.38.0
 
 - **Security: default to Starter `v0.24.2`** (#116). It updates Next.js to 16.4.3: 16.0.0 to 16.4.0 have two critical unauthenticated remote code execution advisories and a high denial of service ([GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) and related). It also updates Zod to 4.6.7 ([GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)). **Every Next.js project from an earlier Starter should run `pnpm clubedge upgrade`**, or raise `next` to `^16.4.3` in `apps/web/package.json` and run `pnpm install`. The Starter release also:

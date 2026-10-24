@@ -207,7 +207,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.24.2
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.25.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -226,7 +226,7 @@ pnpm clubedge add email resend payments stripe              # several modules as
 pnpm clubedge remove storage payments
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
-pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.24.2 # or a specific tag, branch, or commit
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.25.0 # or a specific tag, branch, or commit
 ```
 
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
@@ -340,24 +340,24 @@ Each CLI release is tested against one specific Starter release:
 create-clubedge-app v0.38.0
         |
         v
-Clubedge Starter v0.24.2
-commit 4450d2f00a89f1a3929a5c9d2c1541e0d65df891
+Clubedge Starter v0.25.0
+commit 17f4e82dca42884e7bfc3c66991110d00c7428a8
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.38.0` | `clubedge-starter@v0.24.2` | The CLI's required, tested default |
+| `create-clubedge-app@0.38.0` | `clubedge-starter@v0.25.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.24.2` tag is expected to resolve to commit
-`4450d2f00a89f1a3929a5c9d2c1541e0d65df891`. The CLI verifies this before
+The `v0.25.0` tag is expected to resolve to commit
+`17f4e82dca42884e7bfc3c66991110d00c7428a8`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.24.2`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.25.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
@@ -412,7 +412,7 @@ CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarba
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.24.2`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.25.0`, and publish the Starter release.
 
 ### CLI maintainers
 

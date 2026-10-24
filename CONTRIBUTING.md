@@ -20,7 +20,7 @@ use a tested, versioned Starter release by default; do not change the default
 to `main`. For example:
 
 ```text
-create-clubedge-app v0.38.0 -> clubedge-starter v0.24.2
+create-clubedge-app v0.38.0 -> clubedge-starter v0.25.0
 ```
 
 The default Starter pin lives only in the `clubedge` field of `package.json`
@@ -40,8 +40,8 @@ Generated projects must retain the provenance metadata written by the CLI:
   "clubedge": {
     "cliVersion": "0.12.0",
     "starterRepository": "Clubedge/clubedge-starter",
-    "starterRef": "v0.24.2",
-    "starterCommit": "4450d2f00a89f1a3929a5c9d2c1541e0d65df891"
+    "starterRef": "v0.25.0",
+    "starterCommit": "17f4e82dca42884e7bfc3c66991110d00c7428a8"
   }
 }
 ```

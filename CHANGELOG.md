@@ -4,7 +4,7 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.41.1
 
-- Default to Starter `v0.26.1` (#130).
+- Default to Starter `v0.26.1` (#130): new projects' weekly upgrade workflow opens its pull request when the upgrade leaves conflict markers in a `package.json`, listing them, instead of stopping without one. It runs `upgrade --detailed-exit-code`, from 0.41.0. Existing projects get the workflow through their next upgrade pull request.
 
 ## 0.41.0
 

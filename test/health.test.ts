@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  checkConflicts,
   checkEnvFile,
   checkLockfile,
   checkNode,
@@ -106,4 +107,32 @@ describe("doctor checks", () => {
       detail: "could not check: ERR_PNPM_NO_OFFLINE_META  Failed to resolve",
     });
   });
+
+  it("checks for unresolved conflict markers", () => {
+    expect(checkConflicts([])).toEqual({
+      name: "Conflicts",
+      status: "ok",
+      detail: "no unresolved conflict markers",
+    });
+
+    const single = checkConflicts([{ path: "apps/web/src/server/cache.ts", blocks: 1 }]);
+    expect(single.status).toBe("fail");
+    expect(single.detail).toContain("1 file has unresolved conflict markers (1 total)");
+    expect(single.detail).toContain("apps/web/src/server/cache.ts (1 block)");
+
+    const multiple = checkConflicts([
+      { path: "a.ts", blocks: 2 },
+      { path: "b.ts", blocks: 3 },
+    ]);
+    expect(multiple.status).toBe("fail");
+    expect(multiple.detail).toContain("2 files have unresolved conflict markers (5 total)");
+    expect(multiple.detail).toContain("a.ts (2 blocks)");
+    expect(multiple.detail).toContain("b.ts (3 blocks)");
+
+    const many = checkConflicts(
+      Array.from({ length: 7 }, (_, i) => ({ path: `file${i}.ts`, blocks: 1 })),
+    );
+    expect(many.detail).toContain("... and 2 more files");
+  });
 });
+

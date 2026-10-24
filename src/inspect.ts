@@ -7,6 +7,7 @@ import process from "node:process";
 import type { CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
 import {
+  checkConflicts,
   checkDatabaseUrls,
   checkEnvFile,
   checkLockfile,
@@ -16,15 +17,17 @@ import {
   nextStep,
   updateState,
   type CheckResult,
+  type ConflictedFile,
   type GitState,
 } from "./core/health.js";
+import { countConflicts } from "./core/merge.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { neonDatabaseState } from "./core/neon.js";
 import { readProject } from "./core/project.js";
 import { savedDatabaseForUrl } from "./neon.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
-import { pathExists } from "./utils/fs.js";
+import { listTemplateFiles, pathExists } from "./utils/fs.js";
 import { commandSucceeds, run, runCapture } from "./utils/process.js";
 
 /** Where generated projects keep their env files. */
@@ -97,6 +100,18 @@ function print(result: CheckResult) {
   else log.error(line);
 }
 
+export async function findConflictedFiles(root: string): Promise<ConflictedFile[]> {
+  const files = await listTemplateFiles(root);
+  const conflicts: ConflictedFile[] = [];
+  for (const file of files) {
+    const content = await readFile(join(root, file)).catch(() => null);
+    if (!content) continue;
+    const blocks = countConflicts(content);
+    if (blocks > 0) conflicts.push({ path: file, blocks });
+  }
+  return conflicts;
+}
+
 export async function runDoctor(args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
   const root = project.root;
@@ -115,6 +130,8 @@ export async function runDoctor(args: CliArgs): Promise<void> {
   const pnpm = await resolvePnpm();
   const pnpmVersion = pnpm ? await runCapture(pnpm[0]!, [...pnpm.slice(1), "--version"]).catch(() => null) : null;
   check(checkPnpm(pnpmVersion, manifest.packageManager));
+  check(checkConflicts(await findConflictedFiles(root)));
+
 
   const installed = await pathExists(join(root, "node_modules", ".modules.yaml"));
   check(

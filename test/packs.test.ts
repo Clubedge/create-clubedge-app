@@ -439,7 +439,12 @@ describe("a project with a shell", () => {
       { from: "apps/capacitor/src/config/site.json", to: "apps/shell/src/config/site.json" },
     ]);
     expect(created.envFiles).toContainEqual({ from: "apps/shell/.env.example", to: "apps/shell/.env.local" });
-    expect(describePlan(created)).toContain('Edit apps/shell/src/config/site.json: Set the project name to "My Product"');
+    expect(describePlan(created)).toEqual(
+      expect.arrayContaining([
+        "Use React + Vite, FastAPI, and Capacitor",
+        'Edit apps/shell/src/config/site.json: Set the project name to "My Product"',
+      ]),
+    );
     expect(created.provenance.stacks).toEqual(mobile);
     expect(plan({ framework: "vite", api: "fastapi" }).files.map(({ to }) => to)).not.toContain("apps/shell/package.json");
   });

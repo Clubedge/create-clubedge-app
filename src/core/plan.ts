@@ -473,7 +473,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
         .map(({ slot, stack }) => ({ from: stack.app, to: slot.path })),
       removeDependencies: removedPackageNames,
     };
-    const names = selected.map(({ stack }) => stack.name).join(" and ");
+    const names = listNames(selected.map(({ stack }) => stack.name));
     const kept = `${names} app${selected.length > 1 ? "s" : ""}`;
     edits.push({
       path: LOCKFILE,
@@ -551,11 +551,16 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
   };
 }
 
+/** App names in a sentence: "a", "a and b", or "a, b, and c". */
+export function listNames(names: string[]): string {
+  return names.length > 2 ? `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}` : names.join(" and ");
+}
+
 export function describePlan(plan: ScaffoldPlan): string[] {
   const recorded = plan.apps.filter(({ slot }) => plan.provenance.stacks?.[slot]);
   return [
     `Create ${plan.targetDirectory}`,
-    ...(recorded.length ? [`Use ${recorded.map(({ name }) => name).join(" and ")}`] : []),
+    ...(recorded.length ? [`Use ${listNames(recorded.map(({ name }) => name))}`] : []),
     ...(plan.modules.length
       ? [`Use ${plan.modules.map(({ name, optionName }) => `${name}: ${optionName}`).join(", ")}`]
       : []),

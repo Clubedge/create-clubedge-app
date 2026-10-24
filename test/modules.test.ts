@@ -222,6 +222,21 @@ describe("createPlan with modules", () => {
     expect(app).toEqual({ name: "@clubedge/web", dependencies: { zod: "^4" } });
   });
 
+  it("keeps the sections of a variant for the selection, where the variant lands", () => {
+    const variant = "apps/web/src/server/variants/storage.supabase.ts";
+    const conditional = [...modulesManifest.conditional, variant];
+    const withVariant = { ...input, manifest: parseTemplateManifest(JSON.stringify({ ...modulesManifest, conditional })) };
+    const text = "// clubedge:if auth=supabase\nexport const auth = true;\n// clubedge:end\n// clubedge:if auth=none\nexport const auth = false;\n// clubedge:end\n";
+
+    const plan = createPlan({ ...withVariant, modules: { storage: "supabase" } });
+    const edits = plan.edits.filter(({ path }) => path === "apps/web/src/server/storage.ts");
+    expect(edits).toHaveLength(1);
+    expect(edits[0]!.apply(text)).toBe("export const auth = true;\n");
+    // Left out, the variant is not copied, so nothing edits it.
+    const without = createPlan({ ...withVariant, modules: { storage: "s3" } });
+    expect(without.edits.map(({ path }) => path)).not.toContain("apps/web/src/server/storage.ts");
+  });
+
   it("refuses an invalid combination before planning any file", () => {
     expect(() => createPlan({ ...input, modules: { auth: "none", storage: "supabase" } })).toThrow(ModuleError);
   });

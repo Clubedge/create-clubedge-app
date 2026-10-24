@@ -6,7 +6,7 @@ import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
 import { dim, helpText, showBanner } from "./cli/ui.js";
 import { assertTargetIsUsable, executePlan } from "./core/execute.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
-import { createPlan, describePlan, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
+import { createPlan, describePlan, listNames, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
 import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
 import { runDoctor, showStatus } from "./inspect.js";
@@ -218,7 +218,7 @@ async function createProject(args: CliArgs): Promise<void> {
     spinning = "writing";
     progress.start(`Writing ${plan.files.length} files`);
     await executePlan(plan, source);
-    progress.stop(`Created ${identity.packageName} with ${plan.apps.map(({ name }) => name).join(" and ")} from Starter ${source.ref}`);
+    progress.stop(`Created ${identity.packageName} with ${listNames(plan.apps.map(({ name }) => name))} from Starter ${source.ref}`);
     spinning = null;
   } catch (error) {
     if (spinning === "preparing") progress.stop("Could not read the Starter");

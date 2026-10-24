@@ -6,6 +6,8 @@
 // - Schema 4 (manifest-packs.ts): clubedge.template.json names the slots and modules, and each
 //   app describes itself in its own clubedge.stack.json, a stack pack. Adding a stack adds a
 //   folder; nothing shared changes.
+// - Schema 5 (manifest-packs.ts too): schema 4 plus the shell role, an app that packages a
+//   frontend and runs no server. Older CLIs refuse it, asking for an update.
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FRAMEWORK_SLOT, ID, isRecord, MANIFEST_FILE, ManifestError, stackRoles, type StackRole } from "./manifest-fields.js";
@@ -13,7 +15,7 @@ import { legacyManifest, parseLegacyManifest } from "./manifest-legacy.js";
 import { MODULES_DIRECTORY, parsePackManifest, STACK_FILE, STACKS_DIRECTORY, type Packs } from "./manifest-packs.js";
 
 export { FRAMEWORK_SLOT, legacyManifest, MANIFEST_FILE, ManifestError };
-export const SUPPORTED_SCHEMA_VERSION = 4;
+export const SUPPORTED_SCHEMA_VERSION = 5;
 
 export { stackRoles, type StackRole };
 
@@ -32,8 +34,8 @@ export interface TemplateSlot {
   /** The app's package name in generated projects, when the Starter defines one. */
   package?: string;
   env: { example: string; target: string };
-  /** Where the app's Dockerfile goes in generated projects. */
-  dockerfile: string;
+  /** Where the app's Dockerfile goes in generated projects; absent when it only takes shells, which run no server. */
+  dockerfile?: string;
   /** The roles of the stacks it takes. */
   roles: StackRole[];
   /** The stack used when none is requested; absent for optional slots. */
@@ -87,8 +89,8 @@ export interface TemplateStack {
   app: string;
   /** Its environment example in the Starter. Moved to the slot's env.example when selected. */
   envExample: string;
-  /** Its Dockerfile in the Starter. Moved to the slot's dockerfile when selected. */
-  dockerfile: string;
+  /** Its Dockerfile in the Starter, moved to the slot's dockerfile when selected; a shell has none. */
+  dockerfile?: string;
   /** The module options it implements, by module. Modules it does not list do not involve it. */
   modules: Record<string, string[]>;
   toolchain?: Toolchain;
@@ -166,8 +168,8 @@ function parseJson(source: string, file: string): unknown {
 }
 
 /**
- * Reads a manifest from its text. Schema 4 manifests also need their packs, the stack and
- * module descriptors, which readTemplateManifest collects from the Starter.
+ * Reads a manifest from its text. Schema 4 and later manifests also need their packs, the stack
+ * and module descriptors, which readTemplateManifest collects from the Starter.
  */
 export function parseTemplateManifest(source: string, packs?: Packs): TemplateManifest {
   const data = parseJson(source, MANIFEST_FILE);
@@ -188,7 +190,7 @@ async function readOptional(path: string): Promise<string | null> {
   }
 }
 
-/** The stack and module descriptors of a schema 4 Starter. */
+/** The stack and module descriptors of a Starter assembled from packs (schema 4 and later). */
 async function readPacks(templateRoot: string, data: Record<string, unknown>): Promise<Packs> {
   const stacks: Packs["stacks"] = [];
   let entries: string[] = [];

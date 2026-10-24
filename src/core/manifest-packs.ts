@@ -1,4 +1,4 @@
-// Schema 4: the Starter is assembled from packs, so each part is described in one place.
+// Schema 4 and 5: the Starter is assembled from packs, so each part is described in one place.
 //
 //   clubedge.template.json            the project: slots, module order, shared files
 //   clubedge/modules/<id>.json        a module: its options, packages, scripts, shared files
@@ -7,6 +7,9 @@
 // A stack's paths are relative to its own folder, so a stack pack is self-contained: adding a
 // stack, in any language, adds a folder and changes nothing shared. Its files for an option
 // join that option's files, so the rest of the CLI sees one list per option, as before.
+//
+// Schema 5 only adds the shell role: an app that packages a frontend's build, such as a mobile
+// app. It runs no server, so it has no Dockerfile or deployment, and its slot no Dockerfile.
 import { posix } from "node:path";
 import {
   fields,
@@ -37,10 +40,12 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
   const { fail, requireString, optionalStringArray, requireRecord } = fields(MANIFEST_FILE);
   if (data.packageManager !== "pnpm") fail(`packageManager must be "pnpm".`);
   if (!isStringArray(data.modules)) fail("modules must list the module ids, in the order the CLI offers them.");
+  // The shell role came with schema 5; schema 4 Starters are read as before, without it.
+  const knownRoles = (data.schemaVersion as number) >= 5 ? stackRoles : stackRoles.filter((role) => role !== "shell");
 
   const slots: Record<string, TemplateSlot> = {};
   for (const [id, entry] of Object.entries(requireRecord(data, "slots"))) {
-    slots[fields(MANIFEST_FILE).requireId(id, "slot")] = parseSlot(id, entry);
+    slots[fields(MANIFEST_FILE).requireId(id, "slot")] = parseSlot(id, entry, knownRoles);
   }
   if (Object.keys(slots).length === 0) fail("slots must describe at least one slot.");
 
@@ -61,7 +66,7 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
   const descriptorFiles: string[] = [];
   const conditional = optionalStringArray(data, "conditional");
   for (const { directory, data: descriptor } of packs.stacks) {
-    const { id, stack, files } = parseStack(directory, descriptor, slots, modules);
+    const { id, stack, files } = parseStack(directory, descriptor, slots, modules, knownRoles);
     if (stacks[id]) throw new ManifestError(`${directory}/${STACK_FILE}: stack id "${id}" is already used.`);
     stacks[id] = stack;
     descriptorFiles.push(`${directory}/${STACK_FILE}`);
@@ -89,18 +94,20 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
   };
 }
 
-function parseSlot(id: string, entry: unknown): TemplateSlot {
+function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[]): TemplateSlot {
   const read = fields(MANIFEST_FILE, `slots.${id}.`);
   if (!isRecord(entry)) read.fail(`slots.${id} must be an object.`);
   const slot = entry as Record<string, unknown>;
   const env = read.requireRecord(slot, "env");
   const roles = slot.roles;
-  if (!isStringArray(roles) || roles.length === 0 || !roles.every((role) => stackRoles.includes(role as StackRole))) {
-    read.fail(`slots.${id}.roles must list one or more of: ${stackRoles.join(", ")}.`);
+  if (!isStringArray(roles) || roles.length === 0 || !roles.every((role) => knownRoles.includes(role as StackRole))) {
+    read.fail(`slots.${id}.roles must list one or more of: ${knownRoles.join(", ")}.`);
   }
   const packageName = read.optionalString(slot, "package");
   const defaultStack = read.optionalString(slot, "default");
   const siteConfig = read.optionalString(slot, "siteConfig");
+  // A Dockerfile is for apps that run a server; a slot that only takes shells has none.
+  const servers = (roles as StackRole[]).some((role) => role !== "shell");
   return {
     name: read.requireString(slot, "name"),
     question: read.requireString(slot, "question"),
@@ -110,7 +117,7 @@ function parseSlot(id: string, entry: unknown): TemplateSlot {
       example: fields(MANIFEST_FILE, `slots.${id}.env.`).requireString(env, "example"),
       target: fields(MANIFEST_FILE, `slots.${id}.env.`).requireString(env, "target"),
     },
-    dockerfile: read.requireString(slot, "dockerfile"),
+    ...(servers ? { dockerfile: read.requireString(slot, "dockerfile") } : {}),
     roles: roles as StackRole[],
     ...(defaultStack ? { default: defaultStack } : {}),
     ...(siteConfig ? { siteConfig } : {}),
@@ -129,6 +136,7 @@ function parseStack(
   descriptor: unknown,
   slots: Record<string, TemplateSlot>,
   modules: Record<string, TemplateModule>,
+  knownRoles: readonly StackRole[],
 ): { id: string; stack: TemplateStack; files: StackFiles } {
   const file = `${directory}/${STACK_FILE}`;
   const read = fields(file);
@@ -136,10 +144,15 @@ function parseStack(
   const data = descriptor as Record<string, unknown>;
   const id = read.requireId(read.requireString(data, "id"), "stack");
   const role = read.requireString(data, "role") as StackRole;
-  if (!stackRoles.includes(role)) read.fail(`role must be one of: ${stackRoles.join(", ")}.`);
+  if (!knownRoles.includes(role)) read.fail(`role must be one of: ${knownRoles.join(", ")}.`);
   const slotIds = Object.keys(slots).filter((slotId) => slots[slotId]!.roles.includes(role));
   if (slotIds.length !== 1) {
     throw new ManifestError(`${MANIFEST_FILE}: exactly one slot must take ${role} stacks, such as ${id} (${file}).`);
+  }
+  // A shell packages a frontend's build and runs no server: it has no Dockerfile, and nothing deploys it.
+  const server = role !== "shell";
+  if (!server && (data.dockerfile !== undefined || data.deployment !== undefined)) {
+    read.fail("a shell runs no server, so it has no dockerfile or deployment.");
   }
 
   /** A path in the stack's folder as a Starter path; it may not leave the Starter. */
@@ -194,7 +207,7 @@ function parseStack(
       slot: slotIds[0]!,
       app: directory,
       envExample: resolve(read.requireString(data, "envExample"), "envExample"),
-      dockerfile: resolve(read.requireString(data, "dockerfile"), "dockerfile"),
+      ...(server ? { dockerfile: resolve(read.requireString(data, "dockerfile"), "dockerfile") } : {}),
       modules: implemented,
       ...(toolchain ? { toolchain } : {}),
       ...(deployment ? { deployment } : {}),

@@ -342,7 +342,7 @@ docker compose --env-file .env.production run --rm web node /app/migrate.mjs   #
 docker compose --env-file .env.production up -d  # --build builds the images on the server
 ```
 
-`deploy` prints these steps, with the `IMAGE_PREFIX` of your repository when `origin` is on GitHub. To update, publish a release, then on the server `docker compose --env-file .env.production pull` (or set `TAG` to the new version), run the migrations, and `up -d` again. Running `deploy` again writes the files that are missing and never overwrites one: it keeps a `Caddyfile` or workflow you changed, and says so, and stops when `compose.yaml` differs from the one it writes, so move yours away to get the new one. Compose prefers `compose.yaml` to the Starter's `docker-compose.yml`, so `pnpm docker:dev` runs the production setup once it is there; `docker compose -f docker-compose.yml up --build` runs the local one.
+`deploy` prints these steps, with the `IMAGE_PREFIX` of your repository when `origin` is on GitHub. To update, publish a release, then on the server `docker compose --env-file .env.production pull` (or set `TAG` to the new version), run the migrations, and `up -d` again. Running `deploy` again writes the files that are missing and never overwrites one: it keeps a `Caddyfile` or workflow you changed, and says so, and stops when `compose.yaml` differs from the one it writes, so move yours away to get the new one. Compose prefers `compose.yaml` to the Starter's `docker-compose.yml`, so run the local one by name: `docker compose -f docker-compose.yml up --build`, which `pnpm docker:dev` does since Starter v0.27.0.
 
 ### Client addresses
 

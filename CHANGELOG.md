@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.41.1
+
+- Default to Starter `v0.26.1` (#130).
+
 ## 0.41.0
 
 - **A `package.json` with conflict markers no longer breaks the next commands** (#122, by @NishilRathod; issue #111):

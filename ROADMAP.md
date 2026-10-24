@@ -46,7 +46,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 37 | 0.39.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
 | 38 | 0.40.0 | Starter v0.26.0: every module on React + Vite with FastAPI (pg-boss excepted) |
 | 39 | 0.41.0 | A conflicted package.json no longer breaks later commands (`--detailed-exit-code`); doctor finds conflict markers; projects own their version and README |
-| 40 | 0.42.0 | A shell slot for mobile apps (template schema 5); Client addresses per platform, and Docker Compose behind Caddy with images on GHCR; Read Render's client address from Cloudflare's CF-Connecting-IP; Default to Starter v0.27.0 |
+| 40 | 0.42.0 | Starter v0.27.0: mobile apps with Capacitor (`--shell capacitor`, template schema 5); client addresses per platform; Docker Compose behind Caddy, with images on GHCR |
 
 ## CLI improvements
 

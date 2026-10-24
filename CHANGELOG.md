@@ -4,10 +4,23 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.42.0
 
-- A shell slot for mobile apps (template schema 5) (#135).
-- Client addresses per platform, and Docker Compose behind Caddy with images on GHCR (#136).
-- Read Render's client address from Cloudflare's CF-Connecting-IP (#137).
-- Default to Starter `v0.27.0` (#138).
+- **Mobile apps with Capacitor**: default to Starter `v0.27.0` (#138). `--framework vite --api hono --shell capacitor` (or `--api fastapi`) packages the Vite frontend as an Android and iOS app in `apps/shell` (#135):
+  - Template schema 5 adds the `shell` role: a stack that packages a frontend's static build and runs no server, so it has no Dockerfile or deployment, and `deploy` leaves it out. Older CLIs refuse a schema 5 Starter and ask for an update.
+  - `--shell` is refused with Next.js and TanStack Start, which render on their own server. Interactive runs ask about a mobile app only after a frontend and its API.
+  - `apps/shell/.env.local` is created from its example (`WEB_URL`, the website the app calls), and `add`, `remove`, and `upgrade` keep its values.
+  - A variant file's `clubedge:if` blocks are kept or dropped for the selection where the variant lands, like other conditional files'. Before, they stayed in the project.
+  - MCP: `get_starter_capabilities` lists each slot's question, and the tools describe what each role pairs with.
+  - CI generates a mobile project from the pinned Starter.
+- **Client addresses per platform** (#136, #137): `deploy` tells the app where each client's address is, for Starter `v0.27.0`'s rate limits:
+  - `CLIENT_IP_HEADER`: `x-real-ip` on Railway and Vercel, `cf-connecting-ip` on Render (from the Cloudflare edge in front of it), `fly-client-ip` on Fly.io, `x-nf-client-connection-ip` on Netlify.
+  - `TRUSTED_PROXY_HOPS=1` behind Caddy with Docker Compose, and on a frontend's API, which only the frontend's server reaches.
+  - Previews and `try` set them too, and the env file's settings replace both defaults.
+- **Docker Compose behind Caddy, with images on GHCR** (#136): `deploy` with the docker option now works for full-stack apps too, and writes:
+  - `compose.yaml`: each app's image (pulled from `IMAGE_PREFIX` at `TAG`, or built with `--build`), behind Caddy, the only service that publishes ports, with automatic HTTPS for `DOMAIN`.
+  - A `Caddyfile`.
+  - `.github/workflows/release-images.yml`: each published release builds every app for linux/amd64 and linux/arm64 and pushes it to the repository's container registry, tagged with the version, `<major>.<minor>`, and `latest`.
+  - Running `deploy` again writes only the files that are missing and never overwrites one you changed. A frontend and API's `compose.yaml` from an earlier deploy stops it until you move that file away.
+- `upgrade` keeps the blank line after a section the Starter adds to the local env file between two others (#138).
 
 ## 0.41.1
 

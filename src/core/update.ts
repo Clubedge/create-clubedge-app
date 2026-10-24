@@ -5,17 +5,13 @@ import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { updateEnvFile, type EnvUpdate } from "./env.js";
 import type { TemplateManifest } from "./manifest.js";
-import { planMerge, sameContent, type MergeAction } from "./merge.js";
+import { INCOMING_DIR, planMerge, sameContent, type MergeAction } from "./merge.js";
 import { readProjectFiles, renderProject, type Project } from "./project.js";
 import type { TemplateSource } from "./source.js";
 
-const LOCKFILE = "pnpm-lock.yaml";
+export { INCOMING_DIR };
 
-/**
- * Where the Starter's versions of files left to resolve are saved, next to the project's own,
- * for comparing by hand. The folder ignores itself, so it never shows in git status or a commit.
- */
-export const INCOMING_DIR = ".clubedge/incoming";
+const LOCKFILE = "pnpm-lock.yaml";
 
 /** One side of an update: the Starter revision and the selection to render. */
 export interface UpdateSide {

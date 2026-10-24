@@ -147,6 +147,8 @@ ${selectionHelp(manifest)}
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove: change a project with uncommitted changes or without Git
+  --detailed-exit-code    add/remove/upgrade: exit with 2 when the change leaves conflicts to
+                          resolve (0: changed cleanly or nothing to change, 1: failed)
   --no-services           doctor: skip pnpm check:services
   --no-open               try, deploy (Vercel, Netlify, Render): do not open the URL in the browser
   --claim                 try: open the page that claims the VM, to share the preview

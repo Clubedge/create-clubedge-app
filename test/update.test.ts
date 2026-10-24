@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { executePlan } from "../src/core/execute.js";
 import { readTemplateManifest } from "../src/core/manifest.js";
 import { createPlan } from "../src/core/plan.js";
-import { readProject } from "../src/core/project.js";
+import { ProjectError, readProject } from "../src/core/project.js";
 import { readDirectoryTemplate } from "../src/core/source.js";
 import { applyUpdate, INCOMING_DIR, incomingFiles, planUpdate, type UpdatePlan } from "../src/core/update.js";
 import { changedModules, completeCommand, upgradedModules } from "../src/modify.js";
@@ -79,6 +79,46 @@ describe("readProject", () => {
 
   it("explains when there is no generated project", async () => {
     await expect(readProject(await temporaryDirectory())).rejects.toThrow("No Clubedge project found");
+  });
+
+  /** package.json after an upgrade whose version line both sides changed, as in issue #111. */
+  const conflicted = (manifest: string) =>
+    manifest.replace(/"name": "my-product",\n/, '"name": "my-product",\n<<<<<<< yours\n  "version": "1.0.0",\n=======\n  "version": "0.25.0",\n>>>>>>> clubedge\n');
+
+  it("names a package.json with conflict markers and the Starter's version to compare it with", async () => {
+    const { root, read, write } = await generatedProject();
+    const manifest = await read("package.json");
+    await write("package.json", conflicted(manifest));
+    await writeFiles(join(root, INCOMING_DIR), { "package.json": manifest });
+
+    const error = await readProject(root).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(ProjectError);
+    expect((error as Error).message).toContain("package.json has 1 unresolved conflict from an earlier add, remove, or upgrade");
+    expect((error as Error).message).toContain("`pnpm install` and `pnpm clubedge` fail too");
+    expect((error as Error).message).toContain("git diff --no-index package.json .clubedge/incoming/package.json");
+  });
+
+  it("names the conflicted file as seen from a nested folder, and leaves out a deleted incoming folder", async () => {
+    const { root, read, write } = await generatedProject();
+    await write("package.json", conflicted(await read("package.json")));
+    const error = (await readProject(join(root, "apps/web")).catch((error: unknown) => error)) as Error;
+    expect(error.message).toMatch(/^\.\.\/\.\.\/package\.json has 1 unresolved conflict/);
+    expect(error.message).not.toContain("git diff --no-index");
+  });
+
+  it("finds the Starter's version of a conflicted workspace package.json", async () => {
+    const { root, write } = await generatedProject();
+    await write("apps/web/package.json", '{\n<<<<<<< yours\n  "name": "web"\n=======\n  "name": "@clubedge/web"\n>>>>>>> clubedge\n}\n');
+    await writeFiles(join(root, INCOMING_DIR), { "apps/web/package.json": '{ "name": "@clubedge/web" }\n' });
+    await expect(readProject(join(root, "apps/web"))).rejects.toThrow(
+      "git diff --no-index package.json ../../.clubedge/incoming/apps/web/package.json",
+    );
+  });
+
+  it("names a package.json that is not valid JSON for another reason", async () => {
+    const { root, read, write } = await generatedProject();
+    await write("package.json", (await read("package.json")).replace('"name": "my-product",', '"name": "my-product",,'));
+    await expect(readProject(root)).rejects.toThrow(/^package\.json is not valid JSON: .+\. Fix it, then run this again\.$/);
   });
 });
 

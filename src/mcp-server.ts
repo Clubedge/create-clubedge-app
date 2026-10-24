@@ -12,7 +12,7 @@ import { createPlan, describePlan } from "./core/plan.js";
 import { resolveTemplateSource } from "./core/source.js";
 import { cliVersion, cliUrl, siteUrl } from "./package-info.js";
 import { initializeGit } from "./steps/git.js";
-import { installDependencies, resolvePnpm } from "./steps/install.js";
+import { detectPnpm, installDependencies } from "./steps/install.js";
 import { commandSucceeds, run } from "./utils/process.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
 
@@ -251,9 +251,13 @@ function createServer() {
         }
       }
       if (install_dependencies) {
-        const pnpm = await resolvePnpm();
+        const { pnpm, problem } = await detectPnpm();
         if (!pnpm) {
-          warnings.push("Project created, but pnpm was not found. Install pnpm and run it in the project directory.");
+          warnings.push(
+            problem
+              ? `Project created, but pnpm is installed and did not run. ${problem}`
+              : "Project created, but pnpm was not found. Install pnpm and run it in the project directory.",
+          );
         } else {
           try {
             await installDependencies(target, pnpm, [], mcpStdio);

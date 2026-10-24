@@ -23,7 +23,8 @@ import { applyUpdate, INCOMING_DIR, planUpdate, type UpdatePlan, type UpdateSide
 import { cliVersion, starterPin } from "./package-info.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { describeNewDatabase, projectDatabaseEnv, provisionNeonDatabase } from "./neon.js";
-import { installDependencies, resolvePnpm } from "./steps/install.js";
+import { detectPnpm, installDependencies } from "./steps/install.js";
+import { listTemplateFiles } from "./utils/fs.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
 type ChangeCommand = Extract<CliArgs["command"], { name: "add" | "remove" | "upgrade" }>;
@@ -260,10 +261,35 @@ function describe(plan: UpdatePlan): string {
   return lines.join("\n");
 }
 
-function report(plan: UpdatePlan) {
-  const conflicts = plan.actions.filter(
-    (action): action is Extract<MergeAction, { kind: "conflict" }> => action.kind === "conflict",
+const conflictsOf = (plan: UpdatePlan) =>
+  plan.actions.filter((action): action is Extract<MergeAction, { kind: "conflict" }> => action.kind === "conflict");
+
+/**
+ * The project's package.json files with conflict markers: this change's, and any an earlier change
+ * left that this one does not touch, which its plan does not list.
+ */
+async function conflictedManifests(root: string): Promise<string[]> {
+  const manifests = (await listTemplateFiles(root)).filter((path) => /(^|\/)package\.json$/.test(path));
+  const conflicted = await Promise.all(
+    manifests.map(async (path) => (countConflicts(await readFile(join(root, path))) ? path : null)),
   );
+  return conflicted.filter((path): path is string => path !== null);
+}
+
+/**
+ * Why pnpm cannot run yet: it reads every package.json in the workspace and stops at one with
+ * conflict markers, so `pnpm install` and `pnpm clubedge` fail until they are resolved.
+ */
+function conflictedManifestWarning(paths: string[], install: boolean): string {
+  const one = paths.length === 1;
+  return (
+    `${install ? "Skipped `pnpm install`: " : ""}${paths.join(", ")} ${one ? "has" : "have"} conflict markers, which pnpm cannot read, ` +
+    `so pnpm commands, \`pnpm clubedge\` among them, fail until ${one ? "it is" : "they are"} resolved. Then run \`pnpm install\`.`
+  );
+}
+
+function report(plan: UpdatePlan) {
+  const conflicts = conflictsOf(plan);
   const kept = plan.actions.filter((action): action is Extract<MergeAction, { kind: "keep" }> => action.kind === "keep");
   const incoming = (path: string) => `${INCOMING_DIR}/${path}`;
   if (conflicts.length) {
@@ -395,7 +421,10 @@ async function addNeonDatabase(project: Project, args: CliArgs, cli: string) {
   }
 }
 
-export async function changeProject(args: CliArgs): Promise<void> {
+/** What add, remove, or upgrade did: "conflicts" when it wrote conflict markers to resolve. */
+export type ChangeOutcome = "unchanged" | "changed" | "conflicts";
+
+export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
   const command = args.command;
   if (command.name !== "add" && command.name !== "remove" && command.name !== "upgrade") throw new Error("Not a project change.");
   const interactive = Boolean(process.stdin.isTTY) && !args.yes;
@@ -422,12 +451,12 @@ export async function changeProject(args: CliArgs): Promise<void> {
       command.name === "upgrade" ? command : await completeCommand(baseManifest, project, command, interactive);
     if (!complete) {
       outro("Cancelled; nothing was changed.");
-      return;
+      return "unchanged";
     }
     const change = await planChange(project, complete, base, baseManifest, target, cli);
     if (!change) {
       outro(upgrading ? `The project is already on Starter ${project.starterRef}.` : "The project already uses that selection; nothing to change.");
-      return;
+      return "unchanged";
     }
     const plan = await planUpdate(project, change.base, change.target);
 
@@ -436,18 +465,30 @@ export async function changeProject(args: CliArgs): Promise<void> {
     if (args.dryRun) {
       for (const note of change.notes) log.info(note);
       outro("Dry run: nothing was changed. Run again without --dry-run to apply.");
-      return;
+      return "unchanged";
     }
 
     await applyUpdate(plan);
     log.success(`Updated ${plan.actions.filter((action) => action.kind !== "keep").length} files`);
 
-    if (args.install) {
-      const pnpm = await resolvePnpm();
-      if (!pnpm) log.warn("pnpm was not found. Run `pnpm install` to update dependencies.");
-      else {
-        await installDependencies(project.root, pnpm, plan.lockfile.kind === "install" ? ["--no-frozen-lockfile"] : []);
-        log.success("Dependencies updated");
+    // The files are written now, so what is left to resolve is reported even when the install fails.
+    let installError: unknown;
+    const manifests = await conflictedManifests(project.root);
+    if (manifests.length) {
+      log.warn(conflictedManifestWarning(manifests, args.install));
+    } else if (args.install) {
+      const { pnpm, problem } = await detectPnpm();
+      if (pnpm) {
+        try {
+          await installDependencies(project.root, pnpm, plan.lockfile.kind === "install" ? ["--no-frozen-lockfile"] : []);
+          log.success("Dependencies updated");
+        } catch (error) {
+          installError = error;
+        }
+      } else if (problem) {
+        log.warn(`pnpm is installed but did not run, so dependencies were not updated. ${problem} Run \`pnpm install\` once it works.`);
+      } else {
+        log.warn("pnpm was not found. Run `pnpm install` to update dependencies.");
       }
     } else if (plan.lockfile.kind !== "unchanged") {
       log.info("Run `pnpm install` to update dependencies.");
@@ -455,12 +496,19 @@ export async function changeProject(args: CliArgs): Promise<void> {
 
     report(plan);
     for (const note of change.notes) log.info(note);
+    if (installError) {
+      const reason = installError instanceof Error ? installError.message : String(installError);
+      throw new Error(
+        `The files were updated, but \`pnpm install\` did not complete: ${reason}${reason.endsWith(".") ? "" : "."} Fix that, then run \`pnpm install\`.`,
+      );
+    }
     if (change.target.modules.infra === "neon" && project.modules.infra !== "neon") await addNeonDatabase(project, args, cli);
     outro(
       upgrading
         ? "Review the changes with `git diff`, then run `pnpm db:migrate` for new migrations and your tests."
         : "Review the changes with `git diff`, then run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.",
     );
+    return conflictsOf(plan).length ? "conflicts" : "changed";
   } catch (error) {
     if (spinning) progress.stop("Could not prepare the Starter");
     throw error;

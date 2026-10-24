@@ -241,6 +241,10 @@ Several modules in one command are applied as one change, and their requirements
 
 The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 
+pnpm cannot read a `package.json` with conflict markers, so a change that leaves conflicts in one skips `pnpm install` and says so: resolve them, then run `pnpm install`. Until then, `pnpm clubedge` does not start either, and the CLI's own commands (`pnpm dlx @clubedge/create-clubedge-app status`, for example) stop with a message that names the file and the command that compares it with the Starter's version in `.clubedge/incoming/`. When the install fails for another reason, the CLI still lists what is left to resolve, then exits with an error.
+
+A change that leaves conflicts exits with 0, like a clean one. For scripts that need to tell them apart, add `--detailed-exit-code`: the CLI then exits with 2 when the change was written with conflicts to resolve, 0 when it was clean or there was nothing to change, and 1 when it failed.
+
 ## A hosted database with Neon
 
 `--infra neon` gives the project a [Neon](https://neon.com) PostgreSQL database with nothing to install and no account:

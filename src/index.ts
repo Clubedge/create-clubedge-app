@@ -15,7 +15,7 @@ import { deployProject } from "./deploy.js";
 import { tryOnRailway } from "./try.js";
 import { describeNewDatabase, neonCommand, provisionNeonDatabase } from "./neon.js";
 import { initializeGit } from "./steps/git.js";
-import { detectLauncher, installDependencies, resolvePnpm } from "./steps/install.js";
+import { detectLauncher, detectPnpm, installDependencies } from "./steps/install.js";
 import { commandSucceeds, run } from "./utils/process.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
 
@@ -255,9 +255,13 @@ async function createProject(args: CliArgs): Promise<void> {
     if (launcher && launcher !== "pnpm") {
       log.info(`This project is a pnpm workspace, so dependencies are installed with pnpm (not ${launcher}).`);
     }
-    const pnpm = await resolvePnpm();
+    const { pnpm, problem } = await detectPnpm();
     if (!pnpm) {
-      log.warn("pnpm was not found. Enable it with `corepack enable`, then run `pnpm install` in the project.");
+      log.warn(
+        problem
+          ? `pnpm is installed but did not run, so dependencies were not installed. ${problem} Run \`pnpm install\` in the project once it works.`
+          : "pnpm was not found. Enable it with `corepack enable`, then run `pnpm install` in the project.",
+      );
     } else {
       pnpmCommand = pnpm.join(" ");
       try {
@@ -334,7 +338,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         upgrade: "Upgrade this project to a newer Starter",
       };
       intro(intros[args.command.name]);
-      await changeProject(args);
+      // Conflicts exit with 0 unless asked: the Starter's upgrade workflow in existing projects
+      // runs the newest CLI under `set -o pipefail`, and would stop before opening its pull request.
+      if ((await changeProject(args)) === "conflicts" && args.detailedExitCode) process.exitCode = 2;
     }
   } catch (error) {
     console.error(`\n${error instanceof Error ? error.message : String(error)}`);

@@ -145,7 +145,7 @@ With the Hono API, the decoupled stacks support every module option the full-sta
 
 ### A mobile app
 
-The Vite frontend can also be packaged as an Android and iOS app with [Capacitor](https://capacitorjs.com):
+Since CLI 0.42.0, with Starter v0.27.0, the Vite frontend can also be packaged as an Android and iOS app with [Capacitor](https://capacitorjs.com). Earlier Starters have no mobile shell, and the CLI refuses `--shell` with them.
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono --shell capacitor

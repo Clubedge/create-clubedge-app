@@ -337,7 +337,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.37.0
+create-clubedge-app v0.38.0
         |
         v
 Clubedge Starter v0.24.2
@@ -348,7 +348,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.37.0` | `clubedge-starter@v0.24.2` | The CLI's required, tested default |
+| `create-clubedge-app@0.38.0` | `clubedge-starter@v0.24.2` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -460,6 +460,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.35.0 | v0.24.0 | `deploy` for a frontend and its API (Docker Compose, Railway); Starter v0.24.0: all four auth providers on React + Vite with Hono or FastAPI |
 | 0.36.0 | v0.24.1 | Starter v0.24.1: security update of FastAPI's `certifi`; dependency updates |
 | 0.37.0 | v0.24.1 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
+| 0.38.0 | v0.24.2 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
 
 ## Community
 

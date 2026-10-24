@@ -452,7 +452,7 @@ describe("a project with a shell", () => {
   it("records only the apps that run a server as services, so deploy leaves the shell out", () => {
     const services = plan(mobile).provenance.services!;
     expect(Object.keys(services)).toEqual(["framework", "api"]);
-    expect(dockerComposeSource(services)).not.toMatch(/shell|capacitor/);
+    expect(dockerComposeSource("my-product", services)).not.toMatch(/shell|capacitor/);
     expect(railwayIacSource("my-product", services)).toContain("resources: [framework, api]");
   });
 

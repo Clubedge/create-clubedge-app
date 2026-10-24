@@ -27,7 +27,10 @@ export const clientAddressKeys = ["CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"];
 /** What deploy sets on the public service of each platform. */
 export const clientAddresses = {
   railway: { CLIENT_IP_HEADER: "x-real-ip" },
-  render: { CLIENT_IP_HEADER: "true-client-ip" },
+  // Render documents Cloudflare in front of every service; Cloudflare sets this header to the
+  // client's address and refuses requests that send their own. Render's X-Forwarded-For keeps the
+  // entries a client sent.
+  render: { CLIENT_IP_HEADER: "cf-connecting-ip" },
   fly: { CLIENT_IP_HEADER: "fly-client-ip" },
   vercel: { CLIENT_IP_HEADER: "x-real-ip" },
   netlify: { CLIENT_IP_HEADER: "x-nf-client-connection-ip" },

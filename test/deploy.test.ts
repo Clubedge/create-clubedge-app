@@ -479,7 +479,7 @@ describe("client addresses", () => {
 
   it("sets the header each platform's edge puts the client's address in", () => {
     expect(planVariables({ ...single, clientAddress: clientAddresses.railway }).set.CLIENT_IP_HEADER).toBe("x-real-ip");
-    expect(planVariables({ ...single, clientAddress: clientAddresses.render }).set.CLIENT_IP_HEADER).toBe("true-client-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.render }).set.CLIENT_IP_HEADER).toBe("cf-connecting-ip");
     expect(planVariables({ ...single, clientAddress: clientAddresses.fly }).set.CLIENT_IP_HEADER).toBe("fly-client-ip");
     expect(planVariables({ ...single, clientAddress: clientAddresses.vercel }).set.CLIENT_IP_HEADER).toBe("x-real-ip");
     expect(planVariables({ ...single, clientAddress: clientAddresses.netlify }).set.CLIENT_IP_HEADER).toBe("x-nf-client-connection-ip");

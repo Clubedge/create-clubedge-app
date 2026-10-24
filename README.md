@@ -381,7 +381,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.41.1
+create-clubedge-app v0.42.0
         |
         v
 Clubedge Starter v0.27.0
@@ -392,7 +392,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.41.1` | `clubedge-starter@v0.27.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.42.0` | `clubedge-starter@v0.27.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -508,6 +508,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.39.0 | v0.25.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
 | 0.40.0 | v0.26.0 | Starter v0.26.0: every module on React + Vite with FastAPI (pg-boss excepted) |
 | 0.41.0 | v0.26.0 | A conflicted package.json no longer breaks later commands (`--detailed-exit-code`); doctor finds conflict markers; projects own their version and README |
+| 0.42.0 | v0.27.0 | Starter v0.27.0: mobile apps with Capacitor (`--shell capacitor`, template schema 5); client addresses per platform; Docker Compose behind Caddy, with images on GHCR |
 
 ## Community
 

@@ -20,7 +20,7 @@ use a tested, versioned Starter release by default; do not change the default
 to `main`. For example:
 
 ```text
-create-clubedge-app v0.41.1 -> clubedge-starter v0.27.0
+create-clubedge-app v0.42.0 -> clubedge-starter v0.27.0
 ```
 
 The default Starter pin lives only in the `clubedge` field of `package.json`

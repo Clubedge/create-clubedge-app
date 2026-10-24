@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Changes that leave conflict markers in a package.json, which pnpm cannot read (issue #111):
-#   A. the project set its own version, and an upgrade changes the Starter's;
+#   A. the project added its own pnpm override where the upgrade adds the Starter's (the
+#      project's own version, set too, must not conflict: projects own it);
 #   B. the project added a script at the end of `scripts`, and `add infra local` rewrites those lines;
 #   C. the web app set its own version: only apps/web/package.json conflicts, the root still parses.
 # Each change runs with pnpm install on. It must skip the install and say why, list the conflict,
@@ -60,16 +61,21 @@ echo "::group::Generate a project from Starter $from"
 generate "$work/older" --ref "$from"
 echo "::endgroup::"
 
-echo "::group::A. The project's own version, then upgrade"
+echo "::group::A. The project's own version and override, then upgrade"
 cp -R "$work/older" "$work/a"
 (cd "$work/a" && npm pkg set version=1.0.0)
+# The Starter adds an override at the end of pnpm.overrides after the older tag (undici, in
+# v0.25.0); one of the project's own at the same place makes the same lines differ on both sides.
+(cd "$work/a" && npm pkg set "pnpm.overrides.left-pad=^1.3.0")
 # An edited file saved with CRLF, as editors on Windows can; the merge must keep its line endings.
 sed -i 's/$/\r/' "$work/a/README.md"
 printf 'Notes of our own.\r\n' >>"$work/a/README.md"
-git -C "$work/a" commit -qam "Release 1.0.0"
+git -C "$work/a" commit -qam "Release 1.0.0, with an override of our own"
 cli_in "$work/a" 2 upgrade --detailed-exit-code
 check_conflict "$work/a" package.json
-grep -qx '  "version": "1.0.0",' "$work/a/package.json" || fail "The project's version is not in the conflict."
+grep -qx '  "version": "1.0.0",' "$work/a/package.json" || fail "The project's version was not kept."
+[ "$(grep -c '"version"' "$work/a/package.json")" = 1 ] || fail "The project's version is in a conflict."
+grep -q '"left-pad": "^1.3.0"' "$work/a/package.json" || fail "The project's override is not in the conflict."
 grep -q '^Notes of our own\.' "$work/a/README.md" || fail "README.md lost the project's line."
 [ "$(grep -c $'\r$' "$work/a/README.md")" = "$(wc -l <"$work/a/README.md")" ] || fail "README.md lost its CRLF line endings."
 cli_in "$work/a" 1 status

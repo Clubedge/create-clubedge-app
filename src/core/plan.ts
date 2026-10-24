@@ -14,7 +14,7 @@ import {
   type ScriptChanges,
   type Selection,
 } from "./customize.js";
-import { FRAMEWORK_SLOT, type TemplateManifest, type TemplateSlot, type TemplateStack, type Toolchain } from "./manifest.js";
+import { FRAMEWORK_SLOT, type StackRole, type TemplateManifest, type TemplateSlot, type TemplateStack, type Toolchain } from "./manifest.js";
 import type { TemplateSource } from "./source.js";
 
 export interface FileEdit {
@@ -91,7 +91,8 @@ function isExcluded(path: string, exclude: string[]): boolean {
 
 /**
  * Splits selection flags into stacks by slot and module options: --framework fills the
- * framework slot, a flag named after another slot (--api) fills it, and the rest are modules.
+ * framework slot, a flag named after another slot (--api, --shell) fills it, and the rest are
+ * modules.
  */
 export function splitSelection(manifest: TemplateManifest, framework: string | undefined, flags: Record<string, string>) {
   const stacks: Record<string, string> = {};
@@ -109,13 +110,13 @@ export function stacksIn(manifest: TemplateManifest, slotId: string): string[] {
   return Object.keys(manifest.stacks).filter((id) => manifest.stacks[id]!.slot === slotId);
 }
 
-/** Slots are filled with flags named after them: --framework, --api. */
+/** Slots are filled with flags named after them: --framework, --api, --shell. */
 const slotFlag = (slotId: string) => `--${slotId}`;
 
 /**
  * Resolves one stack per slot from the request and the defaults, with a helpful error for
- * unknown ids, then checks the roles fit together: a frontend needs an API, and a full-stack
- * app already has its own server.
+ * unknown ids, then checks the roles fit together: a frontend needs an API, a full-stack app
+ * already has its own server, and a shell needs a frontend to package.
  */
 export function selectStacks(manifest: TemplateManifest, requested: Record<string, string> = {}): Selection {
   const unknownSlot = Object.keys(requested).find((id) => !manifest.slots[id]);
@@ -140,23 +141,35 @@ export function selectStacks(manifest: TemplateManifest, requested: Record<strin
 }
 
 /**
- * Why the chosen stacks cannot work together, or null when they can: a frontend calls an API,
- * and a full-stack app has its own server. Slots not chosen yet (`pending`) may still bring
- * the API a frontend needs.
+ * Why the chosen stacks cannot work together, or null when they can: a frontend calls an API, a
+ * full-stack app has its own server, and a shell packages a frontend's static build, which a
+ * full-stack app does not have. Slots not chosen yet (`pending`) may still bring the API a
+ * frontend needs, or the frontend a shell packages.
  */
 function roleConflict(manifest: TemplateManifest, chosen: Selection, pending: string[] = []): string | null {
   const stacks = Object.values(chosen).flatMap((id) => manifest.stacks[id] ?? []);
-  const withRole = (role: string) => stacks.find((stack) => stack.role === role);
-  const apiSlot = Object.keys(manifest.slots).find((id) => manifest.slots[id]!.roles.includes("api"));
+  const withRole = (role: StackRole) => stacks.find((stack) => stack.role === role);
+  const slotFor = (role: StackRole) => Object.keys(manifest.slots).find((id) => manifest.slots[id]!.roles.includes(role));
+  const apiSlot = slotFor("api");
+  const frontendSlot = slotFor("frontend");
   const frontend = withRole("frontend");
   const fullstack = withRole("fullstack");
   const api = withRole("api");
+  const shell = withRole("shell");
   if (frontend && !api && !(apiSlot && pending.includes(apiSlot))) {
     const apis = apiSlot ? ` (${stacksIn(manifest, apiSlot).join(", ")})` : "";
     return `${frontend.name} is a frontend and calls an API: choose one with ${slotFlag(apiSlot ?? "api")}${apis}.`;
   }
   if (fullstack && api) {
     return `${fullstack.name} has its own server, so it does not call ${api.name}: choose a frontend, or ${slotFlag(apiSlot!)} ${NO_STACK}.`;
+  }
+  if (shell && fullstack) {
+    return `${fullstack.name} renders pages on its server, so ${shell.name} cannot package it: choose a frontend, or ${slotFlag(shell.slot)} ${NO_STACK}.`;
+  }
+  if (shell && !frontend && !(frontendSlot && pending.includes(frontendSlot))) {
+    const frontends = Object.keys(manifest.stacks).filter((id) => manifest.stacks[id]!.role === "frontend");
+    const choices = frontends.length ? ` (${frontends.join(", ")})` : "";
+    return `${shell.name} packages a frontend's static files: choose one with ${slotFlag(frontendSlot ?? FRAMEWORK_SLOT)}${choices}.`;
   }
   return null;
 }
@@ -261,7 +274,7 @@ function placement(selected: Array<{ slot: TemplateSlot; stack: TemplateStack }>
   return (path: string): string | null => {
     for (const { slot, stack } of selected) {
       if (path === stack.envExample) return slot.env.example;
-      if (path === stack.dockerfile) return slot.dockerfile;
+      if (path === stack.dockerfile && slot.dockerfile) return slot.dockerfile;
     }
     for (const { slot, stack } of selected) {
       if (isWithin(path, stack.app)) return slot.path + path.slice(stack.app.length);
@@ -360,9 +373,10 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     option,
     optionName: manifest.modules[id]!.options[option]!.name,
   }));
+  // The apps deploy runs, each with its Dockerfile. A shell runs no server, so it has neither.
   const services = Object.fromEntries(
     selected.flatMap(({ slotId, slot, stack }) =>
-      stack.deployment
+      stack.deployment && slot.dockerfile
         ? [[slotId, {
             ...stack.deployment,
             role: stack.role,

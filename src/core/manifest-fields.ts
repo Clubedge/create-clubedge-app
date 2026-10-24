@@ -7,9 +7,12 @@ export class ManifestError extends Error {
   override name = "ManifestError";
 }
 
-/** What an app is for: the whole app, a frontend that calls an API, or that API. */
-export type StackRole = "fullstack" | "frontend" | "api";
-export const stackRoles: readonly StackRole[] = ["fullstack", "frontend", "api"];
+/**
+ * What an app is for: the whole app, a frontend that calls an API, that API, or a shell that
+ * packages a frontend's static build, such as a mobile app. Every role but the shell runs a server.
+ */
+export type StackRole = "fullstack" | "frontend" | "api" | "shell";
+export const stackRoles: readonly StackRole[] = ["fullstack", "frontend", "api", "shell"];
 
 /**
  * The slot for the app itself. Starters before schema 4 call it the framework, and projects

@@ -1,8 +1,25 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parseCliArgs } from "../src/cli/args.js";
+import { selectionHelp } from "../src/cli/ui.js";
+import { dockerComposeSource, railwayIacSource } from "../src/core/deploy.js";
+import { executePlan } from "../src/core/execute.js";
 import { ManifestError, parseTemplateManifest, readTemplateManifest } from "../src/core/manifest.js";
 import type { Packs } from "../src/core/manifest-packs.js";
-import { createPlan, describePlan, ModuleError, selectModules, selectStacks, slotChoices, StackError } from "../src/core/plan.js";
-import { temporaryDirectory, writeFiles } from "./helpers.js";
+import {
+  createPlan,
+  describePlan,
+  ModuleError,
+  selectModules,
+  selectStacks,
+  slotChoices,
+  splitSelection,
+  StackError,
+} from "../src/core/plan.js";
+import { readProject, renderProject } from "../src/core/project.js";
+import { readDirectoryTemplate } from "../src/core/source.js";
+import { siteConfig, temporaryDirectory, writeFiles } from "./helpers.js";
 
 /** A schema 4 Starter: Next.js (full-stack), a Vite frontend, and an API in another language. */
 const root = {
@@ -302,5 +319,241 @@ describe("modules with stacks", () => {
     expect(plan.envFiles).toEqual([{ from: ".env.example", to: "apps/web/.env.local" }]);
     // Where databaseEnvFile(project) looks later, from the API's service.
     expect(plan.databaseEnvFile).toBe("apps/api/.env.local");
+  });
+});
+
+/** Schema 5: the same Starter with a mobile shell, which packages the Vite frontend and runs no server. */
+const shellRoot = {
+  ...root,
+  schemaVersion: 5,
+  slots: {
+    ...root.slots,
+    shell: {
+      name: "Mobile shell",
+      question: "Package the web app as a mobile app?",
+      path: "apps/shell",
+      package: "@clubedge/shell",
+      env: { example: "apps/shell/.env.example", target: "apps/shell/.env.local" },
+      roles: ["shell"],
+      siteConfig: "apps/shell/src/config/site.json",
+    },
+  },
+};
+const capacitor = {
+  directory: "apps/capacitor",
+  data: { id: "capacitor", name: "Capacitor", role: "shell", envExample: ".env.example" },
+};
+const deployed = ({ directory, data }: Packs["stacks"][number], id: string, port: number) => ({
+  directory,
+  data: { ...(data as object), deployment: { id, port, healthPath: "/api/health", platforms: ["docker", "railway"] } },
+});
+const shellStacks: Packs["stacks"] = [stacks[0]!, deployed(stacks[1]!, "web", 3000), deployed(stacks[2]!, "api", 3001), capacitor];
+const shellPacks: Packs = { stacks: shellStacks, modules };
+const shellManifest = parseTemplateManifest(JSON.stringify(shellRoot), shellPacks);
+const withShell = (data: Record<string, unknown>) => [...shellStacks.slice(0, 3), { ...capacitor, data: { ...capacitor.data, ...data } }];
+const mobile = { framework: "vite", api: "fastapi", shell: "capacitor" };
+
+describe("schema 5 shells", () => {
+  it("reads a shell and its slot, which have no Dockerfile or deployment", () => {
+    expect(shellManifest.slots.shell).toEqual({
+      name: "Mobile shell",
+      question: "Package the web app as a mobile app?",
+      path: "apps/shell",
+      package: "@clubedge/shell",
+      env: { example: "apps/shell/.env.example", target: "apps/shell/.env.local" },
+      roles: ["shell"],
+      siteConfig: "apps/shell/src/config/site.json",
+      packages: {},
+    });
+    expect(shellManifest.stacks.capacitor).toEqual({
+      name: "Capacitor",
+      role: "shell",
+      slot: "shell",
+      app: "apps/capacitor",
+      envExample: "apps/capacitor/.env.example",
+      modules: {},
+    });
+  });
+
+  it.each([
+    ["a shell with a deployment", withShell({ deployment: { id: "mobile", port: 3000, healthPath: "/", platforms: ["docker"] } })],
+    ["a shell with a Dockerfile", withShell({ dockerfile: "Dockerfile" })],
+  ])("rejects %s", (_label, broken) => {
+    expect(() => parseTemplateManifest(JSON.stringify(shellRoot), { stacks: broken, modules })).toThrow(
+      "apps/capacitor/clubedge.stack.json: a shell runs no server, so it has no dockerfile or deployment.",
+    );
+  });
+
+  it("still needs a Dockerfile for the apps that run a server", () => {
+    const { dockerfile: _, ...frontend } = stacks[1]!.data as Record<string, unknown>;
+    const broken = [stacks[0]!, { ...stacks[1]!, data: frontend }, capacitor];
+    expect(() => parseTemplateManifest(JSON.stringify(shellRoot), { stacks: broken, modules })).toThrow(
+      "apps/vite/clubedge.stack.json: dockerfile must be a non-empty string.",
+    );
+  });
+
+  it("leaves the shell role to schema 5, so schema 4 reads as before", () => {
+    expect(() => parseTemplateManifest(JSON.stringify({ ...shellRoot, schemaVersion: 4 }), shellPacks)).toThrow(
+      "clubedge.template.json: slots.shell.roles must list one or more of: fullstack, frontend, api.",
+    );
+    expect(() => parseTemplateManifest(JSON.stringify(root), { stacks: [...stacks, capacitor], modules })).toThrow(
+      "apps/capacitor/clubedge.stack.json: role must be one of: fullstack, frontend, api.",
+    );
+  });
+});
+
+describe("a project with a shell", () => {
+  const plan = (selection: Record<string, string>) =>
+    createPlan({
+      targetDirectory: "/projects/my-product",
+      identity: { packageName: "my-product", displayName: "My Product" },
+      source: {
+        repository: "Clubedge/clubedge-starter",
+        ref: "v1.0.0",
+        files: [
+          "package.json",
+          "README.md",
+          "apps/vite/package.json",
+          "apps/vite/.env.example",
+          "apps/api-python/pyproject.toml",
+          "apps/api-python/.env.example",
+          "apps/capacitor/package.json",
+          "apps/capacitor/.env.example",
+          "apps/capacitor/capacitor.config.ts",
+          "apps/capacitor/src/config/site.json",
+        ].map((path) => ({ from: path, to: path })),
+      },
+      manifest: shellManifest,
+      stacks: selection,
+      cliVersion: "9.9.9",
+      git: false,
+      install: false,
+    });
+
+  it("places the shell in its slot, with its env file and site config", () => {
+    const created = plan(mobile);
+    expect(created.files.filter(({ from }) => from.startsWith("apps/capacitor/"))).toEqual([
+      { from: "apps/capacitor/package.json", to: "apps/shell/package.json" },
+      { from: "apps/capacitor/.env.example", to: "apps/shell/.env.example" },
+      { from: "apps/capacitor/capacitor.config.ts", to: "apps/shell/capacitor.config.ts" },
+      { from: "apps/capacitor/src/config/site.json", to: "apps/shell/src/config/site.json" },
+    ]);
+    expect(created.envFiles).toContainEqual({ from: "apps/shell/.env.example", to: "apps/shell/.env.local" });
+    expect(describePlan(created)).toEqual(
+      expect.arrayContaining([
+        "Use React + Vite, FastAPI, and Capacitor",
+        'Edit apps/shell/src/config/site.json: Set the project name to "My Product"',
+      ]),
+    );
+    expect(created.provenance.stacks).toEqual(mobile);
+    expect(plan({ framework: "vite", api: "fastapi" }).files.map(({ to }) => to)).not.toContain("apps/shell/package.json");
+  });
+
+  it("records only the apps that run a server as services, so deploy leaves the shell out", () => {
+    const services = plan(mobile).provenance.services!;
+    expect(Object.keys(services)).toEqual(["framework", "api"]);
+    expect(dockerComposeSource(services)).not.toMatch(/shell|capacitor/);
+    expect(railwayIacSource("my-product", services)).toContain("resources: [framework, api]");
+  });
+
+  it("keeps the sections marked for the shell", () => {
+    const readme = [
+      "# Clubedge Starter",
+      "<!-- clubedge:if shell!=none -->",
+      "Build the mobile app.",
+      "<!-- clubedge:end -->",
+      "- Web <!-- clubedge:only shell=none -->",
+      "- Web and mobile <!-- clubedge:only shell=capacitor -->",
+      "",
+    ].join("\n");
+    const edited = (selection: Record<string, string>) =>
+      plan(selection).edits.filter(({ path }) => path === "README.md").reduce((text, { apply }) => apply(text), readme);
+    expect(edited(mobile)).toContain("\nBuild the mobile app.\n- Web and mobile\n");
+    expect(edited({ framework: "vite", api: "fastapi" })).not.toContain("mobile");
+    expect(edited({ framework: "vite", api: "fastapi" })).toContain("\n- Web\n");
+  });
+
+  it("is created, read back, and rendered again as it was created", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, {
+      "clubedge.template.json": JSON.stringify(shellRoot),
+      "clubedge/modules/auth.json": JSON.stringify(modules.auth),
+      "clubedge/modules/deploy.json": JSON.stringify(modules.deploy),
+      ...Object.fromEntries(shellStacks.map(({ directory, data }) => [`${directory}/clubedge.stack.json`, JSON.stringify(data)])),
+      "package.json": JSON.stringify({ name: "clubedge-starter" }),
+      "README.md": "# Clubedge Starter\n",
+      "apps/vite/package.json": JSON.stringify({ name: "@clubedge/vite" }),
+      "apps/vite/.env.example": "VITE_API_URL=\n",
+      "apps/vite/Dockerfile": "FROM node\n",
+      "apps/api-python/package.json": JSON.stringify({ name: "@clubedge/api-python" }),
+      "apps/api-python/.env.example": "DATABASE_URL=\n",
+      "apps/api-python/Dockerfile": "FROM python\n",
+      "apps/capacitor/package.json": JSON.stringify({ name: "@clubedge/capacitor" }),
+      "apps/capacitor/.env.example": "VITE_API_URL=\n",
+      "apps/capacitor/src/config/site.json": JSON.stringify(siteConfig),
+    });
+    const source = await readDirectoryTemplate(starter);
+    const manifest = await readTemplateManifest(source.root);
+    const root = join(await temporaryDirectory(), "my-product");
+    const identity = { packageName: "my-product", displayName: "My Product" };
+    await executePlan(
+      createPlan({ targetDirectory: root, identity, source, manifest, stacks: mobile, cliVersion: "1.0.0", git: false, install: false }),
+      source,
+    );
+
+    const read = (path: string) => readFile(join(root, path), "utf8");
+    expect(JSON.parse(await read("apps/shell/package.json")).name).toBe("@clubedge/shell");
+    expect(JSON.parse(await read("apps/shell/src/config/site.json")).name).toBe("My Product");
+    expect(await read("apps/shell/.env.local")).toBe("VITE_API_URL=\n");
+    expect(JSON.parse(await read("package.json")).clubedge).toMatchObject({ framework: "vite", apps: { api: "fastapi", shell: "capacitor" } });
+
+    // add, remove, and upgrade render the project again from what it recorded.
+    const project = await readProject(root);
+    expect(project.stacks).toEqual(mobile);
+    expect(Object.keys(project.services)).toEqual(["framework", "api"]);
+    const { modules: selection, cliVersion } = project;
+    const rendered = await renderProject({ source, manifest, identity: project.identity, stacks: project.stacks, modules: selection, cliVersion });
+    for (const [path, content] of rendered.files) expect(await read(path)).toBe(content.toString("utf8"));
+  });
+});
+
+describe("selecting a shell", () => {
+  it("leaves the shell out by default", () => {
+    expect(selectStacks(shellManifest)).toEqual({ framework: "next", api: "none", shell: "none" });
+  });
+
+  it("packages a frontend, which still needs its API", () => {
+    expect(selectStacks(shellManifest, mobile)).toEqual(mobile);
+    expect(() => selectStacks(shellManifest, { framework: "vite", shell: "capacitor" })).toThrow(
+      "React + Vite is a frontend and calls an API: choose one with --api (fastapi).",
+    );
+  });
+
+  it("cannot package a full-stack app, which renders its pages on its server", () => {
+    expect(() => selectStacks(shellManifest, { shell: "capacitor" })).toThrow(
+      "Next.js renders pages on its server, so Capacitor cannot package it: choose a frontend, or --shell none.",
+    );
+  });
+
+  it("names the frontends it can package when none is chosen", () => {
+    const { default: _, ...framework } = shellRoot.slots.framework;
+    const optional = parseTemplateManifest(JSON.stringify({ ...shellRoot, slots: { ...shellRoot.slots, framework } }), shellPacks);
+    expect(() => selectStacks(optional, { shell: "capacitor" })).toThrow(
+      "Capacitor packages a frontend's static files: choose one with --framework (vite).",
+    );
+  });
+
+  it("offers the shell after the framework and the API, only for a frontend", () => {
+    expect(slotChoices(shellManifest, "framework")).toEqual(["next", "vite"]);
+    expect(slotChoices(shellManifest, "framework", { shell: "capacitor" })).toEqual(["vite"]);
+    expect(slotChoices(shellManifest, "api", { framework: "vite" })).toEqual(["fastapi"]);
+    expect(slotChoices(shellManifest, "shell", { framework: "next", api: "none" })).toEqual(["none"]);
+    expect(slotChoices(shellManifest, "shell", { framework: "vite", api: "fastapi" })).toEqual(["capacitor", "none"]);
+  });
+
+  it("is chosen with --shell and listed in the help", () => {
+    const flags = parseCliArgs(["app", "--api", "fastapi", "--shell", "capacitor"]).modules;
+    expect(splitSelection(shellManifest, "vite", flags)).toEqual({ stacks: mobile, modules: {} });
+    expect(selectionHelp(shellManifest)).toContain("  --shell <id>            Mobile shell: capacitor or none (default)");
   });
 });

@@ -23,7 +23,7 @@ Create and manage Clubedge Starter projects through the supported CLI or MCP too
 
 For a new app:
 
-1. Identify the requested framework and API shape. Full-stack choices such as Next.js and TanStack Start do not use a separate API; Vite can be paired with Hono or FastAPI.
+1. Identify the requested framework and API shape. Full-stack choices such as Next.js and TanStack Start do not use a separate API; Vite can be paired with Hono or FastAPI, and packaged as a mobile app with a shell such as Capacitor (`stacks: { shell: "capacitor" }`, or `--shell capacitor`) when the capabilities list one. Full-stack choices cannot be packaged.
 2. Choose only the requested modules. Check the live capabilities or CLI `--help` rather than relying on a hard-coded list, since each CLI release is pinned to a specific Starter release.
 3. Validate that module requirements are met. For example, module compatibility can depend on the selected framework or another module.
 4. Preview with the CLI's `--dry-run` when the requested changes or destination are unclear. For MCP, describe the exact target directory and options before creating if the user has not made them clear.

@@ -295,8 +295,12 @@ export function applyConditionals(source: string, selection: Selection, path = "
   const text = output.join("\n");
   if (!removed) return text;
   // A removed block can leave two blank lines in a row, or blank lines at the start or end of
-  // the file; formatted sources never have them.
-  const collapsed = text.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+  // the file; formatted sources never have them. Python is the exception: two blank lines come
+  // before a top-level definition (PEP 8, which ruff format enforces), one inside indented code.
+  const squeezed = path.endsWith(".py")
+    ? text.replace(/\n{4,}/g, "\n\n\n").replace(/\n{3,}(?=[ \t])/g, "\n\n")
+    : text.replace(/\n{3,}/g, "\n\n");
+  const collapsed = squeezed.replace(/^\n+/, "");
   return source.endsWith("\n") ? collapsed.replace(/\n+$/, "\n") : collapsed;
 }
 

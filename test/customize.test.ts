@@ -228,6 +228,35 @@ describe("applyConditionals", () => {
     expect(applyConditionals(source, selection)).toBe("intro\n\noutro\n");
   });
 
+  it("keeps Python's two blank lines before a top-level definition", () => {
+    const source = [
+      "import os",
+      "# clubedge:if auth=supabase",
+      "import extra",
+      "# clubedge:end",
+      "",
+      "",
+      "def a():",
+      "    x = 1",
+      "",
+      "    # clubedge:if auth=supabase",
+      "    y = 2",
+      "    # clubedge:end",
+      "",
+      "    return x",
+      "",
+      "",
+      "def b():",
+      "    pass",
+      "",
+    ].join("\n");
+    expect(applyConditionals(source, selection, "src/app.py")).toBe(
+      "import os\n\n\ndef a():\n    x = 1\n\n    return x\n\n\ndef b():\n    pass\n",
+    );
+    // Other files keep at most one blank line.
+    expect(applyConditionals(source, selection, "notes.txt")).toContain("import os\n\ndef a():");
+  });
+
   it.each([
     ["an unknown key", "# clubedge:if cache=redis\n# clubedge:end", "unknown key \"cache\""],
     ["an unreadable condition", "# clubedge:if auth\n# clubedge:end", "cannot read the condition"],

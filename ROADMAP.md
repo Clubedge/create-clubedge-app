@@ -44,7 +44,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 35 | 0.37.0 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
 | 36 | 0.38.0 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
 | 37 | 0.39.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
-| 38 | 0.40.0 | The decoupled stacks with Hono support every module; Keep Python's two blank lines when a removed block leaves them; Default to Starter v0.26.0 |
+| 38 | 0.40.0 | Starter v0.26.0: every module on React + Vite with FastAPI (pg-boss excepted) |
 
 ## CLI improvements
 

@@ -246,3 +246,26 @@ export function checkDatabaseUrls(input: {
   }
   return { name, status: "ok", detail: "Neon, pooled for the app and direct for migrations and the jobs worker" };
 }
+
+export interface ConflictedFile {
+  path: string;
+  blocks: number;
+}
+
+export function checkConflicts(conflicts: ConflictedFile[]): CheckResult {
+  const name = "Conflicts";
+  if (!conflicts.length) return { name, status: "ok", detail: "no unresolved conflict markers" };
+  const total = conflicts.reduce((sum, c) => sum + c.blocks, 0);
+  const sample = conflicts
+    .slice(0, 5)
+    .map((c) => `\n  • ${c.path} (${c.blocks} ${c.blocks === 1 ? "block" : "blocks"})`)
+    .join("");
+  const more = conflicts.length > 5 ? `\n  ... and ${conflicts.length - 5} more files` : "";
+  return {
+    name,
+    status: "fail",
+    detail: `${conflicts.length} ${conflicts.length === 1 ? "file has" : "files have"} unresolved conflict markers (${total} total):${sample}${more}`,
+    fix: 'Resolve the "<<<<<<< yours" markers in these files, then delete .clubedge/incoming.',
+  };
+}
+

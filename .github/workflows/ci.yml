@@ -461,7 +461,7 @@ jobs:
           echo "TEMP_DIR=$temp" >> "$GITHUB_ENV"
       - name: Upgrade, add, and upgrade again with conflicts in package.json files
         # Any release before the pinned one works: each changes every package.json's version.
-        run: bash scripts/ci/package-json-conflicts.sh "$CLI" "$TEMP_DIR/conflicts" v0.24.2
+        run: bash scripts/ci/package-json-conflicts.sh "$CLI" "$TEMP_DIR/conflicts" v0.24.0
 
   latest-starter-compatibility:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

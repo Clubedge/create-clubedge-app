@@ -3,7 +3,8 @@
 #   A. the project added its own pnpm override where the upgrade adds the Starter's (the
 #      project's own version, set too, must not conflict: projects own it);
 #   B. the project added a script at the end of `scripts`, and `add infra local` rewrites those lines;
-#   C. the web app set its own version: only apps/web/package.json conflicts, the root still parses.
+#   C. the web app added its own dependency where the upgrade bumps it (the web app's
+#      own version, set too, must not conflict: workspace apps own it).
 # Each change runs with pnpm install on. It must skip the install and say why, list the conflict,
 # exit with 2 under --detailed-exit-code (0 without it), and save a valid Starter version in
 # .clubedge/incoming. A later command must name the file instead of failing with a parse error.
@@ -99,12 +100,17 @@ cli_in "$work/b" 1 doctor --no-services
 expect "package.json has 1 unresolved conflict from an earlier add, remove, or upgrade"
 echo "::endgroup::"
 
-echo "::group::C. The web app's own version, then upgrade"
+echo "::group::C. The web app's own version and dependency, then upgrade"
 cp -R "$work/older" "$work/c"
 (cd "$work/c/apps/web" && npm pkg set version=1.0.0)
-git -C "$work/c" commit -qam "Release the web app 1.0.0"
+# The Starter bumps next after v0.24.0 (to ^16.4.3 in v0.24.2); setting our own makes those lines differ.
+(cd "$work/c/apps/web" && npm pkg set "dependencies.next=^16.0.0")
+git -C "$work/c" commit -qam "Release the web app 1.0.0, with next 16.0.0"
 cli_in "$work/c" 2 upgrade --detailed-exit-code
 check_conflict "$work/c" apps/web/package.json
+grep -qx '  "version": "1.0.0",' "$work/c/apps/web/package.json" || fail "The web app's version was not kept."
+[ "$(grep -c '"version"' "$work/c/apps/web/package.json")" = 1 ] || fail "The web app's version is in a conflict."
+grep -q '"next": "\^16.0.0"' "$work/c/apps/web/package.json" || fail "The web app's dependency is not in the conflict."
 expect "git diff --no-index apps/web/package.json .clubedge/incoming/apps/web/package.json"
 # From the web app's folder, the CLI reads that package.json first.
 cli_in "$work/c/apps/web" 1 status

@@ -428,11 +428,15 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
   for (const { slot, stack } of selected) {
     const appManifest = `${slot.path}/package.json`;
     const appPackage = slot.package;
-    if (appPackage && stack.app !== slot.path && has(appManifest)) {
+    const appVersion = identity.appVersions?.[slot.path];
+    const needsRename = Boolean(appPackage && stack.app !== slot.path);
+    if (has(appManifest) && (needsRename || appVersion !== undefined)) {
       edits.push({
         path: appManifest,
-        description: `Name the ${stack.name} app "${appPackage}"`,
-        apply: (text) => customizeAppManifest(text, appPackage),
+        description: needsRename
+          ? `Name the ${stack.name} app "${appPackage}"`
+          : `Preserve the ${stack.name} app version`,
+        apply: (text) => customizeAppManifest(text, needsRename ? appPackage : undefined, appVersion),
       });
     }
   }

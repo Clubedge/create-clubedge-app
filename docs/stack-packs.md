@@ -134,11 +134,14 @@ Stacks can declare deployment facts without teaching the CLI stack-specific rule
 ```
 
 The CLI records the selected services under `package.json` → `clubedge.services`. For Docker, it
-uses each app's Dockerfile to write a Compose topology: the frontend is public and proxies `/api`
-to the private API service. For Railway, it creates a public frontend service and a private API
-service, configures their health checks and API migrations, and connects them over Railway's
-private network. The generated `.railway/railway.ts` is the source of truth for those service
-settings.
+uses each app's Dockerfile and port to write a Compose topology behind Caddy: the frontend is the
+public service, which Caddy serves over HTTPS, and proxies `/api` to the private API service. The
+`id` names each service, its image (`<prefix>-<id>`), and its entry in the workflow that
+publishes the images to GitHub's container registry. A full-stack stack needs no deployment
+facts for Docker: its app is the root Dockerfile's image, the `web` service on port 3000. For
+Railway, it creates a public frontend service and a private API service, configures their health
+checks and API migrations, and connects them over Railway's private network. The generated
+`.railway/railway.ts` is the source of truth for those service settings.
 
 ## Adding a stack
 

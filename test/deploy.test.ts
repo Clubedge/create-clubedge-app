@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import {
+  buildArgumentKeys,
+  caddyfileSource,
+  clientAddresses,
+  clientAddressVariables,
   databasesFor,
   dockerComposeSource,
+  fullstackService,
+  ghcrImagePrefix,
+  publicService,
+  releaseImagesWorkflowSource,
   externalDatabaseUrls,
   isLocalUrl,
   deploymentStatus,
@@ -175,41 +183,211 @@ const betterAuthFrontendKeys = [
   "BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION",
 ];
 
+const fullstack = { framework: fullstackService };
+const caddy = [
+  "  caddy:",
+  "    image: caddy:2",
+  "    restart: unless-stopped",
+  "    ports:",
+  '      - "80:80"',
+  '      - "443:443"',
+  '      - "443:443/udp"',
+  "    environment:",
+  '      DOMAIN: "${DOMAIN:?Set DOMAIN in .env.production to the domain that points at this server}"',
+  "    volumes:",
+  "      - ./Caddyfile:/etc/caddy/Caddyfile:ro",
+  "      - caddy-data:/data",
+  "      - caddy-config:/config",
+  "    depends_on:",
+  "      - web",
+  "",
+  "volumes:",
+  "  caddy-data:",
+  "  caddy-config:",
+  "",
+].join("\n");
+
 describe("Docker Compose for a frontend and an API", () => {
+  it("pulls each app's image or builds it, behind Caddy, which alone publishes ports", () => {
+    const source = dockerComposeSource("edge-notes", pairServices);
+    expect(source).toContain("  web:\n    image: ${IMAGE_PREFIX:-edge-notes}-web:${TAG:-latest}\n    build:\n      context: .\n      dockerfile: Dockerfile\n");
+    expect(source).toContain("  api:\n    image: ${IMAGE_PREFIX:-edge-notes}-api:${TAG:-latest}\n    build:\n      context: .\n      dockerfile: apps/api/Dockerfile\n");
+    expect(source).toContain('    expose:\n      - "3000"\n    depends_on:\n      - api\n    restart: unless-stopped\n');
+    expect(source).toContain('    expose:\n      - "3001"\n    restart: unless-stopped\n');
+    expect(source.match(/^ {4}ports:/gm)).toHaveLength(1);
+    expect(source.endsWith(caddy)).toBe(true);
+  });
+
   it("builds the frontend with the VITE_* values its example lists", () => {
-    const firebase = dockerComposeSource(pairServices, ["API_URL", "VITE_API_URL", "VITE_FIREBASE_API_KEY", "VITE_FIREBASE_PROJECT_ID", "VITE_FIREBASE_AUTH_DOMAIN"]);
+    const firebase = dockerComposeSource("edge-notes", pairServices, ["API_URL", "VITE_API_URL", "VITE_FIREBASE_API_KEY", "VITE_FIREBASE_PROJECT_ID", "VITE_FIREBASE_AUTH_DOMAIN"]);
     expect(firebase).toContain(
       "      args:\n        VITE_API_URL: ${VITE_API_URL:-}\n        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}\n        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}\n        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}\n",
     );
     expect(firebase).not.toContain("VITE_SUPABASE_URL");
-    expect(firebase).toContain("    environment:\n      API_URL: http://api:3001\n    ports:");
     expect(firebase).not.toContain("BETTER_AUTH_URL");
 
-    const appwrite = dockerComposeSource(pairServices, ["API_URL", "VITE_APPWRITE_ENDPOINT", "VITE_APPWRITE_PROJECT_ID"]);
+    const appwrite = dockerComposeSource("edge-notes", pairServices, ["API_URL", "VITE_APPWRITE_ENDPOINT", "VITE_APPWRITE_PROJECT_ID"]);
     expect(appwrite).toContain("        VITE_APPWRITE_ENDPOINT: ${VITE_APPWRITE_ENDPOINT:-}\n        VITE_APPWRITE_PROJECT_ID: ${VITE_APPWRITE_PROJECT_ID:-}");
-    expect(dockerComposeSource(pairServices)).not.toContain("args:");
+    expect(dockerComposeSource("edge-notes", pairServices)).not.toContain("args:");
   });
 
-  it("gives the frontend's server Better Auth's runtime variables, and the API its address", () => {
-    const source = dockerComposeSource(pairServices, betterAuthFrontendKeys);
+  it("gives the frontend's server Better Auth's runtime variables, at the domain Caddy serves, and the API its address", () => {
+    const source = dockerComposeSource("edge-notes", pairServices, betterAuthFrontendKeys);
     expect(source).toContain("      args:\n        VITE_API_URL: ${VITE_API_URL:-}\n    environment:");
     expect(source).toContain(
       [
         "    environment:",
         "      API_URL: http://api:3001",
+        "      # Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.",
+        "      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}",
+        "      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}",
         "      DATABASE_URL: ${DATABASE_URL:-}",
         "      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}",
-        "      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}",
+        "      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${DOMAIN}}",
         "      RESEND_API_KEY: ${RESEND_API_KEY:-}",
         "      EMAIL_FROM: ${EMAIL_FROM:-}",
         "      BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION: ${BETTER_AUTH_REQUIRE_EMAIL_VERIFICATION:-}",
-        "    ports:",
+        "    expose:",
       ].join("\n"),
     );
-    // The API reads .env.production, and asks the frontend's server for the session over the Compose network.
+    // The API reads .env.production, is reached only through the frontend, and asks the frontend's
+    // server for the session over the Compose network.
     expect(source).toContain(
-      "  api:\n    build:\n      context: .\n      dockerfile: apps/api/Dockerfile\n    env_file:\n      - path: .env.production\n        required: false\n    environment:\n      HOST: 0.0.0.0\n      BETTER_AUTH_URL: http://web:3000\n    expose:",
+      [
+        "    env_file:",
+        "      - path: .env.production",
+        "        required: false",
+        "    environment:",
+        "      HOST: 0.0.0.0",
+        "      # Reached only through web, which passes on the client's address as the one X-Forwarded-For entry.",
+        '      CLIENT_IP_HEADER: ""',
+        '      TRUSTED_PROXY_HOPS: "1"',
+        "      BETTER_AUTH_URL: http://web:3000",
+        "    expose:",
+      ].join("\n"),
     );
+  });
+
+  it("sets each client-address setting once, even when the frontend's example lists it", () => {
+    const source = dockerComposeSource("edge-notes", pairServices, ["API_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS", "PORT"]);
+    expect(source.match(/^ {6}CLIENT_IP_HEADER: /gm)).toHaveLength(2);
+    expect(source.match(/^ {6}TRUSTED_PROXY_HOPS: /gm)).toHaveLength(2);
+    expect(source).not.toContain("PORT:");
+  });
+});
+
+describe("Docker Compose for a full-stack app", () => {
+  const nextKeys = ["NODE_ENV", "NEXT_PUBLIC_APP_URL", "DATABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "BETTER_AUTH_SECRET"];
+
+  it("runs the root Dockerfile's image behind Caddy, with the env file and the public URL at the domain", () => {
+    const source = dockerComposeSource("my-app", fullstack, nextKeys);
+    expect(source).toContain(
+      [
+        "services:",
+        "  web:",
+        "    image: ${IMAGE_PREFIX:-my-app}-web:${TAG:-latest}",
+        "    build:",
+        "      context: .",
+        "      dockerfile: Dockerfile",
+        "      args:",
+        "        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${DOMAIN}}",
+        "    env_file:",
+        "      - path: .env.production",
+        "        required: false",
+        "    environment:",
+        "      APP_URL: ${APP_URL:-https://${DOMAIN}}",
+        "      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${DOMAIN}}",
+        "      # Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.",
+        "      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}",
+        "    expose:",
+        '      - "3000"',
+        "    restart: unless-stopped",
+        caddy,
+      ].join("\n"),
+    );
+    // The env file's own CLIENT_IP_HEADER reaches the app through env_file.
+    expect(source).not.toContain("CLIENT_IP_HEADER");
+  });
+
+  it("passes no build arguments to an image that compiles nothing in (TanStack Start)", () => {
+    expect(dockerComposeSource("my-app", fullstack, ["APP_URL", "DATABASE_URL"])).not.toContain("args:");
+    expect(buildArgumentKeys(fullstackService, nextKeys)).toEqual(["NEXT_PUBLIC_APP_URL"]);
+    expect(buildArgumentKeys(pairServices.api!, ["VITE_API_URL"])).toEqual([]);
+  });
+
+  it("serves the public app at DOMAIN in the Caddyfile", () => {
+    const expected = "{$DOMAIN} {\n\treverse_proxy web:3000\n}\n";
+    expect(caddyfileSource(fullstack).endsWith(expected)).toBe(true);
+    expect(caddyfileSource(pairServices).endsWith(expected)).toBe(true);
+    expect(caddyfileSource({ api: pairServices.api!, framework: { ...pairServices.framework!, id: "site", port: 8080 } })).toContain("\treverse_proxy site:8080\n");
+    expect(publicService(pairServices).role).toBe("frontend");
+  });
+});
+
+describe("the workflow that publishes the images", () => {
+  const workflow = releaseImagesWorkflowSource(pairServices, ["API_URL", "VITE_API_URL", "VITE_SUPABASE_URL"]);
+
+  it("runs for published releases and by hand, never for tag pushes", () => {
+    expect(workflow).toContain("\non:\n  release:\n    types: [published]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n  packages: write\n\njobs:\n");
+  });
+
+  it("builds one image per app, with the values it compiles in from repository variables", () => {
+    expect(workflow).toContain(
+      [
+        "        include:",
+        "          - service: web",
+        "            dockerfile: Dockerfile",
+        "            context: .",
+        "            # The image compiles these in: set them as repository variables.",
+        "            build-args: |",
+        "              VITE_API_URL=${{ vars.VITE_API_URL }}",
+        "              VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }}",
+        "          - service: api",
+        "            dockerfile: apps/api/Dockerfile",
+        "            context: .",
+        "    steps:",
+      ].join("\n"),
+    );
+    const next = releaseImagesWorkflowSource(fullstack, ["NEXT_PUBLIC_APP_URL", "DATABASE_URL"]);
+    expect(next).toContain("          - service: web\n            dockerfile: Dockerfile\n            context: .\n            # The image");
+    expect(next).toContain("              NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}\n    steps:");
+    expect(next).toContain("          build-args: ${{ matrix.build-args }}");
+    // TanStack Start compiles nothing in: no image has build arguments for the step to read.
+    const start = releaseImagesWorkflowSource(fullstack, ["APP_URL"]);
+    expect(start).not.toContain("build-args");
+  });
+
+  it("pushes multi-platform images to GHCR, tagged by version, latest, and edge", () => {
+    for (const action of [
+      "actions/checkout@v7",
+      "docker/setup-qemu-action@v4",
+      "docker/setup-buildx-action@v4",
+      "docker/login-action@v4",
+      "docker/metadata-action@v6",
+      "docker/build-push-action@v7",
+    ]) {
+      expect(workflow).toContain(`uses: ${action}\n`);
+    }
+    expect(workflow).toContain("          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.GITHUB_TOKEN }}\n");
+    expect(workflow).toContain("          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}\n          flavor: latest=false\n");
+    expect(workflow).toContain(
+      [
+        "            type=semver,pattern={{version}}",
+        "            type=semver,pattern={{major}}.{{minor}}",
+        "            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}",
+        "            type=edge",
+      ].join("\n"),
+    );
+    expect(workflow).toContain("          platforms: linux/amd64,linux/arm64\n          push: true\n");
+    expect(workflow).toContain("          file: ${{ matrix.dockerfile }}\n");
+    expect(workflow).toContain("          cache-from: type=gha,scope=${{ matrix.service }}\n          cache-to: type=gha,mode=max,scope=${{ matrix.service }}\n");
+  });
+
+  it("names the registry the images go to, from a GitHub remote", () => {
+    expect(ghcrImagePrefix("git@github.com:Clubedge/Edge-Notes.git")).toBe("ghcr.io/clubedge/edge-notes");
+    expect(ghcrImagePrefix("https://github.com/me/my-app\n")).toBe("ghcr.io/me/my-app");
+    expect(ghcrImagePrefix("https://gitlab.com/me/my-app.git")).toBeNull();
+    expect(ghcrImagePrefix("")).toBeNull();
   });
 });
 
@@ -225,12 +403,14 @@ describe("Railway variables for a frontend and an API", () => {
     secret: () => "s3cret",
     databases: { DATABASE_URL: "${{Postgres.DATABASE_URL}}" },
     ports: { frontend: 3000, api: 3001 },
+    clientAddress: clientAddresses.railway,
   };
 
   it("runs Better Auth in the frontend's server, with the API's database and the public URL", () => {
     const plan = planServicePair({ ...pair, envFile: { RESEND_API_KEY: "re_x", EMAIL_FROM: "a@b.co", BETTER_AUTH_URL: "http://localhost:3000" } });
     expect(plan.frontend.set).toEqual({
       PORT: "3000",
+      CLIENT_IP_HEADER: "x-real-ip",
       RESEND_API_KEY: "re_x",
       EMAIL_FROM: "a@b.co",
       DATABASE_URL: "${{Postgres.DATABASE_URL}}",
@@ -277,12 +457,76 @@ describe("Railway variables for a frontend and an API", () => {
       apiKeys: ["HOST", "PORT", "FRONTEND_URL", "DATABASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"],
       envFile: { VITE_SUPABASE_URL: "https://x.supabase.co", SUPABASE_URL: "https://x.supabase.co", API_URL: "http://127.0.0.1:3001" },
     });
-    expect(plan.frontend.set).toEqual({ PORT: "3000", VITE_SUPABASE_URL: "https://x.supabase.co" });
+    expect(plan.frontend.set).toEqual({ PORT: "3000", CLIENT_IP_HEADER: "x-real-ip", VITE_SUPABASE_URL: "https://x.supabase.co" });
     expect(plan.frontend.unset).toEqual(["VITE_SUPABASE_PUBLISHABLE_KEY"]);
     expect(plan.api.set).not.toHaveProperty("VITE_SUPABASE_URL");
     expect(plan.api.set).toMatchObject({ SUPABASE_URL: "https://x.supabase.co" });
     expect(plan.api.set).not.toHaveProperty("BETTER_AUTH_URL");
     expect(plan.api.unset).toEqual(["SUPABASE_PUBLISHABLE_KEY"]);
+  });
+});
+
+describe("client addresses", () => {
+  const single = {
+    modules: { auth: "none", cache: "memory" },
+    keys: ["DATABASE_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"],
+    url: "https://my-app.example.com",
+    existing: {},
+    envFile: {},
+    secret: () => "s",
+    databases: {},
+  };
+
+  it("sets the header each platform's edge puts the client's address in", () => {
+    expect(planVariables({ ...single, clientAddress: clientAddresses.railway }).set.CLIENT_IP_HEADER).toBe("x-real-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.render }).set.CLIENT_IP_HEADER).toBe("true-client-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.fly }).set.CLIENT_IP_HEADER).toBe("fly-client-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.vercel }).set.CLIENT_IP_HEADER).toBe("x-real-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.netlify }).set.CLIENT_IP_HEADER).toBe("x-nf-client-connection-ip");
+    expect(clientAddresses.docker).toEqual({ TRUSTED_PROXY_HOPS: "1" });
+  });
+
+  it("never reports the settings as unset, since they have safe defaults", () => {
+    const plan = planVariables({ ...single, clientAddress: clientAddresses.fly });
+    expect(plan.set).not.toHaveProperty("TRUSTED_PROXY_HOPS");
+    expect(plan.unset).toEqual(["DATABASE_URL"]);
+    expect(planVariables(single).unset).toEqual(["DATABASE_URL"]);
+  });
+
+  it("takes the env file's settings instead, either one replacing both defaults", () => {
+    const header = planVariables({ ...single, envFile: { CLIENT_IP_HEADER: "cf-connecting-ip" }, clientAddress: clientAddresses.render });
+    expect(header.set.CLIENT_IP_HEADER).toBe("cf-connecting-ip");
+    const hops = planVariables({ ...single, envFile: { TRUSTED_PROXY_HOPS: "2", CLIENT_IP_HEADER: "" }, clientAddress: clientAddresses.railway });
+    expect(hops.set.TRUSTED_PROXY_HOPS).toBe("2");
+    expect(hops.set).not.toHaveProperty("CLIENT_IP_HEADER");
+    expect(clientAddressVariables(clientAddresses.vercel, { CLIENT_IP_HEADER: "" })).toEqual({ CLIENT_IP_HEADER: "x-real-ip" });
+  });
+
+  it("gives a frontend the platform's header, and its API the frontend as its one proxy", () => {
+    const pair = {
+      modules: { auth: "none", cache: "memory" },
+      frontendKeys: ["API_URL", "VITE_API_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"],
+      apiKeys: ["HOST", "PORT", "DATABASE_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"],
+      url: "https://notes-web.up.railway.app",
+      existing: { frontend: {}, api: {} },
+      envFile: {},
+      secret: () => "s",
+      databases: { DATABASE_URL: "${{Postgres.DATABASE_URL}}" },
+      ports: { frontend: 3000, api: 3001 },
+      clientAddress: clientAddresses.railway,
+    };
+    const plan = planServicePair(pair);
+    expect(plan.frontend.set).toMatchObject({ CLIENT_IP_HEADER: "x-real-ip" });
+    expect(plan.frontend.set).not.toHaveProperty("TRUSTED_PROXY_HOPS");
+    expect(plan.api.set).toMatchObject({ TRUSTED_PROXY_HOPS: "1" });
+    expect(plan.api.set).not.toHaveProperty("CLIENT_IP_HEADER");
+    expect([...plan.frontend.unset, ...plan.api.unset]).toEqual([]);
+
+    // The env file's settings describe the public service; the API stays behind the frontend.
+    const own = planServicePair({ ...pair, envFile: { CLIENT_IP_HEADER: "cf-connecting-ip", TRUSTED_PROXY_HOPS: "3" } });
+    expect(own.frontend.set).toMatchObject({ CLIENT_IP_HEADER: "cf-connecting-ip", TRUSTED_PROXY_HOPS: "3" });
+    expect(own.api.set).toMatchObject({ TRUSTED_PROXY_HOPS: "1" });
+    expect(own.api.set).not.toHaveProperty("CLIENT_IP_HEADER");
   });
 });
 

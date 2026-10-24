@@ -10,6 +10,7 @@ import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
+  clientAddresses,
   exampleKeys,
   externalDatabaseUrls,
   flyAppUrl,
@@ -83,7 +84,7 @@ export async function deployToFly(args: CliArgs, project: Project, cli: string, 
   const url = flyAppUrl(app);
 
   if (args.dryRun) {
-    const preview = planVariables({ modules: project.modules, keys, url, existing: {}, envFile, secret: () => "<generated>", databases: {}, attached: [...(postgres ? ["DATABASE_URL"] : []), ...(redis ? ["REDIS_URL"] : [])] });
+    const preview = planVariables({ modules: project.modules, keys, url, existing: {}, envFile, secret: () => "<generated>", databases: {}, attached: [...(postgres ? ["DATABASE_URL"] : []), ...(redis ? ["REDIS_URL"] : [])], clientAddress: clientAddresses.fly });
     log.message(
       [
         `• Fly app "${app}"${named ? " (from fly.toml)" : ", written to fly.toml"}, at ${url}`,
@@ -168,6 +169,7 @@ export async function deployToFly(args: CliArgs, project: Project, cli: string, 
     secret,
     databases: redisUrl ? { REDIS_URL: redisUrl } : {},
     attached: [...(postgres ? ["DATABASE_URL"] : []), ...(redis && !redisUrl && secrets.has("REDIS_URL") ? ["REDIS_URL"] : [])],
+    clientAddress: clientAddresses.fly,
   });
   // The image sets NODE_ENV and fly.toml the port: the rest are secrets, staged for the deploy.
   const { NODE_ENV: _node, PORT: _port, ...values } = plan.set;

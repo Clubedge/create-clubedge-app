@@ -141,7 +141,7 @@ They meet at one HTTP contract, `packages/contract/openapi.yaml`: the frontend c
 
 With `--auth supabase`, the Vite app owns the browser session and attaches its access token to contract requests. Hono or FastAPI verifies that token with Supabase Auth and returns the contract's shared user shape. Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in the generated env examples; no Supabase service-role key goes to the browser.
 
-With the Hono API, the decoupled stacks support every module option the full-stack frameworks do (since Starter v0.26.1), each running in the API with the matching UI in the frontend; with FastAPI, they support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache. Both work with any local infrastructure (the API's `apps/api/.env.local` holds `DATABASE_URL`, since the API owns the database), and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that builds the frontend and API as separate services; copy the variables of `.env.example` and `apps/api/.env.example` to `.env.production`, fill in their values, and run `docker compose --env-file .env.production up --build -d`. The frontend's `VITE_*` values are build arguments, compiled into its bundle; with Better Auth, its Node server also gets the auth variables (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the email settings). With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
+With the Hono API, the decoupled stacks support every module option the full-stack frameworks do (since Starter v0.26.1), each running in the API with the matching UI in the frontend; with FastAPI, they support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache. Both work with any local infrastructure (the API's `apps/api/.env.local` holds `DATABASE_URL`, since the API owns the database), and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that runs the frontend and API as separate services behind Caddy, which serves the frontend over HTTPS while the API stays on the Compose network (see [Deploy with Docker Compose](#deploy-with-docker-compose)); copy the variables of `.env.example` and `apps/api/.env.example` to `.env.production` and fill in their values. The frontend's `VITE_*` values are build arguments, compiled into its bundle; with Better Auth, its Node server also gets the auth variables (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the email settings). With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
 
 ### A mobile app
 
@@ -171,7 +171,7 @@ Authentication, file storage, caching, email, payments, background jobs, observa
 | `--payments` | `stripe` (needs an auth module), `none` | `none` |
 | `--jobs` | `pg-boss`, `bullmq` (needs the `redis` cache), `inngest`, `none` | `none` |
 | `--observability` | `otel` (OpenTelemetry, to any OTLP collector), `sentry`, `none` | `none` |
-| `--deploy`  | `docker` (any container host), `fly`, `railway`, `render`, `vercel`, `netlify` | `docker` |
+| `--deploy`  | `docker` (any container host; `deploy` sets up Docker Compose with Caddy), `fly`, `railway`, `render`, `vercel`, `netlify` | `docker` |
 | `--infra`   | `docker` (Docker Compose), `supabase` (Supabase CLI), `local` (no Docker: PGlite and a local folder), `neon` (a free hosted Neon database), `none` | `docker` |
 
 ```sh
@@ -339,6 +339,30 @@ In a project with `--deploy netlify`, `pnpm clubedge deploy` uses [Netlify's CLI
 ### Deploy to Render (experimental)
 
 In a project with `--deploy render`, `pnpm clubedge deploy` uses Render's API. Render builds the Dockerfile from your Git repository, so push the project to GitHub, GitLab, or Bitbucket first, with Render's access to it granted in the dashboard; `deploy` warns about commits that aren't pushed. It signs in with an API key: `RENDER_API_KEY`, or else it opens the dashboard's API keys page and asks you to paste one. It creates or reuses a web service named after the package, on the Docker runtime and a starter instance (pre-deploy commands need a paid type), which runs `node /app/migrate.mjs` before each release, checks `/api/health`, and deploys again on each push, as `render.yaml` describes. `DATABASE_URL` comes from the env file (Render Postgres, Neon, Supabase, ...). It sets the production variables: the env file's values, the service's `*.onrender.com` URL, and a generated `BETTER_AUTH_SECRET` that later runs keep. Then it starts a deploy and waits until it is live. When Render names the app something other than `https://<service>.onrender.com`, `deploy` sets that URL and deploys again, since the build compiles it in. Running it again reuses the service. Render bills the instance on your plan.
+
+### Deploy with Docker Compose
+
+In a project with `--deploy docker` (the default), `pnpm clubedge deploy` prepares the project for a server of your own and creates nothing anywhere else. It writes three files to commit:
+
+- `compose.yaml` runs each app's image behind [Caddy](https://caddyserver.com), the only service that publishes ports (80, and 443 over TCP and UDP): it serves `DOMAIN` over HTTPS, with certificates it obtains and renews by itself. A full-stack app (Next.js or TanStack Start) is one service, `web`, built from the root `Dockerfile`; a frontend and its API are two, the frontend `web`, which Caddy serves, and `api`, which stays on the Compose network behind the frontend's `/api` proxy. Each service has an image, `${IMAGE_PREFIX:-<project>}-<service>:${TAG:-latest}`, and its build: `docker compose up -d` pulls the released images when `IMAGE_PREFIX` points at GitHub's registry, and `--build` builds them on the server. The public URL defaults to `https://$DOMAIN`: Next.js also gets it as a build argument, and Better Auth on a Vite frontend as `BETTER_AUTH_URL`.
+- `Caddyfile`: every request for `DOMAIN` goes to the public app.
+- `.github/workflows/release-images.yml`: each published GitHub release builds every app's image for `linux/amd64` and `linux/arm64` and pushes it to `ghcr.io/<owner>/<repository>-<service>`, tagged with its version (`1.2.3`), `1.2`, and `latest`; run by hand on the default branch, it pushes `edge`. It never runs for tag pushes, so a deleted tag leaves no images behind. The values an image compiles in come from repository variables: `NEXT_PUBLIC_APP_URL` for Next.js, the `VITE_*` values for a Vite frontend.
+
+Then point the domain's DNS A and AAAA records at the server, publish a release, and on the server, next to `compose.yaml`, the `Caddyfile`, and `.env.production` (the whole project to build there):
+
+```sh
+# .env.production: DOMAIN=example.com, the app's variables, and, to run the released images,
+# IMAGE_PREFIX=ghcr.io/<owner>/<repository> (TAG=1.2.3 pins a release; latest otherwise)
+docker login ghcr.io                             # while the packages are private: a token with read:packages
+docker compose --env-file .env.production run --rm web node /app/migrate.mjs   # api for a frontend and its API
+docker compose --env-file .env.production up -d  # --build builds the images on the server
+```
+
+`deploy` prints these steps, with the `IMAGE_PREFIX` of your repository when `origin` is on GitHub. To update, publish a release, then on the server `docker compose --env-file .env.production pull` (or set `TAG` to the new version), run the migrations, and `up -d` again. Running `deploy` again writes the files that are missing and never overwrites one: it keeps a `Caddyfile` or workflow you changed, and says so, and stops when `compose.yaml` differs from the one it writes, so move yours away to get the new one. Compose prefers `compose.yaml` to the Starter's `docker-compose.yml`, so run the local one by name: `docker compose -f docker-compose.yml up --build`, which `pnpm docker:dev` does since Starter v0.27.0.
+
+### Client addresses
+
+Rate limits and logs count each visitor by address, which the platform's proxies hide. `deploy` tells the public service where to find it: `CLIENT_IP_HEADER`, the header the platform's edge sets to the client's address, replacing any copy the client sent (`x-real-ip` on Railway and Vercel, `true-client-ip` on Render, `fly-client-ip` on Fly.io, `x-nf-client-connection-ip` on Netlify), or, with Docker Compose, `TRUSTED_PROXY_HOPS=1`: Caddy is the one proxy of your own that sets `X-Forwarded-For`, and the app reads the entry that many places from the right. A frontend's API, reached only through the frontend's server, which sends on the one address it found, gets `TRUSTED_PROXY_HOPS=1` and never `CLIENT_IP_HEADER`. Previews get the same as production, and `try` sets `x-real-ip` on its Railway VM. Either setting in the env file replaces both defaults, for another proxy in front. Unset, the app takes the connection's address, which is right only when nothing stands in front of it. Neither is ever reported as unset, and projects from Starters that predate them ignore them.
 
 ### Preview deployments
 

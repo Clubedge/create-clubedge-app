@@ -12,6 +12,7 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   appUrlKeys,
+  clientAddresses,
   exampleKeys,
   externalDatabaseUrls,
   isLocalUrl,
@@ -112,7 +113,7 @@ export async function deployToRender(args: CliArgs, project: Project, cli: strin
   const source = await gitSource(root);
 
   if (args.dryRun) {
-    const preview = planVariables({ modules: project.modules, keys, url: ownUrl ?? `https://${name}.onrender.com`, existing: {}, envFile, secret: () => "<generated>", databases: {} });
+    const preview = planVariables({ modules: project.modules, keys, url: ownUrl ?? `https://${name}.onrender.com`, existing: {}, envFile, secret: () => "<generated>", databases: {}, clientAddress: clientAddresses.render });
     const { NODE_ENV: _node, PORT: _port, ...values } = preview.set;
     log.message(
       [
@@ -159,7 +160,7 @@ export async function deployToRender(args: CliArgs, project: Project, cli: strin
   let deployId: string | null = null;
   let url = ownUrl ?? service?.url ?? `https://${name}.onrender.com`;
   const current = service ? parseRenderEnv(await render(key, "GET", `/services/${service.id}/env-vars?limit=100`)) : {};
-  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: {} });
+  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: {}, clientAddress: clientAddresses.render });
   // Render sets the port, and the Dockerfile NODE_ENV.
   const { NODE_ENV: _node, PORT: _port, ...values } = plan.set;
 

@@ -16,40 +16,39 @@ export function serviceName(packageName: string): string {
 }
 
 /**
- * A Docker Compose production topology rendered from the selected stack service descriptors.
- * `frontendKeys` are the variables the frontend's env example lists: its VITE_* values become build
- * arguments (Vite compiles them in), the others runtime variables, such as Better Auth's when the
- * frontend's server runs auth. Compose reads their values from its --env-file.
+ * Where the app finds a request's client address: CLIENT_IP_HEADER, a header the platform's edge
+ * sets to it (overwriting any copy the client sent), or TRUSTED_PROXY_HOPS, the number of proxies
+ * of your own that append to X-Forwarded-For (the app reads the entry that many places from the
+ * right). Unset, the app is exposed directly and takes the socket's address. Both have safe
+ * defaults, so deploy never reports them as unset.
  */
-export function dockerComposeSource(services: Record<string, ProjectService>, frontendKeys: string[] = []): string {
-  const api = Object.values(services).find((service) => service.role === "api");
-  const web = Object.values(services).find((service) => service.role === "frontend");
-  const mapping = (indent: string, values: Array<[string, string]>) => values.map(([key, value]) => `\n${indent}${key}: ${value}`).join("");
-  const fromEnv = (key: string, fallback = "") => `\${${key}:-${fallback}}`;
-  const buildKeys = frontendKeys.filter((key) => key.startsWith("VITE_"));
-  // API_URL is the API's address on the Compose network, and PORT the one the image declares.
-  const runtimeKeys = frontendKeys.filter((key) => !key.startsWith("VITE_") && key !== "API_URL" && key !== "PORT");
-  // Better Auth runs in the frontend's server: the API asks it for the session over the Compose network.
-  const authUrl = web && frontendKeys.includes("BETTER_AUTH_URL") ? `http://${web.id}:${web.port}` : null;
-  const rows = Object.entries(services).map(([, service]) => {
-    const name = service.id;
-    const frontend = service.role === "frontend";
-    const buildArgs = frontend && buildKeys.length
-      ? `\n      args:${mapping("        ", buildKeys.map((key) => [key, fromEnv(key)]))}`
-      : "";
-    // Better Auth's public URL defaults to the port Compose publishes.
-    const runtime = runtimeKeys.map((key): [string, string] => [key, fromEnv(key, key === "BETTER_AUTH_URL" ? `http://localhost:${service.port}` : "")]);
-    // The API listens on every interface, whatever HOST the env file has from development.
-    const apiValues: Array<[string, string]> = [["HOST", "0.0.0.0"], ...(authUrl ? [["BETTER_AUTH_URL", authUrl] as [string, string]] : [])];
-    const apiEnv = service.role === "api" ? `\n    environment:${mapping("      ", apiValues)}` : "";
-    const env = frontend && api
-      ? `\n    environment:${mapping("      ", [["API_URL", `http://${api.id}:${api.port}`], ...runtime])}`
-      : `\n    env_file:\n      - path: .env.production\n        required: false${apiEnv}`;
-    const ports = frontend ? `\n    ports:\n      - "${service.port}:${service.port}"` : `\n    expose:\n      - "${service.port}"`;
-    const depends = frontend && api ? `\n    depends_on:\n      - ${api.id}` : "";
-    return `  ${name}:\n    build:\n      context: .\n      dockerfile: ${service.dockerfile}${buildArgs}${env}${ports}${depends}`;
-  });
-  return `# Generated from Clubedge stack descriptors. Build and start every app service together.\nservices:\n${rows.join("\n")}\n`;
+export const clientAddressKeys = ["CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"];
+
+/** What deploy sets on the public service of each platform. */
+export const clientAddresses = {
+  railway: { CLIENT_IP_HEADER: "x-real-ip" },
+  render: { CLIENT_IP_HEADER: "true-client-ip" },
+  fly: { CLIENT_IP_HEADER: "fly-client-ip" },
+  vercel: { CLIENT_IP_HEADER: "x-real-ip" },
+  netlify: { CLIENT_IP_HEADER: "x-nf-client-connection-ip" },
+  // Docker Compose: Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.
+  docker: { TRUSTED_PROXY_HOPS: "1" },
+} as const;
+
+/**
+ * An API reached only through its frontend's server, which replaces X-Forwarded-For with the one
+ * client address it found: the API reads that entry, never a header a client could send.
+ */
+export const behindFrontend = { TRUSTED_PROXY_HOPS: "1" } as const;
+
+/**
+ * A public service's client-address settings: the env file's when it sets either one (they
+ * describe one path to the client, so a default for the other would contradict it), else the
+ * platform's.
+ */
+export function clientAddressVariables(platform: Readonly<Record<string, string>>, envFile: Record<string, string>): Record<string, string> {
+  const own = clientAddressKeys.filter((key) => envFile[key]);
+  return own.length ? Object.fromEntries(own.map((key) => [key, envFile[key]!])) : { ...platform };
 }
 
 /** The variable each database's URL goes in. */
@@ -124,9 +123,10 @@ export interface VariablePlan {
 /**
  * The service's production variables. The CLI provides what it can: the database URLs (references
  * to Railway's databases by default), a generated Better Auth secret (unless the service already
- * has one), the public URL, and the port. Values from --env-file come next and win over those;
- * their database URLs replace the platform's, except local ones (a development env file).
- * Everything else the example lists is reported as unset; values the service already has count as set.
+ * has one), the public URL, the port, and where the client's address is. Values from --env-file
+ * come next and win over those; their database URLs replace the platform's, except local ones (a
+ * development env file). Everything else the example lists is reported as unset; values the
+ * service already has count as set.
  */
 export function planVariables(input: {
   modules: Record<string, string>;
@@ -141,14 +141,16 @@ export function planVariables(input: {
   attached?: string[];
   /** Per-service listening port. */
   port?: number;
+  /** Where the app finds the client's address on this platform (clientAddresses); the env file's settings replace it. */
+  clientAddress?: Readonly<Record<string, string>>;
 }): VariablePlan {
-  const { modules, keys, url, envFile, secret, attached = [], port = appPort } = input;
+  const { modules, keys, url, envFile, secret, attached = [], port = appPort, clientAddress = {} } = input;
   const existing = { ...input.existing, ...Object.fromEntries(attached.map((key) => [key, "(attached)"])) };
   const external = externalDatabaseUrls(modules, envFile);
   const databases = input.databases ?? railwayReferences(databasesFor(modules, Object.keys(external)));
   const provided: Record<string, string> = { NODE_ENV: "production", PORT: String(port), ...databases };
   // The public URL under both names: TanStack Start reads APP_URL, Next.js NEXT_PUBLIC_APP_URL.
-  const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
+  const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url, ...clientAddressVariables(clientAddress, envFile) };
   if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
 
   const databaseKeys: string[] = [...Object.values(databaseVariables), "DATABASE_URL_DIRECT"];
@@ -164,18 +166,20 @@ export function planVariables(input: {
   // A direct URL left from an earlier database would send migrations there: point it at the
   // database the app now uses, or blank it (blank counts as unset).
   else if (existing.DATABASE_URL_DIRECT) set.DATABASE_URL_DIRECT = set.DATABASE_URL ?? "";
-  // Optional: without it, migrations and the jobs worker use DATABASE_URL.
-  const unset = keys.filter((key) => set[key] === undefined && !existing[key] && key !== "DATABASE_URL_DIRECT");
+  // Optional: without a direct URL, migrations and the jobs worker use DATABASE_URL, and the
+  // client-address settings have safe defaults.
+  const optional = ["DATABASE_URL_DIRECT", ...clientAddressKeys];
+  const unset = keys.filter((key) => set[key] === undefined && !existing[key] && !optional.includes(key));
   return { set, unset };
 }
 
 /**
  * The variables of a frontend and an API deployed as two services. The API gets what planVariables
  * provides with the env file's server values, and the frontend's URL. The frontend gets its port,
- * the env file's VITE_* build values, and the runtime values its own example lists. With Better
- * Auth the frontend's server runs auth: it gets the API's database, the secret (generated unless
- * the service already has one), and BETTER_AUTH_URL, the public URL the API asks for the session.
- * Each service's unset variables come from its own example.
+ * where the client's address is, the env file's VITE_* build values, and the runtime values its
+ * own example lists. With Better Auth the frontend's server runs auth: it gets the API's database,
+ * the secret (generated unless the service already has one), and BETTER_AUTH_URL, the public URL
+ * the API asks for the session. Each service's unset variables come from its own example.
  */
 export function planServicePair(input: {
   modules: Record<string, string>;
@@ -187,14 +191,17 @@ export function planServicePair(input: {
   secret: () => string;
   databases: Record<string, string>;
   ports: { frontend: number; api: number };
+  /** Where the frontend, the public service, finds the client's address on this platform (clientAddresses). */
+  clientAddress: Readonly<Record<string, string>>;
 }): { frontend: VariablePlan; api: VariablePlan } {
   const { modules, frontendKeys, apiKeys, url, existing, envFile, secret, databases, ports } = input;
   const betterAuth = modules.auth === "better-auth";
   // A development env file's localhost URL would send sign-in links to this machine.
   const authUrl = envFile.BETTER_AUTH_URL && !isLocalUrl(envFile.BETTER_AUTH_URL) ? envFile.BETTER_AUTH_URL : url;
 
-  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_")));
-  const api = planVariables({ modules, keys: apiKeys, url, existing: existing.api, envFile: apiEnv, secret, databases, port: ports.api });
+  // The env file's client-address settings are the public frontend's: the API is behind it.
+  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_") && !clientAddressKeys.includes(key)));
+  const api = planVariables({ modules, keys: apiKeys, url, existing: existing.api, envFile: apiEnv, secret, databases, port: ports.api, clientAddress: behindFrontend });
   // Better Auth's secret belongs to the frontend's server; the API only asks it for the session.
   if (!apiEnv.BETTER_AUTH_SECRET) delete api.set.BETTER_AUTH_SECRET;
   api.set.FRONTEND_URL = url;
@@ -203,8 +210,8 @@ export function planServicePair(input: {
   api.unset = api.unset.filter((key) => api.set[key] === undefined && key !== "HOST");
 
   // railway.ts sets API_URL to the API's private address; the platform provides the database.
-  const provided = ["API_URL", "PORT", "BETTER_AUTH_URL", ...Object.values(databaseVariables), "DATABASE_URL_DIRECT"];
-  const set: Record<string, string> = { PORT: String(ports.frontend) };
+  const provided = ["API_URL", "PORT", "BETTER_AUTH_URL", ...Object.values(databaseVariables), "DATABASE_URL_DIRECT", ...clientAddressKeys];
+  const set: Record<string, string> = { PORT: String(ports.frontend), ...clientAddressVariables(input.clientAddress, envFile) };
   for (const [key, value] of Object.entries(envFile)) {
     if (value && (key.startsWith("VITE_") || (frontendKeys.includes(key) && !provided.includes(key)))) set[key] = value;
   }
@@ -214,8 +221,10 @@ export function planServicePair(input: {
     set.BETTER_AUTH_URL = authUrl;
     if (!set.BETTER_AUTH_SECRET && !existing.frontend.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
   }
-  // Optional: without VITE_API_URL the browser calls the API through the frontend's /api proxy.
-  const unset = frontendKeys.filter((key) => set[key] === undefined && !existing.frontend[key] && !["API_URL", "VITE_API_URL"].includes(key));
+  // Optional: without VITE_API_URL the browser calls the API through the frontend's /api proxy,
+  // and the client-address settings have safe defaults.
+  const optional = ["API_URL", "VITE_API_URL", ...clientAddressKeys];
+  const unset = frontendKeys.filter((key) => set[key] === undefined && !existing.frontend[key] && !optional.includes(key));
   return { frontend: { set, unset }, api };
 }
 
@@ -713,4 +722,234 @@ export function parseRenderEnv(body: unknown): Record<string, string> {
     if (typeof env?.key === "string") values[env.key] = typeof env.value === "string" ? env.value : "(set)";
   }
   return values;
+}
+
+/* ------------------------------------ Docker ------------------------------------ */
+// A server of your own: Docker Compose runs each app's image behind Caddy, which serves the domain
+// over HTTPS, and a GitHub workflow publishes the images to GitHub's container registry.
+
+/** The app of a full-stack project, whose stack records no service: the root Dockerfile's image. */
+export const fullstackService: ProjectService = {
+  id: "web",
+  role: "fullstack",
+  app: "apps/web",
+  dockerfile: "Dockerfile",
+  port: appPort,
+  healthPath: "/api/health",
+  platforms: ["docker"],
+};
+
+/** The service the public reaches: a frontend, whose API stays private, else the full-stack app. */
+export function publicService(services: Record<string, ProjectService>): ProjectService {
+  const apps = Object.values(services);
+  return apps.find(({ role }) => role === "frontend") ?? apps.find(({ role }) => role === "fullstack") ?? fullstackService;
+}
+
+/**
+ * The values an app's image compiles in, which its Dockerfile takes as build arguments, from the
+ * variables its env example lists: a Vite frontend's VITE_* values, and Next.js's public URL.
+ */
+export function buildArgumentKeys(service: ProjectService, keys: string[]): string[] {
+  if (service.role === "frontend") return keys.filter((key) => key.startsWith("VITE_"));
+  return service.role === "fullstack" ? keys.filter((key) => key === "NEXT_PUBLIC_APP_URL") : [];
+}
+
+/**
+ * compose.yaml for a server of your own. Each app runs its image, pulled from IMAGE_PREFIX (where
+ * release-images.yml publishes them) at TAG, or built there with --build. Only Caddy publishes
+ * ports: it serves DOMAIN over HTTPS, with certificates it obtains and renews. `frontendKeys` are
+ * the variables the public app's env example lists: the values its image compiles in become build
+ * arguments, and a frontend's others runtime variables, such as Better Auth's when the frontend's
+ * server runs auth. Compose reads their values from its --env-file; the public URL defaults to
+ * https://DOMAIN.
+ */
+export function dockerComposeSource(project: string, services: Record<string, ProjectService>, frontendKeys: string[] = []): string {
+  const apps = Object.values(services);
+  const api = apps.find((service) => service.role === "api");
+  const web = publicService(services);
+  const fromEnv = (key: string, fallback = "") => `\${${key}:-${fallback}}`;
+  const publicUrl = "https://${DOMAIN}";
+  const behindCaddy: Record<string, string> = clientAddresses.docker;
+  const behindWeb: Record<string, string> = behindFrontend;
+  // API_URL is the API's address on the Compose network, PORT the one the image declares, and the
+  // client-address settings default to Caddy's.
+  const runtimeKeys = frontendKeys.filter((key) => !key.startsWith("VITE_") && !["API_URL", "PORT", ...clientAddressKeys].includes(key));
+  // Better Auth runs in the frontend's server: the API asks it for the session over the Compose network.
+  const authUrl = api && frontendKeys.includes("BETTER_AUTH_URL") ? `http://${web.id}:${web.port}` : null;
+
+  const environment = (service: ProjectService): string[] => {
+    if (service.role === "api") {
+      return [
+        // The API listens on every interface, whatever HOST the env file has from development.
+        "      HOST: 0.0.0.0",
+        `      # Reached only through ${web.id}, which passes on the client's address as the one X-Forwarded-For entry.`,
+        ...clientAddressKeys.map((key) => `      ${key}: ${JSON.stringify(behindWeb[key] ?? "")}`),
+        ...(authUrl ? [`      BETTER_AUTH_URL: ${authUrl}`] : []),
+      ];
+    }
+    // A frontend has no env_file: CLIENT_IP_HEADER from the env file needs a line of its own.
+    const address = [
+      "      # Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.",
+      ...(service.role === "frontend" ? clientAddressKeys : Object.keys(behindCaddy)).map((key) => `      ${key}: ${fromEnv(key, behindCaddy[key])}`),
+    ];
+    if (service.role !== "frontend") return [...appUrlKeys.map((key) => `      ${key}: ${fromEnv(key, publicUrl)}`), ...address];
+    return [
+      ...(api ? [`      API_URL: http://${api.id}:${api.port}`] : []),
+      ...address,
+      ...runtimeKeys.map((key) => `      ${key}: ${fromEnv(key, key === "BETTER_AUTH_URL" ? publicUrl : "")}`),
+    ];
+  };
+
+  const rows = apps.flatMap((service) => {
+    const args = buildArgumentKeys(service, frontendKeys);
+    return [
+      `  ${service.id}:`,
+      `    image: \${IMAGE_PREFIX:-${project}}-${service.id}:\${TAG:-latest}`,
+      "    build:",
+      "      context: .",
+      `      dockerfile: ${service.dockerfile}`,
+      ...(args.length ? ["      args:", ...args.map((key) => `        ${key}: ${fromEnv(key, key === "NEXT_PUBLIC_APP_URL" ? publicUrl : "")}`)] : []),
+      // The frontend gets only the values it needs; the API's stay with the API.
+      ...(service.role === "frontend" ? [] : ["    env_file:", "      - path: .env.production", "        required: false"]),
+      "    environment:",
+      ...environment(service),
+      "    expose:",
+      `      - "${service.port}"`,
+      ...(service.role === "frontend" && api ? ["    depends_on:", `      - ${api.id}`] : []),
+      "    restart: unless-stopped",
+    ];
+  });
+  return [
+    "# Generated by create-clubedge-app deploy. Caddy serves the app at DOMAIN over HTTPS, with",
+    "# certificates it obtains and renews; the apps listen only on the Compose network. Each app's",
+    "# image is pulled from IMAGE_PREFIX at TAG (release-images.yml publishes them), or built here",
+    "# with --build. Run it with: docker compose --env-file .env.production up -d",
+    "services:",
+    ...rows,
+    "  caddy:",
+    "    image: caddy:2",
+    "    restart: unless-stopped",
+    "    ports:",
+    '      - "80:80"',
+    '      - "443:443"',
+    '      - "443:443/udp"',
+    "    environment:",
+    '      DOMAIN: "${DOMAIN:?Set DOMAIN in .env.production to the domain that points at this server}"',
+    "    volumes:",
+    "      - ./Caddyfile:/etc/caddy/Caddyfile:ro",
+    "      - caddy-data:/data",
+    "      - caddy-config:/config",
+    "    depends_on:",
+    `      - ${web.id}`,
+    "",
+    "volumes:",
+    "  caddy-data:",
+    "  caddy-config:",
+    "",
+  ].join("\n");
+}
+
+/** The Caddyfile compose.yaml mounts: Caddy serves DOMAIN over HTTPS and passes every request to the public app. */
+export function caddyfileSource(services: Record<string, ProjectService>): string {
+  const web = publicService(services);
+  return [
+    "# Generated by create-clubedge-app deploy. Caddy serves DOMAIN, from .env.production, over HTTPS:",
+    "# it obtains the certificate and renews it by itself once the domain's DNS points at this server.",
+    "{$DOMAIN} {",
+    `\treverse_proxy ${web.id}:${web.port}`,
+    "}",
+    "",
+  ].join("\n");
+}
+
+export const releaseImagesPath = ".github/workflows/release-images.yml";
+
+/**
+ * The workflow that publishes the images compose.yaml pulls: each published GitHub release builds
+ * every app's image for linux/amd64 and linux/arm64 and pushes it to the repository's GitHub
+ * Container Registry, tagged with the version. Not on tag pushes: a deleted tag would leave its
+ * images behind. The values an image compiles in come from the repository's variables.
+ */
+export function releaseImagesWorkflowSource(services: Record<string, ProjectService>, frontendKeys: string[] = []): string {
+  const argsByService = Object.values(services).map((service) => ({ service, args: buildArgumentKeys(service, frontendKeys) }));
+  const matrix = argsByService.flatMap(({ service, args }) => {
+    return [
+      `          - service: ${service.id}`,
+      `            dockerfile: ${service.dockerfile}`,
+      "            context: .",
+      ...(args.length
+        ? ["            # The image compiles these in: set them as repository variables.", "            build-args: |", ...args.map((key) => `              ${key}=\${{ vars.${key} }}`)]
+        : []),
+    ];
+  });
+  return [
+    "# Generated by create-clubedge-app deploy. Each published GitHub release builds every app's image",
+    "# for linux/amd64 and linux/arm64 and pushes it to this repository's container registry as",
+    "# ghcr.io/<owner>/<repository>-<service>, tagged with its version, <major>.<minor>, and latest;",
+    "# compose.yaml runs them with IMAGE_PREFIX=ghcr.io/<owner>/<repository>. Run by hand on the",
+    "# default branch, it pushes edge. New packages are private until you make them public.",
+    "name: Release images",
+    "",
+    "on:",
+    "  release:",
+    "    types: [published]",
+    "  workflow_dispatch:",
+    "",
+    "permissions:",
+    "  contents: read",
+    "  packages: write",
+    "",
+    "jobs:",
+    "  image:",
+    "    name: image (${{ matrix.service }})",
+    "    runs-on: ubuntu-24.04",
+    "    strategy:",
+    "      matrix:",
+    "        include:",
+    ...matrix,
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    "      # Builds the arm64 image on GitHub's amd64 runners.",
+    "      - uses: docker/setup-qemu-action@v4",
+    "      - uses: docker/setup-buildx-action@v4",
+    "      - uses: docker/login-action@v4",
+    "        with:",
+    "          registry: ghcr.io",
+    "          username: ${{ github.actor }}",
+    "          password: ${{ secrets.GITHUB_TOKEN }}",
+    "      - id: meta",
+    "        uses: docker/metadata-action@v6",
+    "        with:",
+    "          # The action lowercases the name, as the registry requires.",
+    "          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}",
+    "          flavor: latest=false",
+    "          tags: |",
+    "            type=semver,pattern={{version}}",
+    "            type=semver,pattern={{major}}.{{minor}}",
+    "            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}",
+    "            type=edge",
+    "            type=sha",
+    "      - uses: docker/build-push-action@v7",
+    "        with:",
+    "          context: ${{ matrix.context }}",
+    "          file: ${{ matrix.dockerfile }}",
+    "          platforms: linux/amd64,linux/arm64",
+    "          push: true",
+    "          tags: ${{ steps.meta.outputs.tags }}",
+    "          labels: ${{ steps.meta.outputs.labels }}",
+    // Only when an image compiles values in: the matrix has no build-args otherwise.
+    ...(argsByService.some(({ args }) => args.length) ? ["          build-args: ${{ matrix.build-args }}"] : []),
+    "          cache-from: type=gha,scope=${{ matrix.service }}",
+    "          cache-to: type=gha,mode=max,scope=${{ matrix.service }}",
+    "",
+  ].join("\n");
+}
+
+/**
+ * Where release-images.yml publishes a GitHub repository's images, as compose.yaml's IMAGE_PREFIX:
+ * ghcr.io/<owner>/<repository> in lowercase, as the registry requires. Null for other Git hosts.
+ */
+export function ghcrImagePrefix(remote: string): string | null {
+  const path = /^https:\/\/github\.com\/(.+)$/.exec(renderRepoUrl(remote) ?? "")?.[1];
+  return path ? `ghcr.io/${path.toLowerCase()}` : null;
 }

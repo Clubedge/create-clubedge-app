@@ -16,7 +16,6 @@ import {
   appPort,
   clientAddresses,
   databaseVariables,
-  dockerComposeSource,
   databasesFor,
   deploymentStatus,
   exampleKeys,
@@ -42,6 +41,7 @@ import {
 import { neonDatabaseState } from "./core/neon.js";
 import { readProject, type Project } from "./core/project.js";
 import { savedDatabaseForUrl } from "./neon.js";
+import { deployWithDocker } from "./deploy-docker.js";
 import { deployToFly } from "./deploy-fly.js";
 import { deployPreview } from "./deploy-preview.js";
 import { deployToNetlify } from "./deploy-netlify.js";
@@ -406,28 +406,9 @@ export async function deployProject(args: CliArgs): Promise<void> {
     );
   }
   if (args.preview) return await deployPreview(args, project, cli, await readDeployEnv(args, project));
+  if (platform === "docker") return await deployWithDocker(args, project, cli);
   if (separateApps.length > 1 && platform === "railway") {
     return await deployRailwayServices(args, project, cli, await readDeployEnv(args, project));
-  }
-  if (separateApps.length > 1 && platform === "docker") {
-    const unsupported = separateApps.filter(([, service]) => !service.platforms.includes("docker"));
-    if (unsupported.length) {
-      throw new UsageError(`The selected stacks do not declare Docker deployment support for ${unsupported.map(([slot]) => slot).join(", ")}.`);
-    }
-    const frontendKeys = exampleKeys(await readFile(join(project.root, ".env.example"), "utf8").catch(() => ""));
-    const compose = dockerComposeSource(Object.fromEntries(separateApps), frontendKeys);
-    if (args.dryRun) {
-      log.message(`Docker Compose will start ${separateApps.map(([slot, service]) => `${slot} (${service.dockerfile}, port ${service.port})`).join(" and ")}; the frontend proxies /api to the API over the Compose network.`);
-      outro("Dry run: nothing was written. Run deploy to generate compose.yaml.");
-      return;
-    }
-    const path = join(project.root, "compose.yaml");
-    if (await pathExists(path)) throw new UsageError("compose.yaml already exists. Review it and remove it before generating the stack configuration again.");
-    await writeFile(path, compose);
-    note(`Generated compose.yaml for ${separateApps.map(([slot]) => slot).join(" and ")}.`, "Docker Compose deployment");
-    const examples = [".env.example", ...separateApps.filter(([, service]) => service.role === "api").map(([, service]) => `${service.app}/.env.example`)];
-    outro(`Copy the variables of ${examples.join(" and ")} to .env.production and set their values, then run from the project root:\n  docker compose --env-file .env.production up --build -d\n\nThe frontend is published on its declared port; the API stays on the private Compose network.`);
-    return;
   }
   if (separateApps.length > 1) {
     throw new UsageError(`The ${platform} deploy adapter does not yet support the selected ${separateApps.map(([slot]) => slot).join(" + ")} services. Select Docker Compose with \`${cli} add deploy docker\`, or deploy each Dockerfile separately.`);
@@ -438,7 +419,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
   if (platform === "render") return await deployToRender(args, project, cli, await readDeployEnv(args, project));
   if (platform !== "railway") {
     throw new UsageError(
-      `deploy sets up Railway, Fly.io, Vercel, Netlify, and Render, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or fly, vercel, netlify, render), or follow ${deployDocsUrl} for ${platform}.`,
+      `deploy sets up Docker Compose, Railway, Fly.io, Vercel, Netlify, and Render, and this project deploys with "${platform}". Switch with \`${cli} add deploy railway\` (or docker, fly, vercel, netlify, render), or follow ${deployDocsUrl} for ${platform}.`,
     );
   }
 

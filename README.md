@@ -341,7 +341,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.40.0
+create-clubedge-app v0.41.0
         |
         v
 Clubedge Starter v0.26.0
@@ -352,7 +352,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.40.0` | `clubedge-starter@v0.26.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.41.0` | `clubedge-starter@v0.26.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -467,6 +467,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.38.0 | v0.24.2 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
 | 0.39.0 | v0.25.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
 | 0.40.0 | v0.26.0 | Starter v0.26.0: every module on React + Vite with FastAPI (pg-boss excepted) |
+| 0.41.0 | v0.26.0 | Skip pnpm install and explain a package.json with conflict markers; Detect unresolved conflict markers in doctor; Preserve project version and custom README across upgrades (Phase 2); Conflict on a pnpm override now that projects own their version |
 
 ## Community
 

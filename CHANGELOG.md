@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.41.0
+
+- Skip pnpm install and explain a package.json with conflict markers (#122).
+- Detect unresolved conflict markers in doctor (#123).
+- Preserve project version and custom README across upgrades (Phase 2) (#125).
+- Conflict on a pnpm override now that projects own their version (#128).
+- Still on Starter `v0.26.0`.
+
 ## 0.40.0
 
 - **Every module on React + Vite with FastAPI**: default to Starter `v0.26.0` (#126). `--framework vite --api fastapi` now offers the module options Hono got in 0.39.0, each written in Python:

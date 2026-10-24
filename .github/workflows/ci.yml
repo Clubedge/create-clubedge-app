@@ -283,6 +283,68 @@ jobs:
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           APP_BASE_URL="http://127.0.0.1:3000" node "$GITHUB_WORKSPACE/scripts/smoke-generated-app.mjs"
 
+  # deploy with Docker writes compose.yaml, a Caddyfile, and a workflow that publishes the images:
+  # Compose, Caddy, and actionlint must accept what it writes for each kind of project.
+  docker-deploy:
+    name: docker-deploy (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: next, framework: next, modules: "" }
+          - { name: start-better-auth, framework: tanstack-start, modules: --auth better-auth }
+          - { name: vite-hono, framework: vite, modules: --api hono --auth better-auth }
+          - { name: vite-fastapi, framework: vite, modules: --api fastapi --auth supabase }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - name: Build, bundle, and pack the CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm bundle-template
+          npm pack --pack-destination "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/packed-cli"
+          tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
+          npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
+          echo "CLI=$RUNNER_TEMP/packed-cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+      - name: Generate a project and write its Docker deploy files
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$CLI" "$RUNNER_TEMP/app" --framework ${{ matrix.framework }} ${{ matrix.modules }} --deploy docker --no-install --yes
+          cd "$RUNNER_TEMP/app"
+          git remote add origin https://github.com/Clubedge/Example-App.git
+          node "$CLI" deploy | tee "$RUNNER_TEMP/deploy.txt"
+          grep -q "IMAGE_PREFIX=ghcr.io/clubedge/example-app" "$RUNNER_TEMP/deploy.txt"
+          test -f compose.yaml && test -f Caddyfile && test -f .github/workflows/release-images.yml
+      - name: Compose accepts compose.yaml, and requires DOMAIN
+        working-directory: ${{ runner.temp }}/app
+        shell: bash
+        run: |
+          set -euo pipefail
+          DOMAIN=example.com IMAGE_PREFIX=ghcr.io/clubedge/example-app docker compose config | tee "$RUNNER_TEMP/config.yaml"
+          grep -q "image: ghcr.io/clubedge/example-app-web:latest" "$RUNNER_TEMP/config.yaml"
+          # The public URL defaults to https://$DOMAIN, a default within a default.
+          if grep -q 'https://${DOMAIN}' compose.yaml; then grep -Eq ': https://example\.com$' "$RUNNER_TEMP/config.yaml"; fi
+          if docker compose config --quiet 2> "$RUNNER_TEMP/missing.txt"; then echo "compose.yaml must require DOMAIN"; exit 1; fi
+          grep -q "Set DOMAIN in .env.production" "$RUNNER_TEMP/missing.txt"
+      - name: Caddy accepts the Caddyfile
+        working-directory: ${{ runner.temp }}/app
+        run: docker run --rm -e DOMAIN=example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: actionlint accepts the release workflow
+        working-directory: ${{ runner.temp }}/app
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color .github/workflows/release-images.yml
+
   # add and remove on a project with an edit of its own: after several changes, the project must
   # match one generated with the final selection, apart from that edit, and still build.
   change-modules:

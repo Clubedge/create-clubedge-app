@@ -55,6 +55,7 @@ async function generatedProject() {
   const argv = (command: string[]) => [...command, "--template-dir", starter, "--force", "--yes"];
   const inProject = () => vi.spyOn(process, "cwd").mockReturnValue(root);
   return {
+    root,
     run: (command: string[]) => (inProject(), changeProject(parseCliArgs(argv(command)))),
     main: (command: string[]) => (inProject(), main(argv(command))),
     read: (path: string) => readFile(join(root, path), "utf8"),
@@ -170,3 +171,27 @@ describe("the exit code of a change", () => {
     expect(process.exitCode).toBeUndefined();
   });
 });
+
+describe("early exit on no-op changes", () => {
+  it("exits early without preparing templates when adding an already-configured module option", async () => {
+    const project = await generatedProject();
+    expect(await project.run(["add", "auth", "supabase"])).toBe("unchanged");
+  });
+
+  it("exits early without preparing templates when removing an already absent module", async () => {
+    const project = await generatedProject();
+    expect(await project.run(["remove", "cache"])).toBe("unchanged");
+  });
+
+  it("exits early without preparing templates when upgrading a project already on the target Starter", async () => {
+    const project = await generatedProject();
+    const pkg = JSON.parse(await project.read("package.json"));
+    // Run upgrade without template-dir to test the remote upgrade path
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+    const outcome = await changeProject(
+      parseCliArgs(["upgrade", "--ref", pkg.clubedge.starterRef, "--force", "--yes"]),
+    );
+    expect(outcome).toBe("unchanged");
+  });
+});
+

@@ -432,6 +432,34 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
   await assertSafeToChange(project, args, interactive);
 
   const upgrading = command.name === "upgrade";
+  if (
+    upgrading &&
+    !args.templateDir &&
+    ((!args.ref && project.starterCommit && project.starterCommit === starterPin.starterCommit) ||
+      (args.ref && (args.ref === project.starterRef || args.ref === project.starterCommit)))
+  ) {
+    outro(`The project is already on Starter ${project.starterRef}.`);
+    return "unchanged";
+  }
+
+  if (
+    command.name === "add" &&
+    command.changes.length > 0 &&
+    command.changes.every((c) => c.option && project.modules[c.module] === c.option)
+  ) {
+    outro("The project already uses that selection; nothing to change.");
+    return "unchanged";
+  }
+
+  if (
+    command.name === "remove" &&
+    command.modules.length > 0 &&
+    command.modules.every((m) => !project.modules[m] || project.modules[m] === "none")
+  ) {
+    outro("The project already uses that selection; nothing to change.");
+    return "unchanged";
+  }
+
   const progress = spinner();
   progress.start(upgrading ? "Preparing both Starter revisions" : `Preparing Starter ${project.starterRef}`);
   const sources: TemplateSource[] = [];

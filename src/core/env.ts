@@ -107,7 +107,15 @@ export function updateEnvFile(local: string, baseExample: string, targetExample:
     // The last element is the end of the file after its final newline, not a blank line.
     const followedByBlank = position + 1 < lines.length - 1 && lines[position + 1]!.trim() === "";
     const reuseBlank = between[0]?.trim() === "" && followedByBlank;
-    lines.splice(position + (reuseBlank ? 2 : 1), 0, ...(reuseBlank ? between.slice(1) : between));
+    const inserted = reuseBlank ? between.slice(1) : between;
+    const insertAt = position + (reuseBlank ? 2 : 1);
+    lines.splice(insertAt, 0, ...inserted);
+    // A variable that ends its section in the target keeps a blank line before the next section,
+    // which a reused separator would otherwise leave above the variable instead. (The last
+    // element of each split is the end of the file, not a blank line.)
+    const endsSection = at + 1 < target.length - 1 && target[at + 1]!.trim() === "";
+    const next = insertAt + inserted.length;
+    if (endsSection && next < lines.length - 1 && lines[next]!.trim() !== "") lines.splice(next, 0, "");
   });
 
   let text = lines.join(eol);

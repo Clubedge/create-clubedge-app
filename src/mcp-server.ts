@@ -25,7 +25,7 @@ type ProjectOptions = {
 const mcpStdio: StdioOptions = ["ignore", process.stderr, process.stderr];
 
 const selectionSchema = {
-  stacks: z.record(z.string(), z.string()).optional().describe("Stack id by slot, such as { framework: 'next', api: 'hono' }."),
+  stacks: z.record(z.string(), z.string()).optional().describe("Stack id by slot, such as { framework: 'vite', api: 'hono', shell: 'capacitor' }. Slots left out use their default, and optional slots none; get_starter_capabilities lists every slot and its stacks."),
   modules: z.record(z.string(), z.string()).optional().describe("Module option by module id, such as { auth: 'supabase', storage: 's3' }."),
 };
 
@@ -121,6 +121,7 @@ function capabilities(
     slots: Object.entries(manifest.slots).map(([id, slot]) => ({
       id,
       name: slot.name,
+      question: slot.question,
       default: slot.default ?? "none",
       choices: Object.entries(manifest.stacks)
         .filter(([, stack]) => stack.slot === id)
@@ -150,7 +151,7 @@ function createServer() {
   server.registerTool(
     "get_starter_capabilities",
     {
-      description: "Discover the frameworks, API stacks, modules, defaults, and compatibility choices supported by this CLI's pinned Clubedge Starter release.",
+      description: "Discover the app slots and their stacks (frameworks, APIs, mobile shells), the modules, defaults, and compatibility choices supported by this CLI's pinned Clubedge Starter release. A stack's role decides what it pairs with: a frontend needs an API, a full-stack framework takes none, and a shell packages a frontend.",
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },

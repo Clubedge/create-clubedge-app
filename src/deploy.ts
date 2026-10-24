@@ -14,6 +14,7 @@ import { bold, dim } from "./cli/ui.js";
 import { FRAMEWORK_SLOT } from "./core/manifest.js";
 import {
   appPort,
+  clientAddresses,
   databaseVariables,
   dockerComposeSource,
   databasesFor,
@@ -333,6 +334,7 @@ async function deployRailwayServices(
     secret: () => randomBytes(32).toString("hex"),
     databases: railwayReferences(databases),
     ports: { frontend: frontendStack.port, api: apiStack.port },
+    clientAddress: clientAddresses.railway,
   });
   const unset = [
     ...(plan.api.unset.length ? [`Not set on the API service: ${plan.api.unset.join(", ")}.`] : []),
@@ -448,7 +450,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const secret = () => randomBytes(32).toString("hex");
 
   if (args.dryRun) {
-    const preview = planVariables({ modules: project.modules, keys, url: "https://<service>.up.railway.app", existing: {}, envFile, secret: () => "<generated>" });
+    const preview = planVariables({ modules: project.modules, keys, url: "https://<service>.up.railway.app", existing: {}, envFile, secret: () => "<generated>", clientAddress: clientAddresses.railway });
     log.message(
       [
         `• Railway project "${service}"${databases.length ? ` with ${databases.map((db) => railwayDatabases[db]).join(" and ")}` : ""}, and the service "${service}"`,
@@ -526,7 +528,7 @@ export async function deployProject(args: CliArgs): Promise<void> {
   const url = `https://${domain}`;
 
   progress.message("Setting the production variables");
-  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: railwayReferences(hosted) });
+  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: railwayReferences(hosted), clientAddress: clientAddresses.railway });
   for (const [key, value] of Object.entries(plan.set)) {
     if (current[key] === value) continue;
     await railway(rw, ["variable", "set", key, "--stdin", "--service", service, "--skip-deploys"], { input: value });

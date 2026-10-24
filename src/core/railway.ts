@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { UsageError } from "../cli/args.js";
+import { clientAddresses } from "./deploy.js";
 
 /*
  * Railway's free VM (https://railway.com/free-vm): `ssh railway.new` gives a temporary Linux box
@@ -207,6 +208,9 @@ step "Installing dependencies"
 pnpm install >>"$log" 2>&1 || fail "pnpm install failed"`;
   const betterAuth = modules.auth === "better-auth";
   const localDb = modules.infra === "local";
+  const clientAddress = Object.entries(clientAddresses.railway)
+    .map(([key, value]) => `  sed -i '/^${key}=/d' "$envfile"\n  echo ${shellQuote(`${key}=${value}`)} >> "$envfile"`)
+    .join("\n");
   // Node writes the values, so a password's characters need no escaping for sed.
   const setDatabase = database
     ? `node -e ${shellQuote(
@@ -246,6 +250,13 @@ for example in apps/*/.env.example; do
   [ -f "$example" ] || continue
   target="\${example%.example}.local"
   [ -f "$target" ] || cp "$example" "$target"
+done
+
+# Railway's edge, in front of the preview URL, sets the visitor's address in a header that the
+# preview proxy passes on; without it, every visitor would have the proxy's address.
+for envfile in apps/*/.env.local; do
+  [ -f "$envfile" ] || continue
+${clientAddress}
 done
 ${
   betterAuth

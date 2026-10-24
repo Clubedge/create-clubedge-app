@@ -9,6 +9,8 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   appPort,
+  clientAddresses,
+  clientAddressVariables,
   deploymentStatus,
   externalDatabaseUrls,
   finalStatuses,
@@ -129,7 +131,11 @@ export async function deployPreview(args: CliArgs, project: Project, cli: string
     await migrate(project.root, branch);
   }
 
-  const url = platform === "vercel" ? await toVercel(project, cli, gitBranch, branch) : await toRailway(project, cli, name, branch);
+  // Where the app finds the client's address, as deploy sets it for production: a copied Railway
+  // environment may come from an earlier deploy, and Vercel's previews don't get production's variables.
+  const address = clientAddressVariables(clientAddresses[platform], envFile);
+  const url =
+    platform === "vercel" ? await toVercel(project, cli, gitBranch, branch, address) : await toRailway(project, cli, name, branch, address);
   note(
     [`${bold("URL")}       ${url}`, `${bold("Git")}       ${gitBranch}`, ...(branch ? [`${bold("Database")}  Neon branch ${branch.name}`] : [])].join("\n"),
     "Preview deployed",
@@ -144,7 +150,7 @@ export async function deployPreview(args: CliArgs, project: Project, cli: string
   );
 }
 
-async function toVercel(project: Project, cli: string, gitBranch: string, branch: NeonBranch | null): Promise<string> {
+async function toVercel(project: Project, cli: string, gitBranch: string, branch: NeonBranch | null, address: Record<string, string>): Promise<string> {
   const root = project.root;
   const progress = spinner();
   progress.start("Preparing Vercel's CLI");
@@ -182,8 +188,10 @@ async function toVercel(project: Project, cli: string, gitBranch: string, branch
   progress.stop("Vercel is ready");
   log.step("Deploying with vercel deploy (build logs follow)");
   let output: string;
+  // They hold no secret, so they go on the deployment's command line.
+  const env = Object.entries(address).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
   try {
-    output = await vercel(vc, ["deploy", "--yes", "--logs"], root, { mode: "stream" });
+    output = await vercel(vc, ["deploy", "--yes", "--logs", ...env], root, { mode: "stream" });
   } catch {
     throw new Error("The preview did not deploy. The build log above says why; fix the cause and run deploy --preview again.");
   }
@@ -192,7 +200,7 @@ async function toVercel(project: Project, cli: string, gitBranch: string, branch
   return url;
 }
 
-async function toRailway(project: Project, cli: string, environment: string, branch: NeonBranch | null): Promise<string> {
+async function toRailway(project: Project, cli: string, environment: string, branch: NeonBranch | null, address: Record<string, string>): Promise<string> {
   const service = serviceName(project.identity.packageName);
   const progress = spinner();
   progress.start("Preparing the Railway CLI");
@@ -229,6 +237,9 @@ async function toRailway(project: Project, cli: string, environment: string, bra
   }
   // The domain sends traffic to appPort; without PORT, Railway assigns its own and the app answers 502.
   await railway(rw, ["variable", "set", "PORT", "--stdin", ...scope, "--skip-deploys"], { input: String(appPort) });
+  for (const [key, value] of Object.entries(address)) {
+    await railway(rw, ["variable", "set", key, "--stdin", ...scope, "--skip-deploys"], { input: value });
+  }
   progress.message("Uploading the project");
   const started = new Date();
   const id = parseDeploymentId(await railway(rw, ["up", ...scope, "--detach"]));

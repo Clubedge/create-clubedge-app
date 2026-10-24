@@ -16,6 +16,42 @@ export function serviceName(packageName: string): string {
 }
 
 /**
+ * Where the app finds a request's client address: CLIENT_IP_HEADER, a header the platform's edge
+ * sets to it (overwriting any copy the client sent), or TRUSTED_PROXY_HOPS, the number of proxies
+ * of your own that append to X-Forwarded-For (the app reads the entry that many places from the
+ * right). Unset, the app is exposed directly and takes the socket's address. Both have safe
+ * defaults, so deploy never reports them as unset.
+ */
+export const clientAddressKeys = ["CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"];
+
+/** What deploy sets on the public service of each platform. */
+export const clientAddresses = {
+  railway: { CLIENT_IP_HEADER: "x-real-ip" },
+  render: { CLIENT_IP_HEADER: "true-client-ip" },
+  fly: { CLIENT_IP_HEADER: "fly-client-ip" },
+  vercel: { CLIENT_IP_HEADER: "x-real-ip" },
+  netlify: { CLIENT_IP_HEADER: "x-nf-client-connection-ip" },
+  // Docker Compose: Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.
+  docker: { TRUSTED_PROXY_HOPS: "1" },
+} as const;
+
+/**
+ * An API reached only through its frontend's server, which replaces X-Forwarded-For with the one
+ * client address it found: the API reads that entry, never a header a client could send.
+ */
+export const behindFrontend = { TRUSTED_PROXY_HOPS: "1" } as const;
+
+/**
+ * A public service's client-address settings: the env file's when it sets either one (they
+ * describe one path to the client, so a default for the other would contradict it), else the
+ * platform's.
+ */
+export function clientAddressVariables(platform: Readonly<Record<string, string>>, envFile: Record<string, string>): Record<string, string> {
+  const own = clientAddressKeys.filter((key) => envFile[key]);
+  return own.length ? Object.fromEntries(own.map((key) => [key, envFile[key]!])) : { ...platform };
+}
+
+/**
  * A Docker Compose production topology rendered from the selected stack service descriptors.
  * `frontendKeys` are the variables the frontend's env example lists: its VITE_* values become build
  * arguments (Vite compiles them in), the others runtime variables, such as Better Auth's when the
@@ -124,9 +160,10 @@ export interface VariablePlan {
 /**
  * The service's production variables. The CLI provides what it can: the database URLs (references
  * to Railway's databases by default), a generated Better Auth secret (unless the service already
- * has one), the public URL, and the port. Values from --env-file come next and win over those;
- * their database URLs replace the platform's, except local ones (a development env file).
- * Everything else the example lists is reported as unset; values the service already has count as set.
+ * has one), the public URL, the port, and where the client's address is. Values from --env-file
+ * come next and win over those; their database URLs replace the platform's, except local ones (a
+ * development env file). Everything else the example lists is reported as unset; values the
+ * service already has count as set.
  */
 export function planVariables(input: {
   modules: Record<string, string>;
@@ -141,14 +178,16 @@ export function planVariables(input: {
   attached?: string[];
   /** Per-service listening port. */
   port?: number;
+  /** Where the app finds the client's address on this platform (clientAddresses); the env file's settings replace it. */
+  clientAddress?: Readonly<Record<string, string>>;
 }): VariablePlan {
-  const { modules, keys, url, envFile, secret, attached = [], port = appPort } = input;
+  const { modules, keys, url, envFile, secret, attached = [], port = appPort, clientAddress = {} } = input;
   const existing = { ...input.existing, ...Object.fromEntries(attached.map((key) => [key, "(attached)"])) };
   const external = externalDatabaseUrls(modules, envFile);
   const databases = input.databases ?? railwayReferences(databasesFor(modules, Object.keys(external)));
   const provided: Record<string, string> = { NODE_ENV: "production", PORT: String(port), ...databases };
   // The public URL under both names: TanStack Start reads APP_URL, Next.js NEXT_PUBLIC_APP_URL.
-  const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url };
+  const set: Record<string, string> = { ...provided, APP_URL: url, NEXT_PUBLIC_APP_URL: url, ...clientAddressVariables(clientAddress, envFile) };
   if (modules.auth === "better-auth" && !existing.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
 
   const databaseKeys: string[] = [...Object.values(databaseVariables), "DATABASE_URL_DIRECT"];
@@ -164,18 +203,20 @@ export function planVariables(input: {
   // A direct URL left from an earlier database would send migrations there: point it at the
   // database the app now uses, or blank it (blank counts as unset).
   else if (existing.DATABASE_URL_DIRECT) set.DATABASE_URL_DIRECT = set.DATABASE_URL ?? "";
-  // Optional: without it, migrations and the jobs worker use DATABASE_URL.
-  const unset = keys.filter((key) => set[key] === undefined && !existing[key] && key !== "DATABASE_URL_DIRECT");
+  // Optional: without a direct URL, migrations and the jobs worker use DATABASE_URL, and the
+  // client-address settings have safe defaults.
+  const optional = ["DATABASE_URL_DIRECT", ...clientAddressKeys];
+  const unset = keys.filter((key) => set[key] === undefined && !existing[key] && !optional.includes(key));
   return { set, unset };
 }
 
 /**
  * The variables of a frontend and an API deployed as two services. The API gets what planVariables
  * provides with the env file's server values, and the frontend's URL. The frontend gets its port,
- * the env file's VITE_* build values, and the runtime values its own example lists. With Better
- * Auth the frontend's server runs auth: it gets the API's database, the secret (generated unless
- * the service already has one), and BETTER_AUTH_URL, the public URL the API asks for the session.
- * Each service's unset variables come from its own example.
+ * where the client's address is, the env file's VITE_* build values, and the runtime values its
+ * own example lists. With Better Auth the frontend's server runs auth: it gets the API's database,
+ * the secret (generated unless the service already has one), and BETTER_AUTH_URL, the public URL
+ * the API asks for the session. Each service's unset variables come from its own example.
  */
 export function planServicePair(input: {
   modules: Record<string, string>;
@@ -187,14 +228,17 @@ export function planServicePair(input: {
   secret: () => string;
   databases: Record<string, string>;
   ports: { frontend: number; api: number };
+  /** Where the frontend, the public service, finds the client's address on this platform (clientAddresses). */
+  clientAddress: Readonly<Record<string, string>>;
 }): { frontend: VariablePlan; api: VariablePlan } {
   const { modules, frontendKeys, apiKeys, url, existing, envFile, secret, databases, ports } = input;
   const betterAuth = modules.auth === "better-auth";
   // A development env file's localhost URL would send sign-in links to this machine.
   const authUrl = envFile.BETTER_AUTH_URL && !isLocalUrl(envFile.BETTER_AUTH_URL) ? envFile.BETTER_AUTH_URL : url;
 
-  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_")));
-  const api = planVariables({ modules, keys: apiKeys, url, existing: existing.api, envFile: apiEnv, secret, databases, port: ports.api });
+  // The env file's client-address settings are the public frontend's: the API is behind it.
+  const apiEnv = Object.fromEntries(Object.entries(envFile).filter(([key]) => !key.startsWith("VITE_") && !clientAddressKeys.includes(key)));
+  const api = planVariables({ modules, keys: apiKeys, url, existing: existing.api, envFile: apiEnv, secret, databases, port: ports.api, clientAddress: behindFrontend });
   // Better Auth's secret belongs to the frontend's server; the API only asks it for the session.
   if (!apiEnv.BETTER_AUTH_SECRET) delete api.set.BETTER_AUTH_SECRET;
   api.set.FRONTEND_URL = url;
@@ -203,8 +247,8 @@ export function planServicePair(input: {
   api.unset = api.unset.filter((key) => api.set[key] === undefined && key !== "HOST");
 
   // railway.ts sets API_URL to the API's private address; the platform provides the database.
-  const provided = ["API_URL", "PORT", "BETTER_AUTH_URL", ...Object.values(databaseVariables), "DATABASE_URL_DIRECT"];
-  const set: Record<string, string> = { PORT: String(ports.frontend) };
+  const provided = ["API_URL", "PORT", "BETTER_AUTH_URL", ...Object.values(databaseVariables), "DATABASE_URL_DIRECT", ...clientAddressKeys];
+  const set: Record<string, string> = { PORT: String(ports.frontend), ...clientAddressVariables(input.clientAddress, envFile) };
   for (const [key, value] of Object.entries(envFile)) {
     if (value && (key.startsWith("VITE_") || (frontendKeys.includes(key) && !provided.includes(key)))) set[key] = value;
   }
@@ -214,8 +258,10 @@ export function planServicePair(input: {
     set.BETTER_AUTH_URL = authUrl;
     if (!set.BETTER_AUTH_SECRET && !existing.frontend.BETTER_AUTH_SECRET) set.BETTER_AUTH_SECRET = secret();
   }
-  // Optional: without VITE_API_URL the browser calls the API through the frontend's /api proxy.
-  const unset = frontendKeys.filter((key) => set[key] === undefined && !existing.frontend[key] && !["API_URL", "VITE_API_URL"].includes(key));
+  // Optional: without VITE_API_URL the browser calls the API through the frontend's /api proxy,
+  // and the client-address settings have safe defaults.
+  const optional = ["API_URL", "VITE_API_URL", ...clientAddressKeys];
+  const unset = frontendKeys.filter((key) => set[key] === undefined && !existing.frontend[key] && !optional.includes(key));
   return { frontend: { set, unset }, api };
 }
 

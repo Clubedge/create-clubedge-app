@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -148,11 +148,33 @@ describe("try script", () => {
     expect(tryScript({ ...options, modules: tryModules({ auth: "none" }) })).not.toContain("BETTER_AUTH_SECRET");
   });
 
+  const hasBash = spawnSync("bash", ["--version"]).status === 0;
+  // BSD sed, on macOS, takes -i differently; the VM runs Linux.
+  it.skipIf(!hasBash || process.platform === "darwin")("reads the client's address from the header Railway's edge sets", () => {
+    const script = tryScript(uploaded);
+    const start = script.indexOf("for envfile in");
+    const loop = script.slice(start, script.indexOf("\ndone", start) + 5);
+    expect(loop).toContain("CLIENT_IP_HEADER=x-real-ip");
+    const dir = mkdtempSync(join(tmpdir(), "clubedge-try-"));
+    try {
+      for (const app of ["web", "api"]) {
+        mkdirSync(join(dir, "apps", app), { recursive: true });
+        writeFileSync(join(dir, "apps", app, ".env.local"), "CLIENT_IP_HEADER=\nPORT=3000\n");
+      }
+      const result = spawnSync("bash", ["-c", loop], { cwd: dir, encoding: "utf8" });
+      expect(result.stderr).toBe("");
+      for (const app of ["web", "api"]) {
+        expect(readFileSync(join(dir, "apps", app, ".env.local"), "utf8")).toBe("PORT=3000\nCLIENT_IP_HEADER=x-real-ip\n");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("quotes values so they stay one word", () => {
     expect(shellQuote("a'; rm -rf /")).toBe(`'a'\\''; rm -rf /'`);
   });
 
-  const hasBash = spawnSync("bash", ["--version"]).status === 0;
   it.skipIf(!hasBash)("is valid bash", () => {
     for (const script of [tryScript(options), tryScript(uploaded), tryScript({ ...uploaded, modules: { infra: "none" } })]) {
       const result = spawnSync("bash", ["-n"], { input: script, encoding: "utf8" });

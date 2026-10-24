@@ -13,6 +13,7 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   appUrlKeys,
+  clientAddresses,
   exampleKeys,
   externalDatabaseUrls,
   isLocalUrl,
@@ -125,7 +126,7 @@ export async function deployToNetlify(args: CliArgs, project: Project, cli: stri
   }
 
   if (args.dryRun) {
-    const preview = planVariables({ modules: project.modules, keys, url: ownUrl ?? `https://${name}.netlify.app`, existing: {}, envFile, secret: () => "<generated>", databases: {} });
+    const preview = planVariables({ modules: project.modules, keys, url: ownUrl ?? `https://${name}.netlify.app`, existing: {}, envFile, secret: () => "<generated>", databases: {}, clientAddress: clientAddresses.netlify });
     const { NODE_ENV: _node, PORT: _port, ...values } = preview.set;
     log.message(
       [
@@ -202,7 +203,7 @@ export async function deployToNetlify(args: CliArgs, project: Project, cli: stri
     // Unknown output: every variable counts as unset, and the import sets them again.
   }
   const url = ownUrl ?? site.url;
-  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: {} });
+  const plan = planVariables({ modules: project.modules, keys, url, existing: current, envFile, secret, databases: {}, clientAddress: clientAddresses.netlify });
   // Netlify sets NODE_ENV and the port itself.
   const { NODE_ENV: _node, PORT: _port, ...values } = plan.set;
   // env:import reads a file: the values never appear on a command line. It stays private and goes away after.

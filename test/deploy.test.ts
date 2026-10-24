@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import {
+  clientAddresses,
+  clientAddressVariables,
   databasesFor,
   dockerComposeSource,
   externalDatabaseUrls,
@@ -225,12 +227,14 @@ describe("Railway variables for a frontend and an API", () => {
     secret: () => "s3cret",
     databases: { DATABASE_URL: "${{Postgres.DATABASE_URL}}" },
     ports: { frontend: 3000, api: 3001 },
+    clientAddress: clientAddresses.railway,
   };
 
   it("runs Better Auth in the frontend's server, with the API's database and the public URL", () => {
     const plan = planServicePair({ ...pair, envFile: { RESEND_API_KEY: "re_x", EMAIL_FROM: "a@b.co", BETTER_AUTH_URL: "http://localhost:3000" } });
     expect(plan.frontend.set).toEqual({
       PORT: "3000",
+      CLIENT_IP_HEADER: "x-real-ip",
       RESEND_API_KEY: "re_x",
       EMAIL_FROM: "a@b.co",
       DATABASE_URL: "${{Postgres.DATABASE_URL}}",
@@ -277,12 +281,76 @@ describe("Railway variables for a frontend and an API", () => {
       apiKeys: ["HOST", "PORT", "FRONTEND_URL", "DATABASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"],
       envFile: { VITE_SUPABASE_URL: "https://x.supabase.co", SUPABASE_URL: "https://x.supabase.co", API_URL: "http://127.0.0.1:3001" },
     });
-    expect(plan.frontend.set).toEqual({ PORT: "3000", VITE_SUPABASE_URL: "https://x.supabase.co" });
+    expect(plan.frontend.set).toEqual({ PORT: "3000", CLIENT_IP_HEADER: "x-real-ip", VITE_SUPABASE_URL: "https://x.supabase.co" });
     expect(plan.frontend.unset).toEqual(["VITE_SUPABASE_PUBLISHABLE_KEY"]);
     expect(plan.api.set).not.toHaveProperty("VITE_SUPABASE_URL");
     expect(plan.api.set).toMatchObject({ SUPABASE_URL: "https://x.supabase.co" });
     expect(plan.api.set).not.toHaveProperty("BETTER_AUTH_URL");
     expect(plan.api.unset).toEqual(["SUPABASE_PUBLISHABLE_KEY"]);
+  });
+});
+
+describe("client addresses", () => {
+  const single = {
+    modules: { auth: "none", cache: "memory" },
+    keys: ["DATABASE_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"],
+    url: "https://my-app.example.com",
+    existing: {},
+    envFile: {},
+    secret: () => "s",
+    databases: {},
+  };
+
+  it("sets the header each platform's edge puts the client's address in", () => {
+    expect(planVariables({ ...single, clientAddress: clientAddresses.railway }).set.CLIENT_IP_HEADER).toBe("x-real-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.render }).set.CLIENT_IP_HEADER).toBe("true-client-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.fly }).set.CLIENT_IP_HEADER).toBe("fly-client-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.vercel }).set.CLIENT_IP_HEADER).toBe("x-real-ip");
+    expect(planVariables({ ...single, clientAddress: clientAddresses.netlify }).set.CLIENT_IP_HEADER).toBe("x-nf-client-connection-ip");
+    expect(clientAddresses.docker).toEqual({ TRUSTED_PROXY_HOPS: "1" });
+  });
+
+  it("never reports the settings as unset, since they have safe defaults", () => {
+    const plan = planVariables({ ...single, clientAddress: clientAddresses.fly });
+    expect(plan.set).not.toHaveProperty("TRUSTED_PROXY_HOPS");
+    expect(plan.unset).toEqual(["DATABASE_URL"]);
+    expect(planVariables(single).unset).toEqual(["DATABASE_URL"]);
+  });
+
+  it("takes the env file's settings instead, either one replacing both defaults", () => {
+    const header = planVariables({ ...single, envFile: { CLIENT_IP_HEADER: "cf-connecting-ip" }, clientAddress: clientAddresses.render });
+    expect(header.set.CLIENT_IP_HEADER).toBe("cf-connecting-ip");
+    const hops = planVariables({ ...single, envFile: { TRUSTED_PROXY_HOPS: "2", CLIENT_IP_HEADER: "" }, clientAddress: clientAddresses.railway });
+    expect(hops.set.TRUSTED_PROXY_HOPS).toBe("2");
+    expect(hops.set).not.toHaveProperty("CLIENT_IP_HEADER");
+    expect(clientAddressVariables(clientAddresses.vercel, { CLIENT_IP_HEADER: "" })).toEqual({ CLIENT_IP_HEADER: "x-real-ip" });
+  });
+
+  it("gives a frontend the platform's header, and its API the frontend as its one proxy", () => {
+    const pair = {
+      modules: { auth: "none", cache: "memory" },
+      frontendKeys: ["API_URL", "VITE_API_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"],
+      apiKeys: ["HOST", "PORT", "DATABASE_URL", "CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"],
+      url: "https://notes-web.up.railway.app",
+      existing: { frontend: {}, api: {} },
+      envFile: {},
+      secret: () => "s",
+      databases: { DATABASE_URL: "${{Postgres.DATABASE_URL}}" },
+      ports: { frontend: 3000, api: 3001 },
+      clientAddress: clientAddresses.railway,
+    };
+    const plan = planServicePair(pair);
+    expect(plan.frontend.set).toMatchObject({ CLIENT_IP_HEADER: "x-real-ip" });
+    expect(plan.frontend.set).not.toHaveProperty("TRUSTED_PROXY_HOPS");
+    expect(plan.api.set).toMatchObject({ TRUSTED_PROXY_HOPS: "1" });
+    expect(plan.api.set).not.toHaveProperty("CLIENT_IP_HEADER");
+    expect([...plan.frontend.unset, ...plan.api.unset]).toEqual([]);
+
+    // The env file's settings describe the public service; the API stays behind the frontend.
+    const own = planServicePair({ ...pair, envFile: { CLIENT_IP_HEADER: "cf-connecting-ip", TRUSTED_PROXY_HOPS: "3" } });
+    expect(own.frontend.set).toMatchObject({ CLIENT_IP_HEADER: "cf-connecting-ip", TRUSTED_PROXY_HOPS: "3" });
+    expect(own.api.set).toMatchObject({ TRUSTED_PROXY_HOPS: "1" });
+    expect(own.api.set).not.toHaveProperty("CLIENT_IP_HEADER");
   });
 });
 

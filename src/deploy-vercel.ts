@@ -12,6 +12,7 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { bold, dim } from "./cli/ui.js";
 import {
   appUrlKeys,
+  clientAddresses,
   exampleKeys,
   externalDatabaseUrls,
   ignoresEnvFiles,
@@ -137,7 +138,7 @@ export async function deployToVercel(args: CliArgs, project: Project, cli: strin
   }
 
   if (args.dryRun) {
-    const preview = planVariables({ modules: project.modules, keys, url: ownUrl ?? `https://${name}.vercel.app`, existing: {}, envFile, secret: () => "<generated>", databases: {} });
+    const preview = planVariables({ modules: project.modules, keys, url: ownUrl ?? `https://${name}.vercel.app`, existing: {}, envFile, secret: () => "<generated>", databases: {}, clientAddress: clientAddresses.vercel });
     const { NODE_ENV: _node, PORT: _port, ...values } = preview.set;
     log.message(
       [
@@ -205,7 +206,7 @@ export async function deployToVercel(args: CliArgs, project: Project, cli: strin
   const existing = parseVercelEnv((await attempt(() => vercel(vc, ["api", `/v10/projects/${found.id}/env`], root))) ?? "");
   const keptUrl = appUrlKeys.map((key) => existing[key]).find((value) => value && value !== "(set)" && !isLocalUrl(value));
   let url = ownUrl ?? keptUrl ?? `https://${found.name}.vercel.app`;
-  const plan = planVariables({ modules: project.modules, keys, url, existing, envFile, secret, databases: {} });
+  const plan = planVariables({ modules: project.modules, keys, url, existing, envFile, secret, databases: {}, clientAddress: clientAddresses.vercel });
   // Vercel sets NODE_ENV and the port itself.
   const { NODE_ENV: _node, PORT: _port, ...values } = plan.set;
   await vercel(vc, ["api", `/v10/projects/${found.id}/env?upsert=true`, "-X", "POST", "--input", "-"], root, {

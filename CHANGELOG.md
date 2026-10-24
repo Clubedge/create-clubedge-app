@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.38.0
+
+- Catch up the 0.35–0.37 release notes and tables (#114).
+- Database URLs, previews, Neon, and deploy variables for a frontend and its API (#115).
+- Default to Starter `v0.24.2` (#116).
+
 ## 0.37.0
 
 - **An MCP server for coding agents** (#110): `create-clubedge-app-mcp`, in the same package, lets an agent create projects with the CLI's pinned Starter and its compatibility rules. Run it from the workspace where projects should go:

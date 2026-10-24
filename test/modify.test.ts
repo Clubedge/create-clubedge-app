@@ -105,6 +105,21 @@ describe("changeProject after the files are written", () => {
     expect(warnings()[1]).toContain("git diff --no-index apps/web/package.json .clubedge/incoming/apps/web/package.json");
   });
 
+  it("skips pnpm install for a package.json an earlier change left conflicted, which this one does not touch", async () => {
+    const project = await generatedProject();
+    await project.write(
+      "packages/auth-supabase/package.json",
+      '{\n<<<<<<< yours\n  "name": "auth"\n=======\n  "name": "@clubedge/auth-supabase"\n>>>>>>> clubedge\n}\n',
+    );
+
+    expect(await project.run(["remove", "storage"])).toBe("changed");
+
+    expect(installDependencies).not.toHaveBeenCalled();
+    expect(warnings()).toEqual([
+      expect.stringMatching(/^Skipped `pnpm install`: packages\/auth-supabase\/package\.json has conflict markers/),
+    ]);
+  });
+
   it("says why pnpm commands fail with --no-install too", async () => {
     const project = await generatedProject();
     await addOwnDependency(project);

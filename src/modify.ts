@@ -24,6 +24,7 @@ import { cliVersion, starterPin } from "./package-info.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { describeNewDatabase, projectDatabaseEnv, provisionNeonDatabase } from "./neon.js";
 import { detectPnpm, installDependencies } from "./steps/install.js";
+import { listTemplateFiles } from "./utils/fs.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
 type ChangeCommand = Extract<CliArgs["command"], { name: "add" | "remove" | "upgrade" }>;
@@ -264,14 +265,22 @@ const conflictsOf = (plan: UpdatePlan) =>
   plan.actions.filter((action): action is Extract<MergeAction, { kind: "conflict" }> => action.kind === "conflict");
 
 /**
+ * The project's package.json files with conflict markers: this change's, and any an earlier change
+ * left that this one does not touch, which its plan does not list.
+ */
+async function conflictedManifests(root: string): Promise<string[]> {
+  const manifests = (await listTemplateFiles(root)).filter((path) => /(^|\/)package\.json$/.test(path));
+  const conflicted = await Promise.all(
+    manifests.map(async (path) => (countConflicts(await readFile(join(root, path))) ? path : null)),
+  );
+  return conflicted.filter((path): path is string => path !== null);
+}
+
+/**
  * Why pnpm cannot run yet: it reads every package.json in the workspace and stops at one with
  * conflict markers, so `pnpm install` and `pnpm clubedge` fail until they are resolved.
  */
-function conflictedManifestWarning(plan: UpdatePlan, install: boolean): string | null {
-  const paths = conflictsOf(plan)
-    .map((action) => action.path)
-    .filter((path) => /(^|\/)package\.json$/.test(path));
-  if (!paths.length) return null;
+function conflictedManifestWarning(paths: string[], install: boolean): string {
   const one = paths.length === 1;
   return (
     `${install ? "Skipped `pnpm install`: " : ""}${paths.join(", ")} ${one ? "has" : "have"} conflict markers, which pnpm cannot read, ` +
@@ -464,9 +473,9 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
 
     // The files are written now, so what is left to resolve is reported even when the install fails.
     let installError: unknown;
-    const conflictedManifests = conflictedManifestWarning(plan, args.install);
-    if (conflictedManifests) {
-      log.warn(conflictedManifests);
+    const manifests = await conflictedManifests(project.root);
+    if (manifests.length) {
+      log.warn(conflictedManifestWarning(manifests, args.install));
     } else if (args.install) {
       const { pnpm, problem } = await detectPnpm();
       if (pnpm) {

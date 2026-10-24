@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import process from "node:process";
 import type { StdioOptions } from "node:child_process";
-import { onPath, run, runCapture } from "../utils/process.js";
+import { onPath, run, runCapture, withAbsolutePath } from "../utils/process.js";
 
 export interface PnpmDetection {
   /** The command that runs pnpm, or null when neither pnpm nor corepack runs. */
@@ -22,8 +22,9 @@ export async function detectPnpm(): Promise<PnpmDetection> {
     const command = pnpm[0]!;
     try {
       // `corepack --version`, not `corepack pnpm --version`: outside a project, corepack would
-      // download its own default pnpm just to answer.
-      await runCapture(command, ["--version"], tmpdir());
+      // download its own default pnpm just to answer. PATH's relative folders still mean the
+      // folder the CLI runs in, where onPath and the install look.
+      await runCapture(command, ["--version"], tmpdir(), withAbsolutePath());
       return { pnpm };
     } catch (error) {
       if (!problem && (await onPath(command))) {

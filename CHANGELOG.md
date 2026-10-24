@@ -2,6 +2,21 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.40.0
+
+- **Every module on React + Vite with FastAPI**: default to Starter `v0.26.0` (#126). `--framework vite --api fastapi` now offers the module options Hono got in 0.39.0, each written in Python:
+  - `--storage s3` (or a local folder with `--infra local`) and `--storage supabase`.
+  - `--cache redis`, for the rate limits and cache.
+  - `--email smtp` and `--email resend`.
+  - `--observability otel` and `--observability sentry`, with browser error reporting.
+  - `--payments stripe`, on the same tables as the Hono API.
+  - `--jobs bullmq` and `--jobs inngest`. `--jobs pg-boss` is still refused for FastAPI: pg-boss has no Python version.
+  - The account settings page in full: display name, password change, and account deletion.
+  - New Vite + FastAPI projects get the same defaults as the other stacks: S3 storage, Redis cache, and SMTP email.
+  - Each module has its own uv dependency group: every project keeps the same `uv.lock`, and its production image installs only the selected modules' libraries.
+- Rendered Python files keep the two blank lines PEP 8 and `ruff format` want between top-level definitions when a conditional block is removed (#121). Generating FastAPI projects from Starter `v0.26.0` needs this release.
+- The README says the decoupled stacks with Hono support every module (#120).
+
 ## 0.39.0
 
 - **Every module on React + Vite with Hono**: default to Starter `v0.25.0` (#118). `--framework vite --api hono` now offers every module option the full-stack apps have, each running in the API with the matching UI in the frontend:

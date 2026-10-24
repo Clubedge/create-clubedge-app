@@ -4,9 +4,17 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.38.0
 
-- Catch up the 0.35–0.37 release notes and tables (#114).
-- Database URLs, previews, Neon, and deploy variables for a frontend and its API (#115).
-- Default to Starter `v0.24.2` (#116).
+- **Security: default to Starter `v0.24.2`** (#116). It updates Next.js to 16.4.3: 16.0.0 to 16.4.0 have two critical unauthenticated remote code execution advisories and a high denial of service ([GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) and related). It also updates Zod to 4.6.7 ([GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)). **Every Next.js project from an earlier Starter should run `pnpm clubedge upgrade`**, or raise `next` to `^16.4.3` in `apps/web/package.json` and run `pnpm install`. The Starter release also:
+  - gives a separate API the database URL of its `--infra` (it always pointed at `127.0.0.1:5432/postgres`, wrong for supabase, local, and docker);
+  - passes the Vite frontend's `VITE_*` build arguments in `docker-compose.yml`, and runs the Vite image as an unprivileged user;
+  - lists the Firebase, Appwrite, Inngest, Supabase, OpenTelemetry, and Sentry variables in `render.yaml`.
+- **Fixes for a frontend and its API** (#115):
+  - The database URLs go to `apps/api/.env.local`, the API's, with `--infra neon`, `neon create|claim|status`, `add infra neon`, `try`, and `doctor`. Apps that also declare `DATABASE_URL` (Better Auth on the Vite frontend) get the same URLs.
+  - `deploy` with Docker: `compose.yaml` passes the frontend's `VITE_*` build arguments for every auth provider, not only Supabase. With Better Auth, the frontend gets its auth server's variables.
+  - `deploy` on Railway: with Better Auth, the frontend service gets the API's `DATABASE_URL`, `BETTER_AUTH_URL`, and a secret. Each service lists its own unset variables.
+  - `deploy --preview` refuses a frontend and its API with a clear message: it deploys one app.
+  - MCP: with `infra: neon`, `create_project` warns and `plan_project` returns `nextSteps` saying to run `pnpm clubedge neon create`.
+- The README, roadmap, and 0.35.0–0.37.0 changelog entries describe what shipped; `pnpm release` leaves dependency bumps out of the release tables (#114).
 
 ## 0.37.0
 

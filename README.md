@@ -460,7 +460,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.35.0 | v0.24.0 | `deploy` for a frontend and its API (Docker Compose, Railway); Starter v0.24.0: all four auth providers on React + Vite with Hono or FastAPI |
 | 0.36.0 | v0.24.1 | Starter v0.24.1: security update of FastAPI's `certifi`; dependency updates |
 | 0.37.0 | v0.24.1 | An MCP server (capabilities, validate, plan, create) and an agent skill for coding agents |
-| 0.38.0 | v0.24.2 | Catch up the 0.35–0.37 release notes and tables; Database URLs, previews, Neon, and deploy variables for a frontend and its API; Default to Starter v0.24.2 |
+| 0.38.0 | v0.24.2 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
 
 ## Community
 

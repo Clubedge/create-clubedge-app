@@ -351,7 +351,10 @@ describe("the workflow that publishes the images", () => {
     const next = releaseImagesWorkflowSource(fullstack, ["NEXT_PUBLIC_APP_URL", "DATABASE_URL"]);
     expect(next).toContain("          - service: web\n            dockerfile: Dockerfile\n            context: .\n            # The image");
     expect(next).toContain("              NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}\n    steps:");
-    expect(releaseImagesWorkflowSource(fullstack, ["APP_URL"])).not.toContain("build-args: |");
+    expect(next).toContain("          build-args: ${{ matrix.build-args }}");
+    // TanStack Start compiles nothing in: no image has build arguments for the step to read.
+    const start = releaseImagesWorkflowSource(fullstack, ["APP_URL"]);
+    expect(start).not.toContain("build-args");
   });
 
   it("pushes multi-platform images to GHCR, tagged by version, latest, and edge", () => {

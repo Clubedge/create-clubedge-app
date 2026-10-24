@@ -871,8 +871,8 @@ export const releaseImagesPath = ".github/workflows/release-images.yml";
  * images behind. The values an image compiles in come from the repository's variables.
  */
 export function releaseImagesWorkflowSource(services: Record<string, ProjectService>, frontendKeys: string[] = []): string {
-  const matrix = Object.values(services).flatMap((service) => {
-    const args = buildArgumentKeys(service, frontendKeys);
+  const argsByService = Object.values(services).map((service) => ({ service, args: buildArgumentKeys(service, frontendKeys) }));
+  const matrix = argsByService.flatMap(({ service, args }) => {
     return [
       `          - service: ${service.id}`,
       `            dockerfile: ${service.dockerfile}`,
@@ -937,7 +937,8 @@ export function releaseImagesWorkflowSource(services: Record<string, ProjectServ
     "          push: true",
     "          tags: ${{ steps.meta.outputs.tags }}",
     "          labels: ${{ steps.meta.outputs.labels }}",
-    "          build-args: ${{ matrix.build-args }}",
+    // Only when an image compiles values in: the matrix has no build-args otherwise.
+    ...(argsByService.some(({ args }) => args.length) ? ["          build-args: ${{ matrix.build-args }}"] : []),
     "          cache-from: type=gha,scope=${{ matrix.service }}",
     "          cache-to: type=gha,mode=max,scope=${{ matrix.service }}",
     "",

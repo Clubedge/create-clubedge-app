@@ -57,7 +57,26 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
     ...new Set([...baseFiles.keys(), ...targetFiles.keys(), ...special]),
   ]);
 
+  const currentReadme = current.get("README.md");
+  const customReadme = Boolean(
+    currentReadme && !currentReadme.toString("utf8").includes("## Generated from"),
+  );
+  const targetReadme = targetFiles.get("README.md");
+  if (customReadme) {
+    baseFiles.delete("README.md");
+    targetFiles.delete("README.md");
+  }
+
   const actions = planMerge(baseFiles, targetFiles, current);
+  if (customReadme && targetReadme && !sameContent(currentReadme!, targetReadme)) {
+    actions.push({
+      path: "README.md",
+      kind: "keep",
+      reason: "You replaced the generated README with your own.",
+      incoming: targetReadme,
+    });
+    actions.sort((a, b) => a.path.localeCompare(b.path));
+  }
 
   let lockfile: UpdatePlan["lockfile"] = { kind: "unchanged" };
   const baseLock = before.files.get(LOCKFILE);

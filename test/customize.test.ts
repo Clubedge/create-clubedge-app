@@ -36,11 +36,17 @@ describe("customizeRootManifest", () => {
     const result = JSON.parse(customizeRootManifest(source, identity, provenance, "clubedge-starter"));
 
     expect(result.name).toBe("my-product");
+    expect(result.version).toBe("0.1.0");
     expect(result.private).toBe(true);
     expect(result.clubedge).toEqual(provenance);
     expect(result.scripts["docker:build"]).toBe("docker build -t my-product .");
     expect(result.scripts["docker:start"]).toBe("docker run --rm my-product");
     expect(result.scripts.dev).toBe("turbo run dev");
+  });
+
+  it("preserves custom project version when provided", () => {
+    const output = customizeRootManifest("{}", { ...identity, version: "2.3.4" }, provenance, "clubedge-starter");
+    expect(JSON.parse(output).version).toBe("2.3.4");
   });
 
   it("omits the commit when it is unknown and ends with a newline", () => {

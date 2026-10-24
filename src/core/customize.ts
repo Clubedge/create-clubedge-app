@@ -7,6 +7,7 @@ import type { ProjectService } from "./manifest.js";
 export interface ProjectIdentity {
   packageName: string;
   displayName: string;
+  version?: string;
 }
 
 /** Recorded in the generated package.json and README so a project can trace its origin. */
@@ -57,13 +58,14 @@ export interface ScriptChanges {
 
 export function customizeRootManifest(
   source: string,
-  { packageName }: ProjectIdentity,
+  { packageName, version = "0.1.0" }: ProjectIdentity,
   provenance: Provenance,
   dockerImage: string,
   scripts: ScriptChanges = { set: {}, remove: [] },
 ): string {
   const manifest = JSON.parse(source);
   manifest.name = packageName;
+  manifest.version = version;
   if (manifest.scripts && typeof manifest.scripts === "object") {
     for (const name of scripts.remove) delete manifest.scripts[name];
   }

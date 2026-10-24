@@ -279,6 +279,87 @@ describe("upgrading to a newer Starter", () => {
     expect(plan.actions.filter((action) => action.kind === "conflict")).toEqual([]);
   });
 
+  it("preserves a customized project version across Starter upgrades without conflicts", async () => {
+    const { v1, v2 } = await twoRevisions();
+    const root = join(await temporaryDirectory(), "versioned-product");
+    const v1Manifest = await readTemplateManifest(v1.root);
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "versioned-product", displayName: "Versioned Product" },
+        source: { ...v1, ref: "v1.0.0", commit: "1".repeat(40) },
+        manifest: v1Manifest,
+        stacks: { framework: "next" },
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+
+    const pkgPath = join(root, "package.json");
+    const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
+    pkg.version = "1.2.3";
+    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+    const project = await readProject(root);
+    expect(project.identity.version).toBe("1.2.3");
+
+    const v2Manifest = await readTemplateManifest(v2.root);
+    const { modules } = upgradedModules(v2Manifest, project);
+    const plan = await planUpdate(
+      project,
+      { source: { ...v1, ref: project.starterRef, commit: project.starterCommit }, manifest: v1Manifest, modules: project.modules, cliVersion: project.cliVersion },
+      { source: { ...v2, ref: "v2.0.0", commit: "2".repeat(40) }, manifest: v2Manifest, modules, cliVersion: "2.0.0" },
+    );
+    await applyUpdate(plan);
+
+    const updatedPkg = JSON.parse(await readFile(pkgPath, "utf8"));
+    expect(updatedPkg.version).toBe("1.2.3");
+    expect(plan.actions.find((action) => action.path === "package.json")?.kind).not.toBe("conflict");
+  });
+
+  it("keeps a custom README untouched and saves the new Starter's README to .clubedge/incoming", async () => {
+    const { v1, v2 } = await twoRevisions();
+    const root = join(await temporaryDirectory(), "custom-readme-product");
+    const v1Manifest = await readTemplateManifest(v1.root);
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "custom-readme-product", displayName: "Custom Readme Product" },
+        source: { ...v1, ref: "v1.0.0", commit: "1".repeat(40) },
+        manifest: v1Manifest,
+        stacks: { framework: "next" },
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+
+    const customDocs = "# Custom Application\n\nThis is my own product documentation.\n";
+    await writeFile(join(root, "README.md"), customDocs);
+
+    const project = await readProject(root);
+    const v2Manifest = await readTemplateManifest(v2.root);
+    const { modules } = upgradedModules(v2Manifest, project);
+    const plan = await planUpdate(
+      project,
+      { source: { ...v1, ref: project.starterRef, commit: project.starterCommit }, manifest: v1Manifest, modules: project.modules, cliVersion: project.cliVersion },
+      { source: { ...v2, ref: "v2.0.0", commit: "2".repeat(40) }, manifest: v2Manifest, modules, cliVersion: "2.0.0" },
+    );
+
+    const readmeAction = plan.actions.find((action) => action.path === "README.md");
+    expect(readmeAction).toMatchObject({
+      kind: "keep",
+      reason: "You replaced the generated README with your own.",
+    });
+
+    await applyUpdate(plan);
+    expect(await readFile(join(root, "README.md"), "utf8")).toBe(customDocs);
+    expect(await readFile(join(root, INCOMING_DIR, "README.md"), "utf8")).toContain("# Custom Readme Product");
+  });
+
   it("refuses an option the new Starter no longer offers", async () => {
     const { v2 } = await twoRevisions();
     const manifest = await readTemplateManifest(v2.root);

@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.40.0
+
+- The decoupled stacks with Hono support every module (#120).
+- Keep Python's two blank lines when a removed block leaves them (#121).
+- Default to Starter `v0.26.0` (#126).
+
 ## 0.39.0
 
 - **Every module on React + Vite with Hono**: default to Starter `v0.25.0` (#118). `--framework vite --api hono` now offers every module option the full-stack apps have, each running in the API with the matching UI in the frontend:

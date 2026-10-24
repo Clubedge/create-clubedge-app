@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.39.0
+
+- Default to Starter `v0.25.0` (#118).
+
 ## 0.38.0
 
 - **Security: default to Starter `v0.24.2`** (#116). It updates Next.js to 16.4.3: 16.0.0 to 16.4.0 have two critical unauthenticated remote code execution advisories and a high denial of service ([GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) and related). It also updates Zod to 4.6.7 ([GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)). **Every Next.js project from an earlier Starter should run `pnpm clubedge upgrade`**, or raise `next` to `^16.4.3` in `apps/web/package.json` and run `pnpm install`. The Starter release also:

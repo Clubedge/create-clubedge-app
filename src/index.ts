@@ -160,7 +160,7 @@ async function createProject(args: CliArgs): Promise<void> {
   await assertTargetIsUsable(targetDirectory);
 
   const packageName = packageNameFromDirectory(targetDirectory);
-  const identity = { packageName, displayName: displayNameFromPackageName(packageName) };
+  const identity = { packageName, displayName: displayNameFromPackageName(packageName), version: "0.1.0" };
 
   const progress = spinner();
   progress.start("Preparing the Starter");

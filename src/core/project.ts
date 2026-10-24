@@ -47,7 +47,11 @@ export async function readProject(directory: string): Promise<Project> {
         }
         return {
           root: current,
-          identity: { packageName: manifest.name, displayName: displayNameFromPackageName(manifest.name) },
+          identity: {
+            packageName: manifest.name,
+            displayName: displayNameFromPackageName(manifest.name),
+            version: typeof manifest.version === "string" ? manifest.version : "0.1.0",
+          },
           cliVersion: origin.cliVersion,
           starterRepository: origin.starterRepository,
           starterRef: origin.starterRef,

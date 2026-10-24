@@ -226,6 +226,8 @@ jobs:
           # A frontend and a separate API, joined by the Starter's HTTP contract.
           - { name: vite-hono, framework: vite, modules: --api hono }
           - { name: vite-fastapi, framework: vite, modules: --api fastapi }
+          # The same frontend, packaged as a mobile app with Capacitor.
+          - { name: vite-hono-capacitor, framework: vite, modules: --api hono --shell capacitor }
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6

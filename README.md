@@ -467,7 +467,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.38.0 | v0.24.2 | Starter v0.24.2: Next.js security update (critical RCE advisories); database URLs, Neon, and deploy variables for a frontend and its API |
 | 0.39.0 | v0.25.0 | Starter v0.25.0: every module on React + Vite with Hono, and account settings on React + Vite |
 | 0.40.0 | v0.26.0 | Starter v0.26.0: every module on React + Vite with FastAPI (pg-boss excepted) |
-| 0.41.0 | v0.26.0 | Skip pnpm install and explain a package.json with conflict markers; Detect unresolved conflict markers in doctor; Preserve project version and custom README across upgrades (Phase 2); Conflict on a pnpm override now that projects own their version |
+| 0.41.0 | v0.26.0 | A conflicted package.json no longer breaks later commands (`--detailed-exit-code`); doctor finds conflict markers; projects own their version and README |
 
 ## Community
 

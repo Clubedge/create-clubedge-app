@@ -4,10 +4,16 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.41.0
 
-- Skip pnpm install and explain a package.json with conflict markers (#122).
-- Detect unresolved conflict markers in doctor (#123).
-- Preserve project version and custom README across upgrades (Phase 2) (#125).
-- Conflict on a pnpm override now that projects own their version (#128).
+- **A `package.json` with conflict markers no longer breaks the next commands** (#122, by @NishilRathod; issue #111):
+  - After `add`, `remove`, or `upgrade` leaves markers in a `package.json`, `pnpm install` is skipped with the reason: pnpm cannot read the file, so resolve it, then run `pnpm install`. The conflict report always prints, even when the install fails.
+  - pnpm is found from outside the project, so a broken `package.json` is no longer reported as "pnpm was not found", and an installed pnpm that fails says why.
+  - `status`, `doctor`, `add`, `remove`, `upgrade`, `deploy`, `neon`, and `try` name the unreadable `package.json` instead of printing a JSON parse error, and point to `git diff --no-index` against the Starter's version in `.clubedge/incoming`.
+  - `--detailed-exit-code` for `add`, `remove`, and `upgrade`: exit 2 when the change left conflicts to resolve, 0 when it was clean. Without it, conflicts still exit 0, as existing projects' upgrade workflow expects. The next Starter release's workflow uses it to open the upgrade pull request even when `package.json` conflicts.
+- **`doctor` fails on unresolved conflict markers** in the project's files, listing them with their block counts (#123, by @ahmed-husssain; issue #109).
+- **Projects own their version and README** (#125, by @ahmed-husssain; issue #124):
+  - New projects start at version `0.1.0`, and `add`, `remove`, and `upgrade` keep the project's own version, so the root `package.json` no longer conflicts on it with every Starter release.
+  - A README the project replaced (without the generated `## Generated from` section) is kept as it is; the Starter's new README goes to `.clubedge/incoming/README.md` to compare.
+- CI covers these cases end to end on Linux and Windows (#128).
 - Still on Starter `v0.26.0`.
 
 ## 0.40.0

@@ -1,13 +1,13 @@
 // Reads an existing generated project and renders projects in memory, so commands that change
 // a project (add, remove, upgrade) can compare what the CLI generated with what it would now.
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathExists } from "../utils/fs.js";
 import { displayNameFromPackageName } from "../utils/names.js";
 import { recordedStacks, type ProjectIdentity } from "./customize.js";
 import type { TemplateManifest } from "./manifest.js";
 import type { ProjectService } from "./manifest.js";
-import type { FileMap } from "./merge.js";
+import { countConflicts, INCOMING_DIR, type FileMap } from "./merge.js";
 import { createPlan } from "./plan.js";
 import type { TemplateSource } from "./source.js";
 
@@ -30,13 +30,53 @@ export interface Project {
   services: Record<string, ProjectService>;
 }
 
+/** The Starter's version of a file, saved by the last change in the `.clubedge` of a folder above it. */
+async function findIncoming(file: string): Promise<string | null> {
+  let folder = dirname(file);
+  while (true) {
+    const incoming = join(folder, INCOMING_DIR, relative(folder, file));
+    if (await pathExists(incoming)) return incoming;
+    const parent = dirname(folder);
+    if (parent === folder) return null;
+    folder = parent;
+  }
+}
+
+/**
+ * Why a package.json does not parse, naming it as seen from `directory`. Most often it is a
+ * conflict left by add, remove, or upgrade, which pnpm cannot read either.
+ */
+async function unreadableManifest(path: string, content: Buffer, directory: string, error: unknown): Promise<ProjectError> {
+  const shown = (file: string) => relative(directory, file).split(sep).join("/");
+  const conflicts = countConflicts(content);
+  if (!conflicts) {
+    return new ProjectError(
+      `${shown(path)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}. Fix it, then run this again.`,
+    );
+  }
+  const incoming = await findIncoming(path);
+  return new ProjectError(
+    `${shown(path)} has ${conflicts} unresolved ${conflicts === 1 ? "conflict" : "conflicts"} from an earlier add, remove, or upgrade, ` +
+      "marked <<<<<<< yours ... ======= ... >>>>>>> clubedge. While it has the markers, pnpm cannot read it either, so `pnpm install` and `pnpm clubedge` fail too. " +
+      "Keep your lines, the Starter's, or a mix, delete the markers, then run this again." +
+      (incoming ? `\nThe Starter's version, to compare with yours:\n  git diff --no-index ${shown(path)} ${shown(incoming)}` : ""),
+  );
+}
+
 /** Finds the generated project that contains `directory` and reads its provenance. */
 export async function readProject(directory: string): Promise<Project> {
-  let current = resolve(directory);
+  const start = resolve(directory);
+  let current = start;
   while (true) {
     const manifestPath = join(current, "package.json");
     if (await pathExists(manifestPath)) {
-      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      const content = await readFile(manifestPath);
+      let manifest;
+      try {
+        manifest = JSON.parse(content.toString("utf8"));
+      } catch (error) {
+        throw await unreadableManifest(manifestPath, content, start, error);
+      }
       const origin = manifest.clubedge;
       if (origin?.starterRef) {
         // Projects record the framework only when the Starter offered a choice, but always their modules.

@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions, type StdioOptions } from "node:child_process";
+import { access } from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import process from "node:process";
 
 // Package manager shims on Windows are .cmd files, which need a shell to start.
@@ -58,4 +60,24 @@ export async function commandSucceeds(command: string, args: string[]): Promise<
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a command is installed: a file of that name in a PATH folder, with one of PATHEXT's
+ * extensions on Windows. It tells a missing command from one that fails, which cmd.exe reports
+ * the same way (exit code 1).
+ */
+export async function onPath(command: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const extensions = useShell ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  for (const folder of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    for (const extension of extensions) {
+      try {
+        await access(join(folder, command + extension));
+        return true;
+      } catch {
+        // Not in this folder.
+      }
+    }
+  }
+  return false;
 }

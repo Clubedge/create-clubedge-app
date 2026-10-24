@@ -40,6 +40,11 @@ export interface CliArgs {
   dryRun: boolean;
   /** Change a project even with uncommitted changes or without Git. */
   force: boolean;
+  /**
+   * add, remove, and upgrade: exit with 2 when the change leaves conflicts to resolve, so scripts
+   * can tell it from a clean change (0) and a failure (1). Without it, conflicts exit with 0.
+   */
+  detailedExitCode: boolean;
   /** doctor: also run `pnpm check:services`. */
   services: boolean;
   /** try: open the preview in the browser once it is ready. */
@@ -72,6 +77,7 @@ const OPTIONS = {
   yes: { type: "boolean", short: "y", default: false },
   "dry-run": { type: "boolean", default: false },
   force: { type: "boolean", default: false },
+  "detailed-exit-code": { type: "boolean", default: false },
   services: { type: "boolean", default: true },
   open: { type: "boolean", default: true },
   claim: { type: "boolean", default: false },
@@ -163,6 +169,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (command.name !== "try" && (values.claim || values.status)) {
     throw new UsageError("--claim and --status only apply to try.");
   }
+  if (command.name !== "add" && command.name !== "remove" && command.name !== "upgrade" && values["detailed-exit-code"]) {
+    throw new UsageError("--detailed-exit-code only applies to add, remove, and upgrade.");
+  }
   if (command.name === "try" && values["template-dir"] !== undefined) {
     throw new UsageError("--template-dir does not apply to try: the VM downloads the Starter itself.");
   }
@@ -188,6 +197,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     yes: values.yes,
     dryRun: values["dry-run"],
     force: values.force,
+    detailedExitCode: values["detailed-exit-code"],
     services: values.services,
     open: values.open,
     claim: values.claim,

@@ -86,6 +86,14 @@ describe("updateEnvFile", () => {
     expect(updateEnvFile(smtp, smtp, resend).text).toBe(resend);
   });
 
+  it("adds a new section between two sections with a blank line on each side", () => {
+    const base = "DATABASE_URL=x\n\n# Auth\nAUTH_URL=\n";
+    const target = "DATABASE_URL=x\n\n# Client addresses\nCLIENT_IP_HEADER=\nTRUSTED_PROXY_HOPS=\n\n# Auth\nAUTH_URL=\n";
+    const result = updateEnvFile(base, base, target);
+    expect(result.added).toEqual(["CLIENT_IP_HEADER", "TRUSTED_PROXY_HOPS"]);
+    expect(result.text).toBe(target);
+  });
+
   it("leaves no blank lines at the end after removing the last variables", () => {
     const result = updateEnvFile("A=1\n\n# Cache\nREDIS_URL=\n", "A=1\n\n# Cache\nREDIS_URL=\n", "A=1\n");
     expect(result.text).toBe("A=1\n");

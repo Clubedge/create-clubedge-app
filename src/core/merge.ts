@@ -27,6 +27,12 @@ export type MergeAction =
 
 export const CONFLICT_LABELS = { yours: "yours", theirs: "clubedge" } as const;
 
+/**
+ * Where the Starter's versions of files left to resolve are saved, next to the project's own,
+ * for comparing by hand. The folder ignores itself, so it never shows in git status or a commit.
+ */
+export const INCOMING_DIR = ".clubedge/incoming";
+
 /** How many conflict blocks a merged file has. */
 export function countConflicts(content: Buffer): number {
   const marker = `<<<<<<< ${CONFLICT_LABELS.yours}`;

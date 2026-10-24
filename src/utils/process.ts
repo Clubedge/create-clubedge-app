@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions, type StdioOptions } from "node:child_process";
+import { access } from "node:fs/promises";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
 
 // Package manager shims on Windows are .cmd files, which need a shell to start.
@@ -31,9 +33,9 @@ export async function run(command: string, args: string[], cwd: string, stdio: S
 }
 
 /** Runs a command and returns trimmed stdout. Rejects with stderr on a non-zero exit. */
-export async function runCapture(command: string, args: string[], cwd?: string): Promise<string> {
+export async function runCapture(command: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
-    const child = spawnCommand(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawnCommand(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
@@ -58,4 +60,36 @@ export async function commandSucceeds(command: string, args: string[]): Promise<
   } catch {
     return false;
   }
+}
+
+/**
+ * The environment with PATH's relative folders, such as node_modules/.bin, resolved from `base`,
+ * for a command started in another folder, which would look them up from there.
+ */
+export function withAbsolutePath(env: NodeJS.ProcessEnv = process.env, base = process.cwd()): NodeJS.ProcessEnv {
+  // Windows keeps the name's own case, such as Path.
+  const key = Object.keys(env).find((name) => name.toUpperCase() === "PATH");
+  if (!key || !env[key]) return env;
+  const folders = env[key]!.split(delimiter).map((folder) => (folder && !isAbsolute(folder) ? resolve(base, folder) : folder));
+  return { ...env, [key]: folders.join(delimiter) };
+}
+
+/**
+ * Whether a command is installed: a file of that name in a PATH folder, with one of PATHEXT's
+ * extensions on Windows. It tells a missing command from one that fails, which cmd.exe reports
+ * the same way (exit code 1).
+ */
+export async function onPath(command: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const extensions = useShell ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  for (const folder of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    for (const extension of extensions) {
+      try {
+        await access(join(folder, command + extension));
+        return true;
+      } catch {
+        // Not in this folder.
+      }
+    }
+  }
+  return false;
 }

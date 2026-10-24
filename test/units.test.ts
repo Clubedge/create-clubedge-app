@@ -32,6 +32,7 @@ describe("parseCliArgs", () => {
       yes: false,
       dryRun: false,
       force: false,
+      detailedExitCode: false,
       services: true,
       open: true,
       claim: false,
@@ -94,6 +95,14 @@ describe("parseCliArgs", () => {
       dryRun: true,
     });
     expect(() => parseCliArgs(["upgrade", "v0.8.0"])).toThrow("Usage: upgrade [--ref <tag>]");
+  });
+
+  it("reads --detailed-exit-code for add, remove, and upgrade only", () => {
+    expect(parseCliArgs(["upgrade", "--detailed-exit-code"])).toMatchObject({ detailedExitCode: true });
+    expect(parseCliArgs(["add", "cache", "redis", "--detailed-exit-code"])).toMatchObject({ detailedExitCode: true });
+    expect(parseCliArgs(["remove", "storage", "--detailed-exit-code"])).toMatchObject({ detailedExitCode: true });
+    expect(() => parseCliArgs(["status", "--detailed-exit-code"])).toThrow("only applies to add, remove, and upgrade");
+    expect(() => parseCliArgs(["my-app", "--detailed-exit-code"])).toThrow("only applies to add, remove, and upgrade");
   });
 
   it("reads status and doctor, with doctor's --no-services", () => {

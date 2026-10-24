@@ -423,6 +423,46 @@ jobs:
         shell: bash
         run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install lint typecheck test build
 
+  # Edits that overlap the Starter's in a package.json, which pnpm cannot read with conflict
+  # markers: the CLI must skip pnpm install, report the conflict, and explain the file to later
+  # commands. The upgrade fetches the project's own Starter revision from GitHub, on Windows too.
+  package-json-conflicts:
+    name: package-json-conflicts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - name: Build, bundle, and pack the CLI
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm bundle-template
+          temp="$RUNNER_TEMP"
+          if command -v cygpath >/dev/null; then temp="$(cygpath -u "$RUNNER_TEMP")"; fi
+          npm pack --pack-destination "$temp"
+          mkdir -p "$temp/packed-cli"
+          tar -xzf "$temp"/clubedge-create-clubedge-app-*.tgz -C "$temp/packed-cli"
+          npm install --prefix "$temp/packed-cli/package" --omit=dev --ignore-scripts
+          echo "CLI=$temp/packed-cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+          echo "TEMP_DIR=$temp" >> "$GITHUB_ENV"
+      - name: Upgrade, add, and upgrade again with conflicts in package.json files
+        # Any release before the pinned one works: each changes every package.json's version.
+        run: bash scripts/ci/package-json-conflicts.sh "$CLI" "$TEMP_DIR/conflicts" v0.24.2
+
   latest-starter-compatibility:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04

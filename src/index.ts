@@ -1,13 +1,14 @@
 import { cancel, confirm, intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
 import { dim, helpText, showBanner } from "./cli/ui.js";
 import { assertTargetIsUsable, executePlan } from "./core/execute.js";
-import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
+import { FRAMEWORK_SLOT, readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { createPlan, describePlan, listNames, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
 import { emptyReport, type ChangeReport } from "./core/report.js";
+import { renderProject } from "./core/project.js";
 import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
 import { belowStableWarning, choicesBelowStable, levelHint, newChoices, planChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
@@ -18,6 +19,8 @@ import { tryOnRailway } from "./try.js";
 import { describeNewDatabase, neonCommand, provisionNeonDatabase } from "./neon.js";
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, detectPnpm, installDependencies } from "./steps/install.js";
+import { applyPlugins, type PluginContext } from "./steps/plugin.js";
+import { emptyDirectory, pathExists } from "./utils/fs.js";
 import { commandSucceeds, run } from "./utils/process.js";
 import { displayNameFromPackageName, isReservedDeviceName, packageNameFromDirectory } from "./utils/names.js";
 
@@ -217,6 +220,7 @@ async function createProject(args: CliArgs): Promise<void> {
       manifest,
       stacks,
       modules,
+      plugins: args.plugins,
       cliVersion,
       git: args.git,
       install: args.install,
@@ -234,18 +238,68 @@ async function createProject(args: CliArgs): Promise<void> {
     toolchains = plan.toolchains;
     neonEnvFile = plan.modules.some(({ id, option }) => id === "infra" && option === "neon") && args.neon ? plan.databaseEnvFile : null;
     sharedEnvFiles = plan.envFiles.map(({ to }) => to);
+    const pluginContext: PluginContext = {
+      stacks,
+      modules,
+      apps: Object.fromEntries(
+        plan.apps.map(({ slot, name }) => [
+          slot === FRAMEWORK_SLOT ? "web" : slot,
+          manifest.slots[slot]?.path ?? `apps/${name}`,
+        ]),
+      ),
+      starterRef: source.ref,
+      cliVersion,
+    };
+
     if (args.dryRun) {
-      const lines = [...describePlan(plan), ...(neonEnvFile ? [`Create a free Neon database and set its URLs in ${neonEnvFile}`] : [])];
+      let pluginLines: string[] = [];
+      if (args.plugins.length > 0) {
+        const rendered = await renderProject({ source, manifest, identity, stacks, modules, cliVersion });
+        const initialFiles: Record<string, string> = {};
+        for (const [path, content] of rendered.files) initialFiles[path] = content.toString("utf8");
+        for (const envFile of rendered.envFiles) {
+          if (!Object.hasOwn(initialFiles, envFile.to) && Object.hasOwn(initialFiles, envFile.from)) {
+            initialFiles[envFile.to] = initialFiles[envFile.from]!;
+          }
+        }
+        const { dryRunLines } = await applyPlugins(args.plugins, targetDirectory, pluginContext, {
+          yes: args.yes,
+          dryRun: true,
+          initialFiles,
+        });
+        pluginLines = dryRunLines;
+      }
+      const lines = [
+        ...describePlan(plan),
+        ...(neonEnvFile ? [`Create a free Neon database and set its URLs in ${neonEnvFile}`] : []),
+        ...pluginLines,
+      ];
       log.message(lines.map((line) => `• ${line}`).join("\n"));
       outro("Dry run: nothing was written. Run again without --dry-run to create the project.");
       return;
     }
 
+    const targetExisted = await pathExists(targetDirectory);
     spinning = "writing";
     progress.start(`Writing ${plan.files.length} files`);
     await executePlan(plan, source);
     progress.stop(`Created ${identity.packageName} with ${listNames(plan.apps.map(({ name }) => name))} from Starter ${source.ref}`);
     spinning = null;
+
+    if (args.plugins.length > 0) {
+      spinning = "writing";
+      progress.start(`Applying ${args.plugins.length} ${args.plugins.length === 1 ? "plugin" : "plugins"}`);
+      try {
+        await applyPlugins(args.plugins, targetDirectory, pluginContext, { yes: args.yes });
+        progress.stop(`Applied ${args.plugins.length} ${args.plugins.length === 1 ? "plugin" : "plugins"}`);
+        spinning = null;
+      } catch (error) {
+        progress.stop("Plugin application failed; nothing was left behind");
+        if (targetExisted) await emptyDirectory(targetDirectory).catch(() => undefined);
+        else await rm(targetDirectory, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
+    }
   } catch (error) {
     if (spinning === "preparing") progress.stop("Could not read the Starter");
     if (spinning === "writing") progress.stop("Project scaffold failed; nothing was left behind");
@@ -397,3 +451,5 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
   if (report) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
+
+export type { Plugin, PluginApi, PluginContext, PluginManifest, PluginRecord } from "./steps/plugin.js";

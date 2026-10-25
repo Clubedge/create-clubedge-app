@@ -11,6 +11,26 @@ export interface ProjectIdentity {
 }
 
 /** Recorded in the generated package.json and README so a project can trace its origin. */
+export type RecordedPlugin = string | { name: string; version: string; integrity?: string };
+
+export function isRecordedPlugin(entry: unknown): entry is RecordedPlugin {
+  if (typeof entry === "string") return entry.length > 0;
+  if (!entry || typeof entry !== "object") return false;
+  const candidate = entry as { name?: unknown; version?: unknown; integrity?: unknown };
+  return (
+    typeof candidate.name === "string" &&
+    candidate.name.length > 0 &&
+    typeof candidate.version === "string" &&
+    candidate.version.length > 0 &&
+    (candidate.integrity === undefined || typeof candidate.integrity === "string")
+  );
+}
+
+export function formatRecordedPlugin(entry: unknown): string | null {
+  if (!isRecordedPlugin(entry)) return null;
+  return typeof entry === "string" ? entry : `${entry.name}@${entry.version}`;
+}
+
 export interface Provenance {
   cliVersion: string;
   starterRepository: string;
@@ -26,6 +46,8 @@ export interface Provenance {
   services?: Record<string, ProjectService>;
   /** Readable module choices for the README, such as `Authentication: None`. */
   moduleSummary?: string[];
+  /** Pinned third-party plugins applied via --with. */
+  plugins?: RecordedPlugin[];
 }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
@@ -102,6 +124,7 @@ export function customizeRootManifest(
     ...recordStacks(provenance.stacks ?? {}),
     ...(provenance.modules ? { modules: provenance.modules } : {}),
     ...(provenance.services && Object.keys(provenance.services).length ? { services: provenance.services } : {}),
+    ...(provenance.plugins && provenance.plugins.length ? { plugins: provenance.plugins } : {}),
   };
 
   for (const script of ["docker:build", "docker:start"]) {
@@ -124,10 +147,14 @@ export function customizeReadme(
   const modulesLine = provenance.moduleSummary?.length
     ? `\n- Modules: ${provenance.moduleSummary.join(", ")}`
     : "";
+  const formattedPlugins = (provenance.plugins ?? [])
+    .map(formatRecordedPlugin)
+    .filter((plugin): plugin is string => plugin !== null);
+  const pluginsLine = formattedPlugins.length > 0 ? `\n- Plugins: ${formattedPlugins.join(", ")}` : "";
   const origin =
     `## Generated from\n\n` +
     `- Starter repository: \`${provenance.starterRepository}\`\n` +
-    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${stackLines}${modulesLine}\n` +
+    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${stackLines}${modulesLine}${pluginsLine}\n` +
     `- CLI version: \`${provenance.cliVersion}\``;
 
   // Only the first heading is the project title; leave every other line as written.

@@ -148,6 +148,7 @@ ${selectionHelp(manifest)}
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --template <owner/name> Create from a template of your own on GitHub, a fork of the Starter
                           (its newest release, or --ref); CLUBEDGE_TEMPLATE_TOKEN reads a private one
+  --with <pkg@version>    Apply a plugin pinned to an exact version (repeatable)
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove/upgrade: change a project with uncommitted changes,
                           unresolved conflicts, or without Git
@@ -175,6 +176,7 @@ ${selectionHelp(manifest)}
 Examples:
   pnpm dlx @clubedge/create-clubedge-app my-app
   pnpm dlx @clubedge/create-clubedge-app my-app --framework tanstack-start
+  pnpm dlx @clubedge/create-clubedge-app my-app --with @scope/plugin@1.2.3
   pnpm dlx @clubedge/create-clubedge-app my-app --auth none --storage none --cache memory
   pnpm dlx @clubedge/create-clubedge-app my-app --dry-run
   pnpm dlx @clubedge/create-clubedge-app my-app --ref main

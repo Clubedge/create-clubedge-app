@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathExists } from "../utils/fs.js";
 import { displayNameFromPackageName } from "../utils/names.js";
-import { recordedStacks, type ProjectIdentity } from "./customize.js";
+import { isRecordedPlugin, recordedStacks, type ProjectIdentity, type RecordedPlugin } from "./customize.js";
 import { FRAMEWORK_SLOT, type ProjectService, type TemplateManifest } from "./manifest.js";
 import { countConflicts, INCOMING_DIR, type FileMap } from "./merge.js";
 import { createPlan } from "./plan.js";
@@ -27,6 +27,7 @@ export interface Project {
   stacks: Record<string, string>;
   modules: Record<string, string>;
   services: Record<string, ProjectService>;
+  plugins?: RecordedPlugin[];
 }
 
 /** The Starter's version of a file, saved by the last change in the `.clubedge` of a folder above it. */
@@ -94,6 +95,11 @@ export async function readProject(directory: string): Promise<Project> {
           stacks: recordedStacks(origin),
           modules: origin.modules && typeof origin.modules === "object" ? origin.modules : {},
           services: origin.services && typeof origin.services === "object" ? origin.services : {},
+          plugins: (() => {
+            if (!Array.isArray(origin.plugins)) return undefined;
+            const valid = origin.plugins.filter(isRecordedPlugin);
+            return valid.length > 0 ? valid : undefined;
+          })(),
         };
       }
     }

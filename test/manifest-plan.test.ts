@@ -66,8 +66,8 @@ describe("parseTemplateManifest", () => {
   });
 
   it("asks for a newer CLI when the schema is newer than it supports", () => {
-    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 6 }))).toThrow(
-      /template schema 6.*@latest/,
+    expect(() => parseTemplateManifest(JSON.stringify({ ...frameworksManifest, schemaVersion: 7 }))).toThrow(
+      /template schema 7.*@latest/,
     );
   });
 

@@ -102,7 +102,7 @@ pnpm dev
 
 Or start it with npm: `npx @clubedge/create-clubedge-app my-app`. The generated project is a pnpm workspace, so dependencies are installed with pnpm either way; the CLI falls back to `corepack pnpm` when `pnpm` is not on your path. Without a destination, the CLI asks where to create the project.
 
-The generated project includes `apps/web/.env.local` (and `apps/api/.env.local` with a separate API, `apps/shell/.env.local` with a mobile app), created from the example and pointing at the local services you chose. Its `SETUP.md` describes every variable and provider. The root route is a landing page named after your project, and the dashboard is at `/dashboard`.
+The generated project includes `apps/web/.env.local` (and `apps/api/.env.local` with a separate API, `apps/shell/.env.local` with a mobile shell, `apps/mobile/.env.local` with a native app), created from the example and pointing at the local services you chose. Its `SETUP.md` describes every variable and provider. The root route is a landing page named after your project, and the dashboard is at `/dashboard`.
 
 The default Starter release ships inside the CLI package, so GitHub is only contacted when you pass `--ref`. Internet access is needed to install dependencies.
 
@@ -145,18 +145,25 @@ With the Hono API, the decoupled stacks support every module option the full-sta
 
 ### A mobile app
 
-Since CLI 0.42.0, with Starter v0.27.0, the Vite frontend can also be packaged as an Android and iOS app with [Capacitor](https://capacitorjs.com). Earlier Starters have no mobile shell, and the CLI refuses `--shell` with them.
+A project can have a mobile app in two ways, and both at once:
+
+- **A shell** packages the Vite frontend as an Android and iOS app with [Capacitor](https://capacitorjs.com), so the app shows the same pages as the website (since CLI 0.42.0, with Starter v0.27.0).
+- **A native app** has its own screens, built with [Expo](https://expo.dev) and React Native, and calls the same API (since CLI 0.44.0, with Starter v0.28.0).
+
+Earlier Starters have neither, and the CLI refuses `--shell` and `--mobile` with them.
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono --shell capacitor
+pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono --mobile expo
 ```
 
-| Flag                | App                                                       | Where        |
-| ------------------- | --------------------------------------------------------- | ------------ |
-| `--shell capacitor` | The Vite app, packaged for Android and iOS with Capacitor | `apps/shell` |
-| `--shell none`      | No mobile app (the default)                               |              |
+| Flag                            | App                                                          | Where         |
+| ------------------------------- | ------------------------------------------------------------ | ------------- |
+| `--shell capacitor`             | The Vite app, packaged for Android and iOS with Capacitor    | `apps/shell`  |
+| `--mobile expo`                 | A native Android and iOS app with Expo, calling the same API | `apps/mobile` |
+| `--shell none`, `--mobile none` | No mobile app (the default)                                  |               |
 
-A shell packages the frontend's static files, so it needs `--framework vite`, and the frontend still needs its API (`--api hono` or `--api fastapi`). Next.js and TanStack Start render their pages on their own server, so they cannot be packaged: the CLI refuses `--shell` with them, and interactive runs only ask about a mobile app after a frontend and its API. The shell runs no server, so `deploy` deploys the frontend and the API as above and leaves it out.
+A shell packages the frontend's static files, so it needs `--framework vite`, and the frontend still needs its API (`--api hono` or `--api fastapi`). A native app calls the API through the website, as the shell does, so it needs one too. Next.js and TanStack Start render their pages on their own server and have no separate API for an app to call: the CLI refuses `--shell` and `--mobile` with them, and interactive runs only ask about a mobile app after a frontend and its API. A shell and a native app run no server, so `deploy` deploys the frontend and the API as above and leaves them out. The native app's Starter lists the sign-in options it supports, so the CLI refuses an `--auth` option the app does not have yet.
 
 ## Choosing modules
 
@@ -197,6 +204,7 @@ Options:
   --framework <id>        App framework, such as next or tanstack-start (or vite, a frontend)
   --api <id>              A separate API for a frontend, such as hono or fastapi
   --shell <id>            A mobile app that packages a frontend, such as capacitor
+  --mobile <id>           A native mobile app that calls the API, such as expo
   --<module> <option>     A module option, such as --auth none; the Starter lists its modules
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
                           (upgrade: the Starter to upgrade to)
@@ -250,7 +258,7 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 - Files you never changed are updated, added, or deleted.
 - Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve. The Starter's whole new version of each such file is saved in `.clubedge/incoming/` to compare with yours (`git diff --no-index <file> .clubedge/incoming/<file>`); Git ignores that folder, so delete it when you are done.
 - Your own files are never touched.
-- Each app's local env file (`apps/web/.env.local`, and `apps/api/.env.local` or `apps/shell/.env.local` when the project has them) keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
+- Each app's local env file (`apps/web/.env.local`, and `apps/api/.env.local`, `apps/shell/.env.local`, or `apps/mobile/.env.local` when the project has them) keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
 - `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.
 
 Several modules in one command are applied as one change, and their requirements are checked together, so `add auth supabase storage supabase` works even though Supabase Storage needs Supabase Auth. When lines conflict, the CLI lists each file with its number of conflict blocks. Before an upgrade, it lists the Starter releases it crosses with the sections of their release notes, such as `v0.13.0  Observability, Tests, Also`.
@@ -409,7 +417,7 @@ Every generated project records its CLI version, Starter repository, Starter ref
 
 Each CLI release bundles one Starter release. When the release is built, `scripts/bundle-template.mjs` clones the pinned Starter tag, verifies that it resolves to the pinned commit, and copies its tracked files into the package (`template/` and `template.lock.json`). Running the CLI then needs no GitHub access for the default Starter.
 
-The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. Schema 3 adds `modules`: for each option, the workspace packages it uses, the files it owns, the variant files that replace defaults, the root `package.json` scripts it sets, and the options it requires. Files listed under `conditional` contain `clubedge:if <condition>` / `clubedge:end` blocks (in `#`, `//`, `<!-- -->`, or JSX comments) that the CLI keeps or drops for the selection, always removing the markers; `clubedge:if starter-repository` marks sections for Starter maintainers only. Schema 4 moves each app's description into its own stack pack, placed in a slot (`--framework`, `--api`), and schema 5 adds the shell role for a mobile app (`--shell`); see [docs/stack-packs.md](docs/stack-packs.md). The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
+The Starter describes itself in `clubedge.template.json`: its app directory, site config, environment files, Docker image name, and files that stay out of generated projects. Schema 2 manifests also list each framework's app directory, environment example, and Dockerfile. The CLI moves the selected framework's app to `apps/web` (renaming its package to `@clubedge/web`), moves its environment example and Dockerfile to the project root, leaves the other frameworks out, and removes their entries from `pnpm-lock.yaml` so `pnpm install --frozen-lockfile` keeps working. Schema 3 adds `modules`: for each option, the workspace packages it uses, the files it owns, the variant files that replace defaults, the root `package.json` scripts it sets, and the options it requires. Files listed under `conditional` contain `clubedge:if <condition>` / `clubedge:end` blocks (in `#`, `//`, `<!-- -->`, or JSX comments) that the CLI keeps or drops for the selection, always removing the markers; `clubedge:if starter-repository` marks sections for Starter maintainers only. Schema 4 moves each app's description into its own stack pack, placed in a slot (`--framework`, `--api`), schema 5 adds the shell role for a mobile app that packages the frontend (`--shell`), and schema 6 the mobile role for a native app (`--mobile`); see [docs/stack-packs.md](docs/stack-packs.md). The CLI refuses a Starter whose manifest schema is newer than it understands and asks you to update. Starters before v0.3.0 have no manifest and use the previous layout.
 
 The CLI first builds a plan (the files to copy and the edits to make), which `--dry-run` prints, and then applies it. The source is organized the same way:
 

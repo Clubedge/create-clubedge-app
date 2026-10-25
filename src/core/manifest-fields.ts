@@ -8,11 +8,18 @@ export class ManifestError extends Error {
 }
 
 /**
- * What an app is for: the whole app, a frontend that calls an API, that API, or a shell that
- * packages a frontend's static build, such as a mobile app. Every role but the shell runs a server.
+ * What an app is for: the whole app, a frontend that calls an API, that API, a shell that
+ * packages a frontend's static build, such as a mobile app, or a mobile app with its own native
+ * screens that calls the API.
  */
-export type StackRole = "fullstack" | "frontend" | "api" | "shell";
-export const stackRoles: readonly StackRole[] = ["fullstack", "frontend", "api", "shell"];
+export type StackRole = "fullstack" | "frontend" | "api" | "shell" | "mobile";
+export const stackRoles: readonly StackRole[] = ["fullstack", "frontend", "api", "shell", "mobile"];
+
+/** The template schema each role came with: a Starter on an older schema is read without it. */
+export const roleSchema: Record<StackRole, number> = { fullstack: 4, frontend: 4, api: 4, shell: 5, mobile: 6 };
+
+/** Whether a role's apps run a server: a shell and a mobile app are installed on devices instead. */
+export const runsServer = (role: StackRole) => role !== "shell" && role !== "mobile";
 
 /**
  * The slot for the app itself. Starters before schema 4 call it the framework, and projects

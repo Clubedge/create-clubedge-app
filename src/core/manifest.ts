@@ -8,6 +8,8 @@
 //   folder; nothing shared changes.
 // - Schema 5 (manifest-packs.ts too): schema 4 plus the shell role, an app that packages a
 //   frontend and runs no server. Older CLIs refuse it, asking for an update.
+// - Schema 6 (manifest-packs.ts too): schema 5 plus the mobile role, a mobile app with its own
+//   native screens that calls the API and runs no server. Older CLIs refuse it too.
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FRAMEWORK_SLOT, ID, isRecord, MANIFEST_FILE, ManifestError, stackRoles, type StackRole } from "./manifest-fields.js";
@@ -15,7 +17,7 @@ import { legacyManifest, parseLegacyManifest } from "./manifest-legacy.js";
 import { MODULES_DIRECTORY, parsePackManifest, STACK_FILE, STACKS_DIRECTORY, type Packs } from "./manifest-packs.js";
 
 export { FRAMEWORK_SLOT, legacyManifest, MANIFEST_FILE, ManifestError };
-export const SUPPORTED_SCHEMA_VERSION = 5;
+export const SUPPORTED_SCHEMA_VERSION = 6;
 
 export { stackRoles, type StackRole };
 

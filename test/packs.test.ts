@@ -557,3 +557,227 @@ describe("selecting a shell", () => {
     expect(selectionHelp(shellManifest)).toContain("  --shell <id>            Mobile shell: capacitor or none (default)");
   });
 });
+
+/**
+ * Schema 6: the same Starter with a mobile app, which has its own native screens, calls the API,
+ * and runs no server. Its slot comes after the API's, so it is asked about once the API is known.
+ */
+const mobileRoot = {
+  ...shellRoot,
+  schemaVersion: 6,
+  slots: {
+    ...root.slots,
+    mobile: {
+      name: "Mobile app",
+      question: "Add a native mobile app?",
+      path: "apps/mobile",
+      package: "@clubedge/mobile-app",
+      env: { example: "apps/mobile/.env.example", target: "apps/mobile/.env.local" },
+      roles: ["mobile"],
+      siteConfig: "apps/mobile/src/config/site.json",
+    },
+    shell: shellRoot.slots.shell,
+  },
+};
+const expo = { directory: "apps/expo", data: { id: "expo", name: "Expo", role: "mobile", envExample: ".env.example" } };
+const mobileStacks: Packs["stacks"] = [...shellStacks, expo];
+const mobilePacks: Packs = { stacks: mobileStacks, modules };
+const mobileManifest = parseTemplateManifest(JSON.stringify(mobileRoot), mobilePacks);
+const withExpo = (data: Record<string, unknown>) => [...shellStacks, { ...expo, data: { ...expo.data, ...data } }];
+const native = { framework: "vite", api: "fastapi", mobile: "expo" };
+
+describe("schema 6 mobile apps", () => {
+  it("reads a mobile app and its slot, which have no Dockerfile or deployment", () => {
+    expect(mobileManifest.slots.mobile).toEqual({
+      name: "Mobile app",
+      question: "Add a native mobile app?",
+      path: "apps/mobile",
+      package: "@clubedge/mobile-app",
+      env: { example: "apps/mobile/.env.example", target: "apps/mobile/.env.local" },
+      roles: ["mobile"],
+      siteConfig: "apps/mobile/src/config/site.json",
+      packages: {},
+    });
+    expect(mobileManifest.stacks.expo).toEqual({
+      name: "Expo",
+      role: "mobile",
+      slot: "mobile",
+      app: "apps/expo",
+      envExample: "apps/expo/.env.example",
+      modules: {},
+    });
+  });
+
+  it.each([
+    ["a mobile app with a deployment", withExpo({ deployment: { id: "mobile", port: 8081, healthPath: "/", platforms: ["docker"] } })],
+    ["a mobile app with a Dockerfile", withExpo({ dockerfile: "Dockerfile" })],
+  ])("rejects %s", (_label, broken) => {
+    expect(() => parseTemplateManifest(JSON.stringify(mobileRoot), { stacks: broken, modules })).toThrow(
+      "apps/expo/clubedge.stack.json: a mobile app runs no server, so it has no dockerfile or deployment.",
+    );
+  });
+
+  it("leaves the mobile role to schema 6, so schema 5 reads as before", () => {
+    expect(() => parseTemplateManifest(JSON.stringify({ ...mobileRoot, schemaVersion: 5 }), mobilePacks)).toThrow(
+      "clubedge.template.json: slots.mobile.roles must list one or more of: fullstack, frontend, api, shell.",
+    );
+    expect(() => parseTemplateManifest(JSON.stringify(shellRoot), { stacks: mobileStacks, modules })).toThrow(
+      "apps/expo/clubedge.stack.json: role must be one of: fullstack, frontend, api, shell.",
+    );
+  });
+});
+
+describe("a project with a mobile app", () => {
+  const plan = (selection: Record<string, string>) =>
+    createPlan({
+      targetDirectory: "/projects/my-product",
+      identity: { packageName: "my-product", displayName: "My Product" },
+      source: {
+        repository: "Clubedge/clubedge-starter",
+        ref: "v1.0.0",
+        files: [
+          "package.json",
+          "README.md",
+          "apps/vite/package.json",
+          "apps/vite/.env.example",
+          "apps/api-python/pyproject.toml",
+          "apps/api-python/.env.example",
+          "apps/capacitor/package.json",
+          "apps/expo/package.json",
+          "apps/expo/.env.example",
+          "apps/expo/app.config.ts",
+          "apps/expo/src/config/site.json",
+        ].map((path) => ({ from: path, to: path })),
+      },
+      manifest: mobileManifest,
+      stacks: selection,
+      cliVersion: "9.9.9",
+      git: false,
+      install: false,
+    });
+
+  it("places the mobile app in its slot, with its env file and site config", () => {
+    const created = plan(native);
+    expect(created.files.filter(({ from }) => from.startsWith("apps/expo/"))).toEqual([
+      { from: "apps/expo/package.json", to: "apps/mobile/package.json" },
+      { from: "apps/expo/.env.example", to: "apps/mobile/.env.example" },
+      { from: "apps/expo/app.config.ts", to: "apps/mobile/app.config.ts" },
+      { from: "apps/expo/src/config/site.json", to: "apps/mobile/src/config/site.json" },
+    ]);
+    expect(created.envFiles).toContainEqual({ from: "apps/mobile/.env.example", to: "apps/mobile/.env.local" });
+    expect(describePlan(created)).toEqual(
+      expect.arrayContaining([
+        "Use React + Vite, FastAPI, and Expo",
+        'Edit apps/mobile/src/config/site.json: Set the project name to "My Product"',
+      ]),
+    );
+    expect(created.provenance.stacks).toEqual(native);
+    expect(plan({ framework: "vite", api: "fastapi" }).files.map(({ to }) => to)).not.toContain("apps/mobile/package.json");
+  });
+
+  it("sits next to a shell, which packages the same frontend", () => {
+    const both = plan({ ...native, shell: "capacitor" });
+    expect(both.files.map(({ to }) => to)).toEqual(expect.arrayContaining(["apps/mobile/package.json", "apps/shell/package.json"]));
+  });
+
+  it("records only the apps that run a server as services, so deploy leaves the mobile app out", () => {
+    const services = plan(native).provenance.services!;
+    expect(Object.keys(services)).toEqual(["framework", "api"]);
+    expect(dockerComposeSource("my-product", services)).not.toMatch(/\b(mobile|expo)\b/);
+    expect(railwayIacSource("my-product", services)).toContain("resources: [framework, api]");
+  });
+
+  it("keeps the sections marked for the mobile app", () => {
+    const readme = [
+      "# Clubedge Starter",
+      "<!-- clubedge:if mobile!=none -->",
+      "Build the native app.",
+      "<!-- clubedge:end -->",
+      "- Web <!-- clubedge:only mobile=none -->",
+      "- Web and native <!-- clubedge:only mobile=expo -->",
+      "",
+    ].join("\n");
+    const edited = (selection: Record<string, string>) =>
+      plan(selection).edits.filter(({ path }) => path === "README.md").reduce((text, { apply }) => apply(text), readme);
+    expect(edited(native)).toContain("\nBuild the native app.\n- Web and native\n");
+    expect(edited({ framework: "vite", api: "fastapi" })).not.toContain("native");
+    expect(edited({ framework: "vite", api: "fastapi" })).toContain("\n- Web\n");
+  });
+
+  it("is created, read back, and rendered again as it was created", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, {
+      "clubedge.template.json": JSON.stringify(mobileRoot),
+      "clubedge/modules/auth.json": JSON.stringify(modules.auth),
+      "clubedge/modules/deploy.json": JSON.stringify(modules.deploy),
+      ...Object.fromEntries(mobileStacks.map(({ directory, data }) => [`${directory}/clubedge.stack.json`, JSON.stringify(data)])),
+      "package.json": JSON.stringify({ name: "clubedge-starter" }),
+      "README.md": "# Clubedge Starter\n",
+      "apps/vite/package.json": JSON.stringify({ name: "@clubedge/vite" }),
+      "apps/vite/.env.example": "VITE_API_URL=\n",
+      "apps/vite/Dockerfile": "FROM node\n",
+      "apps/api-python/package.json": JSON.stringify({ name: "@clubedge/api-python" }),
+      "apps/api-python/.env.example": "DATABASE_URL=\n",
+      "apps/api-python/Dockerfile": "FROM python\n",
+      "apps/capacitor/package.json": JSON.stringify({ name: "@clubedge/capacitor" }),
+      "apps/capacitor/.env.example": "WEB_URL=\n",
+      "apps/expo/package.json": JSON.stringify({ name: "@clubedge/expo" }),
+      "apps/expo/.env.example": "EXPO_PUBLIC_API_URL=\n",
+      "apps/expo/src/config/site.json": JSON.stringify(siteConfig),
+    });
+    const source = await readDirectoryTemplate(starter);
+    const manifest = await readTemplateManifest(source.root);
+    const root = join(await temporaryDirectory(), "my-product");
+    const identity = { packageName: "my-product", displayName: "My Product" };
+    await executePlan(
+      createPlan({ targetDirectory: root, identity, source, manifest, stacks: native, cliVersion: "1.0.0", git: false, install: false }),
+      source,
+    );
+
+    const read = (path: string) => readFile(join(root, path), "utf8");
+    expect(JSON.parse(await read("apps/mobile/package.json")).name).toBe("@clubedge/mobile-app");
+    expect(JSON.parse(await read("apps/mobile/src/config/site.json")).name).toBe("My Product");
+    expect(await read("apps/mobile/.env.local")).toBe("EXPO_PUBLIC_API_URL=\n");
+    expect(JSON.parse(await read("package.json")).clubedge).toMatchObject({ framework: "vite", apps: { api: "fastapi", mobile: "expo" } });
+
+    // add, remove, and upgrade render the project again from what it recorded.
+    const project = await readProject(root);
+    expect(project.stacks).toEqual(native);
+    expect(Object.keys(project.services)).toEqual(["framework", "api"]);
+    const { modules: selection, cliVersion } = project;
+    const rendered = await renderProject({ source, manifest, identity: project.identity, stacks: project.stacks, modules: selection, cliVersion });
+    for (const [path, content] of rendered.files) expect(await read(path)).toBe(content.toString("utf8"));
+  });
+});
+
+describe("selecting a mobile app", () => {
+  it("leaves the mobile app out by default", () => {
+    expect(selectStacks(mobileManifest)).toEqual({ framework: "next", api: "none", mobile: "none", shell: "none" });
+  });
+
+  it("calls the API, next to a frontend, and next to a shell too", () => {
+    expect(selectStacks(mobileManifest, native)).toEqual({ ...native, shell: "none" });
+    expect(selectStacks(mobileManifest, { ...native, shell: "capacitor" })).toEqual({ ...native, shell: "capacitor" });
+  });
+
+  it("needs an API, which a full-stack app does not have apart from its pages", () => {
+    expect(() => selectStacks(mobileManifest, { mobile: "expo" })).toThrow(
+      "Next.js has no separate API for Expo to call: choose a frontend with an API, or --mobile none.",
+    );
+    const { default: _, ...framework } = mobileRoot.slots.framework;
+    const optional = parseTemplateManifest(JSON.stringify({ ...mobileRoot, slots: { ...mobileRoot.slots, framework } }), mobilePacks);
+    expect(() => selectStacks(optional, { mobile: "expo" })).toThrow("Expo is a mobile app and calls an API: choose one with --api (fastapi).");
+  });
+
+  it("is offered after the framework and the API, only with an API", () => {
+    expect(slotChoices(mobileManifest, "framework", { mobile: "expo" })).toEqual(["vite"]);
+    expect(slotChoices(mobileManifest, "mobile", { framework: "next", api: "none" })).toEqual(["none"]);
+    expect(slotChoices(mobileManifest, "mobile", { framework: "vite", api: "fastapi" })).toEqual(["expo", "none"]);
+  });
+
+  it("is chosen with --mobile and listed in the help", () => {
+    const flags = parseCliArgs(["app", "--api", "fastapi", "--mobile", "expo"]).modules;
+    expect(splitSelection(mobileManifest, "vite", flags)).toEqual({ stacks: native, modules: {} });
+    expect(selectionHelp(mobileManifest)).toMatch(/\n {2}--mobile <id> +Mobile app: expo or none \(default\)/);
+  });
+});

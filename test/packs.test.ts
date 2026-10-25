@@ -625,9 +625,11 @@ describe("schema 6 mobile apps", () => {
     expect(() => read(withExpo({ auditIgnores: ["CVE-2026-0001"] }))).toThrow(
       'apps/expo/clubedge.stack.json: auditIgnores: "CVE-2026-0001" is not a GitHub advisory id, such as GHSA-xxxx-xxxx-xxxx.',
     );
-    expect(() => read(withShell({ auditIgnores: advisories }), shellRoot)).toThrow(
-      "apps/capacitor/clubedge.stack.json: auditIgnores needs template schema 6.",
-    );
+    for (const listed of [advisories, []]) {
+      expect(() => read(withShell({ auditIgnores: listed }), shellRoot)).toThrow(
+        "apps/capacitor/clubedge.stack.json: auditIgnores needs template schema 6.",
+      );
+    }
   });
 
   it("leaves the mobile role to schema 6, so schema 5 reads as before", () => {

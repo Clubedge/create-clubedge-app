@@ -209,8 +209,9 @@ function parseStack(
 
   const toolchain = data.toolchain === undefined ? undefined : parseToolchain(file, data.toolchain);
   const deployment = data.deployment === undefined ? undefined : parseDeployment(file, data.deployment);
+  // The field comes with schema 6, so an older Starter may not name it, even with an empty list.
+  if (data.auditIgnores !== undefined && schemaVersion < 6) read.fail("auditIgnores needs template schema 6.");
   const auditIgnores = read.optionalStringArray(data, "auditIgnores");
-  if (auditIgnores.length && schemaVersion < 6) read.fail("auditIgnores needs template schema 6.");
   const advisory = auditIgnores.find((id) => !ADVISORY.test(id));
   if (advisory !== undefined) read.fail(`auditIgnores: "${advisory}" is not a GitHub advisory id, such as GHSA-xxxx-xxxx-xxxx.`);
   return {

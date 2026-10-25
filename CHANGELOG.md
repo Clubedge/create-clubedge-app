@@ -4,8 +4,14 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.43.0
 
-- Exit early on no-op add and upgrade before downloading remote Starter (#133).
-- Preserve workspace app version across upgrades (#134).
+- **Upgrades keep each app's own version** (#134, by @ahmed-husssain):
+  - An app whose version the project changed in `apps/*/package.json` keeps it, without a conflict on that line.
+  - An app whose version the project never touched takes the new Starter's.
+  - This completes 0.41.0's version ownership, which covered the root `package.json`.
+- **`add`, `remove`, and `upgrade` that change nothing exit before downloading the Starter** (#133, by @ahmed-husssain; issue #132):
+  - The cases: `upgrade` on the pinned Starter's commit or with `--ref` set to the recorded commit, `add` with options the project already uses, and `remove` of modules recorded as `none`.
+  - These commands now work offline. They no longer refuse a project with uncommitted changes, since they change nothing.
+  - `upgrade --ref <branch>` still resolves the branch, which may have moved. `remove` with an unknown module still fails with `Unknown module`.
 - Still on Starter `v0.27.1`.
 
 ## 0.42.1

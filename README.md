@@ -509,7 +509,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.40.0 | v0.26.0 | Starter v0.26.0: every module on React + Vite with FastAPI (pg-boss excepted) |
 | 0.41.0 | v0.26.0 | A conflicted package.json no longer breaks later commands (`--detailed-exit-code`); doctor finds conflict markers; projects own their version and README |
 | 0.42.0 | v0.27.0 | Starter v0.27.0: mobile apps with Capacitor (`--shell capacitor`, template schema 5); client addresses per platform; Docker Compose behind Caddy, with images on GHCR |
-| 0.43.0 | v0.27.1 | Exit early on no-op add and upgrade before downloading remote Starter; Preserve workspace app version across upgrades |
+| 0.43.0 | v0.27.1 | Upgrades keep each app's own version; add, remove, and upgrade that change nothing skip the Starter download |
 
 ## Community
 

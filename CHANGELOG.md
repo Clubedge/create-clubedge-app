@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.43.1
+
+- **`try` shows Railway's reason when Railway refuses a VM** (#144):
+  - Before, it said Railway may have changed its free VM and told you to update the CLI, which no update fixes.
+  - It now prints Railway's own explanation, then Railway's limits, the usual cause: 3 free VMs per network per day, and no anonymous VMs while Railway is busy.
+- Still on Starter `v0.27.1`.
+
 ## 0.43.0
 
 - **Upgrades keep each app's own version** (#134, by @ahmed-husssain):

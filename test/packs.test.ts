@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
@@ -17,7 +17,7 @@ import {
   splitSelection,
   StackError,
 } from "../src/core/plan.js";
-import { readProject, renderProject } from "../src/core/project.js";
+import { projectEnvFiles, readProject, renderProject } from "../src/core/project.js";
 import { readDirectoryTemplate } from "../src/core/source.js";
 import { siteConfig, temporaryDirectory, writeFiles } from "./helpers.js";
 
@@ -779,5 +779,109 @@ describe("selecting a mobile app", () => {
     const flags = parseCliArgs(["app", "--api", "fastapi", "--mobile", "expo"]).modules;
     expect(splitSelection(mobileManifest, "vite", flags)).toEqual({ stacks: native, modules: {} });
     expect(selectionHelp(mobileManifest)).toMatch(/\n {2}--mobile <id> +Mobile app: expo or none \(default\)/);
+  });
+});
+
+/**
+ * Schema 6 also lets a slot with a default be left empty: a project that is only an API and a
+ * mobile app has no web app, so the Starter's framework slot says it is optional.
+ */
+const apiOnlyRoot = {
+  ...mobileRoot,
+  slots: { ...mobileRoot.slots, framework: { ...mobileRoot.slots.framework, optional: true } },
+};
+const apiOnlyManifest = parseTemplateManifest(JSON.stringify(apiOnlyRoot), mobilePacks);
+const apiOnly = { framework: "none", api: "fastapi", mobile: "expo" };
+
+describe("a project without a web app", () => {
+  it("reads a slot with a default that can still be left empty, from schema 6", () => {
+    expect(apiOnlyManifest.slots.framework).toMatchObject({ default: "next", optional: true });
+    expect(selectStacks(apiOnlyManifest).framework).toBe("next");
+    const optionalShellRoot = {
+      ...shellRoot,
+      slots: { ...shellRoot.slots, framework: { ...shellRoot.slots.framework, optional: true } },
+    };
+    expect(() => parseTemplateManifest(JSON.stringify(optionalShellRoot), shellPacks)).toThrow(
+      "clubedge.template.json: slots.framework.optional needs template schema 6.",
+    );
+  });
+
+  it("leaves the web app out with --framework none, and still needs an API", () => {
+    expect(selectStacks(apiOnlyManifest, apiOnly)).toEqual({ ...apiOnly, shell: "none" });
+    expect(selectStacks(apiOnlyManifest, { framework: "none", api: "fastapi" })).toEqual({
+      framework: "none",
+      api: "fastapi",
+      mobile: "none",
+      shell: "none",
+    });
+    expect(() => selectStacks(apiOnlyManifest, { framework: "none" })).toThrow(
+      "A project needs a web app or an API: choose one with --framework or --api.",
+    );
+    expect(() => selectStacks(apiOnlyManifest, { framework: "none", mobile: "expo" })).toThrow(
+      "Expo is a mobile app and calls an API: choose one with --api (fastapi).",
+    );
+    expect(() => selectStacks(apiOnlyManifest, { framework: "none", api: "fastapi", shell: "capacitor" })).toThrow(
+      "Capacitor packages a frontend's static files: choose one with --framework (vite).",
+    );
+    // Without the optional flag, none is not a framework.
+    expect(() => selectStacks(mobileManifest, apiOnly)).toThrow('Unknown framework "none". This Starter offers: next, vite.');
+  });
+
+  it("offers none as a framework, then only the API it needs, and lists it in the help", () => {
+    expect(slotChoices(apiOnlyManifest, "framework")).toEqual(["next", "vite", "none"]);
+    expect(slotChoices(apiOnlyManifest, "api", { framework: "none" })).toEqual(["fastapi"]);
+    expect(selectionHelp(apiOnlyManifest)).toMatch(/--framework <id> +Framework: next \(default\), vite, or none/);
+  });
+
+  it("records the framework as none, so add, remove, and upgrade leave the web app out", async () => {
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, {
+      "clubedge.template.json": JSON.stringify(apiOnlyRoot),
+      "clubedge/modules/auth.json": JSON.stringify(modules.auth),
+      "clubedge/modules/deploy.json": JSON.stringify(modules.deploy),
+      ...Object.fromEntries(mobileStacks.map(({ directory, data }) => [`${directory}/clubedge.stack.json`, JSON.stringify(data)])),
+      "package.json": JSON.stringify({ name: "clubedge-starter" }),
+      "README.md": "# Clubedge Starter\n",
+      ".env.example": "NEXT_PUBLIC_SITE_URL=\n",
+      Dockerfile: "FROM node\n",
+      "apps/web/package.json": JSON.stringify({ name: "@clubedge/web" }),
+      "apps/web/src/config/site.json": JSON.stringify(siteConfig),
+      "apps/vite/package.json": JSON.stringify({ name: "@clubedge/vite" }),
+      "apps/vite/.env.example": "VITE_API_URL=\n",
+      "apps/vite/Dockerfile": "FROM node\n",
+      "apps/api-python/package.json": JSON.stringify({ name: "@clubedge/api-python" }),
+      "apps/api-python/.env.example": "DATABASE_URL=\n",
+      "apps/api-python/Dockerfile": "FROM python\n",
+      "apps/capacitor/package.json": JSON.stringify({ name: "@clubedge/capacitor" }),
+      "apps/expo/package.json": JSON.stringify({ name: "@clubedge/expo" }),
+      "apps/expo/.env.example": "EXPO_PUBLIC_API_URL=\n",
+      "apps/expo/src/config/site.json": JSON.stringify(siteConfig),
+    });
+    const source = await readDirectoryTemplate(starter);
+    const manifest = await readTemplateManifest(source.root);
+    const root = join(await temporaryDirectory(), "my-product");
+    const identity = { packageName: "my-product", displayName: "My Product" };
+    const plan = createPlan({ targetDirectory: root, identity, source, manifest, stacks: apiOnly, cliVersion: "1.0.0", git: false, install: false });
+    expect(plan.provenance.stacks).toEqual(apiOnly);
+    expect(plan.provenance.stackSummary).toEqual(["Framework: none", "API: FastAPI", "Mobile app: Expo"]);
+    await executePlan(plan, source);
+
+    const exists = (path: string) => access(join(root, path)).then(() => true, () => false);
+    expect(await exists("apps/web")).toBe(false);
+    expect(await exists(".env.example")).toBe(false);
+    expect(await exists("Dockerfile")).toBe(false);
+    expect(await exists("apps/api/.env.local")).toBe(true);
+    expect(JSON.parse(await readFile(join(root, "package.json"), "utf8")).clubedge).toMatchObject({
+      framework: "none",
+      apps: { api: "fastapi", mobile: "expo" },
+    });
+
+    // add, remove, and upgrade render the project again from what it recorded.
+    const project = await readProject(root);
+    expect(project.stacks).toEqual(apiOnly);
+    expect(projectEnvFiles(project).map(({ local }) => local)).toEqual(["apps/api/.env.local"]);
+    const { modules: selection, cliVersion } = project;
+    const rendered = await renderProject({ source, manifest, identity: project.identity, stacks: project.stacks, modules: selection, cliVersion });
+    for (const [path, content] of rendered.files) expect(await readFile(join(root, path), "utf8")).toBe(content.toString("utf8"));
   });
 });

@@ -6,7 +6,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod/v4";
 import { executePlan } from "./core/execute.js";
-import { readTemplateManifest } from "./core/manifest.js";
+import { isOptionalSlot, readTemplateManifest } from "./core/manifest.js";
 import { neonSetupStep } from "./core/neon.js";
 import { createPlan, describePlan } from "./core/plan.js";
 import { resolveTemplateSource } from "./core/source.js";
@@ -123,6 +123,8 @@ function capabilities(
       name: slot.name,
       question: slot.question,
       default: slot.default ?? "none",
+      // Whether "none" leaves the slot empty, such as a project without a web app.
+      optional: isOptionalSlot(slot),
       choices: Object.entries(manifest.stacks)
         .filter(([, stack]) => stack.slot === id)
         .map(([stackId, stack]) => ({ id: stackId, name: stack.name, role: stack.role, modules: stack.modules })),

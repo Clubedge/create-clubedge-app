@@ -49,7 +49,7 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
 
   const slots: Record<string, TemplateSlot> = {};
   for (const [id, entry] of Object.entries(requireRecord(data, "slots"))) {
-    slots[fields(MANIFEST_FILE).requireId(id, "slot")] = parseSlot(id, entry, knownRoles);
+    slots[fields(MANIFEST_FILE).requireId(id, "slot")] = parseSlot(id, entry, knownRoles, data.schemaVersion as number);
   }
   if (Object.keys(slots).length === 0) fail("slots must describe at least one slot.");
 
@@ -98,7 +98,7 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
   };
 }
 
-function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[]): TemplateSlot {
+function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[], schemaVersion: number): TemplateSlot {
   const read = fields(MANIFEST_FILE, `slots.${id}.`);
   if (!isRecord(entry)) read.fail(`slots.${id} must be an object.`);
   const slot = entry as Record<string, unknown>;
@@ -110,6 +110,10 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[])
   const packageName = read.optionalString(slot, "package");
   const defaultStack = read.optionalString(slot, "default");
   const siteConfig = read.optionalString(slot, "siteConfig");
+  // Schema 6: a slot with a default may still be left empty, such as a project without a web app.
+  if (slot.optional !== undefined && typeof slot.optional !== "boolean") read.fail(`slots.${id}.optional must be true or false.`);
+  if (slot.optional === true && schemaVersion < 6) read.fail(`slots.${id}.optional needs template schema 6.`);
+  const optional = slot.optional === true && defaultStack !== undefined;
   // A Dockerfile is for apps that run a server; a slot that only takes shells or mobile apps has none.
   const servers = (roles as StackRole[]).some(runsServer);
   return {
@@ -124,6 +128,7 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[])
     ...(servers ? { dockerfile: read.requireString(slot, "dockerfile") } : {}),
     roles: roles as StackRole[],
     ...(defaultStack ? { default: defaultStack } : {}),
+    ...(optional ? { optional: true as const } : {}),
     ...(siteConfig ? { siteConfig } : {}),
     packages: read.optionalStringRecord(slot, "packages"),
   };

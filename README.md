@@ -141,11 +141,11 @@ They meet at one HTTP contract, `packages/contract/openapi.yaml`: the frontend c
 
 With `--auth supabase`, the Vite app owns the browser session and attaches its access token to contract requests. Hono or FastAPI verifies that token with Supabase Auth and returns the contract's shared user shape. Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in the generated env examples; no Supabase service-role key goes to the browser.
 
-With the Hono API, the decoupled stacks support every module option the full-stack frameworks do (since Starter v0.27.0), each running in the API with the matching UI in the frontend; with FastAPI, they support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache. Both work with any local infrastructure (the API's `apps/api/.env.local` holds `DATABASE_URL`, since the API owns the database), and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that runs the frontend and API as separate services behind Caddy, which serves the frontend over HTTPS while the API stays on the Compose network (see [Deploy with Docker Compose](#deploy-with-docker-compose)); copy the variables of `.env.example` and `apps/api/.env.example` to `.env.production` and fill in their values. The frontend's `VITE_*` values are build arguments, compiled into its bundle; with Better Auth, its Node server also gets the auth variables (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the email settings). With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
+With the Hono API, the decoupled stacks support every module option the full-stack frameworks do (since Starter v0.27.1), each running in the API with the matching UI in the frontend; with FastAPI, they support Supabase Auth, Better Auth, Firebase, Appwrite, or `none`, plus memory cache. Both work with any local infrastructure (the API's `apps/api/.env.local` holds `DATABASE_URL`, since the API owns the database), and Docker or Railway deployment. With Docker, `pnpm clubedge deploy` writes a `compose.yaml` that runs the frontend and API as separate services behind Caddy, which serves the frontend over HTTPS while the API stays on the Compose network (see [Deploy with Docker Compose](#deploy-with-docker-compose)); copy the variables of `.env.example` and `apps/api/.env.example` to `.env.production` and fill in their values. The frontend's `VITE_*` values are build arguments, compiled into its bundle; with Better Auth, its Node server also gets the auth variables (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the email settings). With Railway, deploy provisions a public frontend and a private API, wires the frontend proxy to the API, and runs migrations before releasing the API. See [docs/stack-packs.md](docs/stack-packs.md) for how stacks and deployment facts are described.
 
 ### A mobile app
 
-Since CLI 0.42.0, with Starter v0.27.0, the Vite frontend can also be packaged as an Android and iOS app with [Capacitor](https://capacitorjs.com). Earlier Starters have no mobile shell, and the CLI refuses `--shell` with them.
+Since CLI 0.42.0, with Starter v0.27.1, the Vite frontend can also be packaged as an Android and iOS app with [Capacitor](https://capacitorjs.com). Earlier Starters have no mobile shell, and the CLI refuses `--shell` with them.
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono --shell capacitor
@@ -223,7 +223,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.27.0
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.27.1
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -242,7 +242,7 @@ pnpm clubedge add email resend payments stripe              # several modules as
 pnpm clubedge remove storage payments
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
-pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.27.0 # or a specific tag, branch, or commit
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.27.1 # or a specific tag, branch, or commit
 ```
 
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
@@ -358,7 +358,7 @@ docker compose --env-file .env.production run --rm web node /app/migrate.mjs   #
 docker compose --env-file .env.production up -d  # --build builds the images on the server
 ```
 
-`deploy` prints these steps, with the `IMAGE_PREFIX` of your repository when `origin` is on GitHub. To update, publish a release, then on the server `docker compose --env-file .env.production pull` (or set `TAG` to the new version), run the migrations, and `up -d` again. Running `deploy` again writes the files that are missing and never overwrites one: it keeps a `Caddyfile` or workflow you changed, and says so, and stops when `compose.yaml` differs from the one it writes, so move yours away to get the new one. Compose prefers `compose.yaml` to the Starter's `docker-compose.yml`, so run the local one by name: `docker compose -f docker-compose.yml up --build`, which `pnpm docker:dev` does since Starter v0.27.0.
+`deploy` prints these steps, with the `IMAGE_PREFIX` of your repository when `origin` is on GitHub. To update, publish a release, then on the server `docker compose --env-file .env.production pull` (or set `TAG` to the new version), run the migrations, and `up -d` again. Running `deploy` again writes the files that are missing and never overwrites one: it keeps a `Caddyfile` or workflow you changed, and says so, and stops when `compose.yaml` differs from the one it writes, so move yours away to get the new one. Compose prefers `compose.yaml` to the Starter's `docker-compose.yml`, so run the local one by name: `docker compose -f docker-compose.yml up --build`, which `pnpm docker:dev` does since Starter v0.27.1.
 
 ### Client addresses
 
@@ -384,24 +384,24 @@ Each CLI release is tested against one specific Starter release:
 create-clubedge-app v0.42.0
         |
         v
-Clubedge Starter v0.27.0
-commit 5f0e7e57131c4c56305d67edfd2e7366618d7b7c
+Clubedge Starter v0.27.1
+commit 997d71d74775352d30dc2bb25017f46ef43f4fd8
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.42.0` | `clubedge-starter@v0.27.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.42.0` | `clubedge-starter@v0.27.1` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.27.0` tag is expected to resolve to commit
-`5f0e7e57131c4c56305d67edfd2e7366618d7b7c`. The CLI verifies this before
+The `v0.27.1` tag is expected to resolve to commit
+`997d71d74775352d30dc2bb25017f46ef43f4fd8`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.27.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.27.1`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
@@ -456,7 +456,7 @@ CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarba
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.27.0`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.27.1`, and publish the Starter release.
 
 ### CLI maintainers
 

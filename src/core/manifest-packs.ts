@@ -115,8 +115,9 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[],
   const defaultStack = read.optionalString(slot, "default");
   const siteConfig = read.optionalString(slot, "siteConfig");
   // Schema 6: a slot with a default may still be left empty, such as a project without a web app.
+  // An older Starter may not name the field, even as false.
+  if (slot.optional !== undefined && schemaVersion < 6) read.fail(`slots.${id}.optional needs template schema 6.`);
   if (slot.optional !== undefined && typeof slot.optional !== "boolean") read.fail(`slots.${id}.optional must be true or false.`);
-  if (slot.optional === true && schemaVersion < 6) read.fail(`slots.${id}.optional needs template schema 6.`);
   const optional = slot.optional === true && defaultStack !== undefined;
   // A Dockerfile is for apps that run a server; a slot that only takes shells or mobile apps has none.
   const servers = (roles as StackRole[]).some(runsServer);

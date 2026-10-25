@@ -823,13 +823,15 @@ describe("a project without a web app", () => {
   it("reads a slot with a default that can still be left empty, from schema 6", () => {
     expect(apiOnlyManifest.slots.framework).toMatchObject({ default: "next", optional: true });
     expect(selectStacks(apiOnlyManifest).framework).toBe("next");
-    const optionalShellRoot = {
-      ...shellRoot,
-      slots: { ...shellRoot.slots, framework: { ...shellRoot.slots.framework, optional: true } },
-    };
-    expect(() => parseTemplateManifest(JSON.stringify(optionalShellRoot), shellPacks)).toThrow(
-      "clubedge.template.json: slots.framework.optional needs template schema 6.",
-    );
+    for (const optional of [true, false]) {
+      const optionalShellRoot = {
+        ...shellRoot,
+        slots: { ...shellRoot.slots, framework: { ...shellRoot.slots.framework, optional } },
+      };
+      expect(() => parseTemplateManifest(JSON.stringify(optionalShellRoot), shellPacks)).toThrow(
+        "clubedge.template.json: slots.framework.optional needs template schema 6.",
+      );
+    }
   });
 
   it("leaves the web app out with --framework none, and still needs an API", () => {

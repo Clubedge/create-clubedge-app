@@ -4,7 +4,11 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.42.1
 
-- Default to Starter `v0.27.1` (#140).
+- Default to Starter `v0.27.1` (#140): new projects carry the Clubedge Starter brand, and their mobile app shows it.
+  - Each web app's logo is the new mark, shown whole: the pages no longer round its corners. Each app also has `favicon.ico`, a new `favicon.svg`, and an Apple touch icon.
+  - The mobile app shows the logo on its pages. The logo was in a `.well-known` folder, which Android leaves out of an app, so the Vite app now bundles it.
+  - The mobile app's icons and splash screens are made from `apps/shell/assets/logo.svg` instead of Capacitor's default.
+  - Upgrading: a logo you replaced comes back as a conflict in `logo.svg`, so keep yours. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.27.1) cover replaced favicons and existing `android/` and `ios/` projects.
 
 ## 0.42.0
 

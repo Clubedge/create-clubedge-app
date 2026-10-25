@@ -110,13 +110,13 @@ export function stacksIn(manifest: TemplateManifest, slotId: string): string[] {
   return Object.keys(manifest.stacks).filter((id) => manifest.stacks[id]!.slot === slotId);
 }
 
-/** Slots are filled with flags named after them: --framework, --api, --shell. */
+/** Slots are filled with flags named after them: --framework, --api, --shell, --mobile. */
 const slotFlag = (slotId: string) => `--${slotId}`;
 
 /**
  * Resolves one stack per slot from the request and the defaults, with a helpful error for
  * unknown ids, then checks the roles fit together: a frontend needs an API, a full-stack app
- * already has its own server, and a shell needs a frontend to package.
+ * already has its own server, a shell needs a frontend to package, and a mobile app needs an API.
  */
 export function selectStacks(manifest: TemplateManifest, requested: Record<string, string> = {}): Selection {
   const unknownSlot = Object.keys(requested).find((id) => !manifest.slots[id]);
@@ -142,9 +142,10 @@ export function selectStacks(manifest: TemplateManifest, requested: Record<strin
 
 /**
  * Why the chosen stacks cannot work together, or null when they can: a frontend calls an API, a
- * full-stack app has its own server, and a shell packages a frontend's static build, which a
- * full-stack app does not have. Slots not chosen yet (`pending`) may still bring the API a
- * frontend needs, or the frontend a shell packages.
+ * full-stack app has its own server, a shell packages a frontend's static build, which a
+ * full-stack app does not have, and a mobile app calls an API, which a full-stack app does not
+ * have apart from its pages. Slots not chosen yet (`pending`) may still bring the API a frontend
+ * or a mobile app needs, or the frontend a shell packages.
  */
 function roleConflict(manifest: TemplateManifest, chosen: Selection, pending: string[] = []): string | null {
   const stacks = Object.values(chosen).flatMap((id) => manifest.stacks[id] ?? []);
@@ -156,8 +157,10 @@ function roleConflict(manifest: TemplateManifest, chosen: Selection, pending: st
   const fullstack = withRole("fullstack");
   const api = withRole("api");
   const shell = withRole("shell");
-  if (frontend && !api && !(apiSlot && pending.includes(apiSlot))) {
-    const apis = apiSlot ? ` (${stacksIn(manifest, apiSlot).join(", ")})` : "";
+  const mobile = withRole("mobile");
+  const apiPending = Boolean(apiSlot && pending.includes(apiSlot));
+  const apis = apiSlot ? ` (${stacksIn(manifest, apiSlot).join(", ")})` : "";
+  if (frontend && !api && !apiPending) {
     return `${frontend.name} is a frontend and calls an API: choose one with ${slotFlag(apiSlot ?? "api")}${apis}.`;
   }
   if (fullstack && api) {
@@ -170,6 +173,12 @@ function roleConflict(manifest: TemplateManifest, chosen: Selection, pending: st
     const frontends = Object.keys(manifest.stacks).filter((id) => manifest.stacks[id]!.role === "frontend");
     const choices = frontends.length ? ` (${frontends.join(", ")})` : "";
     return `${shell.name} packages a frontend's static files: choose one with ${slotFlag(frontendSlot ?? FRAMEWORK_SLOT)}${choices}.`;
+  }
+  if (mobile && fullstack) {
+    return `${fullstack.name} has no separate API for ${mobile.name} to call: choose a frontend with an API, or ${slotFlag(mobile.slot)} ${NO_STACK}.`;
+  }
+  if (mobile && !api && !apiPending) {
+    return `${mobile.name} is a mobile app and calls an API: choose one with ${slotFlag(apiSlot ?? "api")}${apis}.`;
   }
   return null;
 }

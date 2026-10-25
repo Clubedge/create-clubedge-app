@@ -151,7 +151,7 @@ function createServer() {
   server.registerTool(
     "get_starter_capabilities",
     {
-      description: "Discover the app slots and their stacks (frameworks, APIs, mobile shells), the modules, defaults, and compatibility choices supported by this CLI's pinned Clubedge Starter release. A stack's role decides what it pairs with: a frontend needs an API, a full-stack framework takes none, and a shell packages a frontend.",
+      description: "Discover the app slots and their stacks (frameworks, APIs, mobile shells, native mobile apps), the modules, defaults, and compatibility choices supported by this CLI's pinned Clubedge Starter release. A stack's role decides what it pairs with: a frontend needs an API, a full-stack framework takes none, a shell packages a frontend, and a mobile app needs an API.",
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },

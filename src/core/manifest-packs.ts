@@ -1,4 +1,4 @@
-// Schema 4 and 5: the Starter is assembled from packs, so each part is described in one place.
+// Schema 4 to 6: the Starter is assembled from packs, so each part is described in one place.
 //
 //   clubedge.template.json            the project: slots, module order, shared files
 //   clubedge/modules/<id>.json        a module: its options, packages, scripts, shared files
@@ -9,7 +9,9 @@
 // join that option's files, so the rest of the CLI sees one list per option, as before.
 //
 // Schema 5 only adds the shell role: an app that packages a frontend's build, such as a mobile
-// app. It runs no server, so it has no Dockerfile or deployment, and its slot no Dockerfile.
+// app. Schema 6 only adds the mobile role: a mobile app with its own native screens that calls
+// the API. Neither runs a server, so they have no Dockerfile or deployment, and their slots no
+// Dockerfile.
 import { posix } from "node:path";
 import {
   fields,
@@ -19,6 +21,8 @@ import {
   MANIFEST_FILE,
   ManifestError,
   parseModule,
+  roleSchema,
+  runsServer,
   stackRoles,
   type StackRole,
 } from "./manifest-fields.js";
@@ -40,8 +44,8 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
   const { fail, requireString, optionalStringArray, requireRecord } = fields(MANIFEST_FILE);
   if (data.packageManager !== "pnpm") fail(`packageManager must be "pnpm".`);
   if (!isStringArray(data.modules)) fail("modules must list the module ids, in the order the CLI offers them.");
-  // The shell role came with schema 5; schema 4 Starters are read as before, without it.
-  const knownRoles = (data.schemaVersion as number) >= 5 ? stackRoles : stackRoles.filter((role) => role !== "shell");
+  // Each role came with a schema; a Starter on an older one is read as before, without the newer roles.
+  const knownRoles = stackRoles.filter((role) => roleSchema[role] <= (data.schemaVersion as number));
 
   const slots: Record<string, TemplateSlot> = {};
   for (const [id, entry] of Object.entries(requireRecord(data, "slots"))) {
@@ -106,8 +110,8 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[])
   const packageName = read.optionalString(slot, "package");
   const defaultStack = read.optionalString(slot, "default");
   const siteConfig = read.optionalString(slot, "siteConfig");
-  // A Dockerfile is for apps that run a server; a slot that only takes shells has none.
-  const servers = (roles as StackRole[]).some((role) => role !== "shell");
+  // A Dockerfile is for apps that run a server; a slot that only takes shells or mobile apps has none.
+  const servers = (roles as StackRole[]).some(runsServer);
   return {
     name: read.requireString(slot, "name"),
     question: read.requireString(slot, "question"),
@@ -149,10 +153,11 @@ function parseStack(
   if (slotIds.length !== 1) {
     throw new ManifestError(`${MANIFEST_FILE}: exactly one slot must take ${role} stacks, such as ${id} (${file}).`);
   }
-  // A shell packages a frontend's build and runs no server: it has no Dockerfile, and nothing deploys it.
-  const server = role !== "shell";
+  // A shell or a mobile app is installed on devices and runs no server: it has no Dockerfile, and
+  // nothing deploys it.
+  const server = runsServer(role);
   if (!server && (data.dockerfile !== undefined || data.deployment !== undefined)) {
-    read.fail("a shell runs no server, so it has no dockerfile or deployment.");
+    read.fail(`${role === "shell" ? "a shell" : "a mobile app"} runs no server, so it has no dockerfile or deployment.`);
   }
 
   /** A path in the stack's folder as a Starter path; it may not leave the Starter. */

@@ -1,8 +1,8 @@
 # Stack packs
 
-A Starter describes itself to the CLI in packs (template schema 4, and schema 5 for the `shell`
-role). Each part is described in one place, so adding a stack, in any language, adds a folder
-and changes nothing shared.
+A Starter describes itself to the CLI in packs (template schema 4, schema 5 for the `shell`
+role, and schema 6 for the `mobile` role). Each part is described in one place, so adding a
+stack, in any language, adds a folder and changes nothing shared.
 
 ```text
 clubedge.template.json            the project: slots, the module order, shared conditional files
@@ -16,11 +16,12 @@ The CLI leaves every descriptor out of generated projects.
 
 A slot is a place for one app in generated projects. The Starter declares:
 
-| Slot        | Path         | Roles                   | Flag          |
-| ----------- | ------------ | ----------------------- | ------------- |
-| `framework` | `apps/web`   | `fullstack`, `frontend` | `--framework` |
-| `api`       | `apps/api`   | `api`                   | `--api`       |
-| `shell`     | `apps/shell` | `shell`                 | `--shell`     |
+| Slot        | Path          | Roles                   | Flag          |
+| ----------- | ------------- | ----------------------- | ------------- |
+| `framework` | `apps/web`    | `fullstack`, `frontend` | `--framework` |
+| `api`       | `apps/api`    | `api`                   | `--api`       |
+| `mobile`    | `apps/mobile` | `mobile`                | `--mobile`    |
+| `shell`     | `apps/shell`  | `shell`                 | `--shell`     |
 
 A slot may also name `packages` only its apps use (the API contract, for example), left out
 when it is empty, and its own `siteConfig`, which the CLI names after the project like the
@@ -31,11 +32,13 @@ A stack has one role, which puts it in one slot. A slot without a `default` is o
 needs an `api` stack, and a `fullstack` app has its own server, so it takes none. A `shell`
 packages a frontend's static build as a mobile app (Capacitor, for Android and iOS), so it
 needs a `frontend`, which still needs its API; a `fullstack` app renders its pages on its
-server, so no shell can package it. The CLI asks for the slots in their order, offering only
-the stacks that fit the answers so far.
+server, so no shell can package it. A `mobile` app has its own native screens (Expo, for
+Android and iOS) and calls the API, so it needs an `api` stack; a `fullstack` app has no
+separate API for it to call. A project can have a shell and a mobile app at once. The CLI asks
+for the slots in their order, offering only the stacks that fit the answers so far.
 
 `clubedge:if` and `clubedge:only` conditions name a slot by its id, like a module:
-`shell!=none`, or `framework=vite && shell=capacitor`.
+`shell!=none`, `mobile=expo`, or `framework=vite && shell=capacitor`.
 
 ## A stack descriptor
 
@@ -84,10 +87,11 @@ the stacks that fit the answers so far.
 
 ## Stacks without a server
 
-A `shell` stack packages another app's build and runs no server, so neither it nor its slot has
-a `dockerfile`, and it declares no `deployment`; the CLI refuses a shell's descriptor that names
-either. The rest works as for other stacks: its folder moves to the slot's path, its
-`envExample` to the slot's `env.example`, and the slot's `package` names it.
+A `shell` stack packages another app's build, and a `mobile` stack is an app installed on
+devices. Neither runs a server, so neither it nor its slot has a `dockerfile`, and it declares
+no `deployment`; the CLI refuses a shell's or a mobile app's descriptor that names either. The
+rest works as for other stacks: its folder moves to the slot's path, its `envExample` to the
+slot's `env.example`, and the slot's `package` names it.
 
 ```json
 {
@@ -98,10 +102,11 @@ either. The rest works as for other stacks: its folder moves to the slot's path,
 }
 ```
 
-The `shell` slot has no `default`, so a project has no shell unless `--shell` asks for one.
-Since a shell declares no deployment, it is never one of a project's `clubedge.services`:
-`deploy` builds and runs the frontend and the API, and leaves the shell out. Like a frontend, a
-shell lists only the modules it takes part in.
+The `shell` and `mobile` slots have no `default`, so a project has neither unless `--shell` or
+`--mobile` asks for one. Since they declare no deployment, they are never among a project's
+`clubedge.services`: `deploy` builds and runs the frontend and the API, and leaves them out.
+Like a frontend, a shell or a mobile app lists only the modules it takes part in, so a mobile
+app that implements only some sign-in options limits `--auth` to those when it is selected.
 
 ## Module scope
 
@@ -146,8 +151,8 @@ checks and API migrations, and connects them over Railway's private network. The
 ## Adding a stack
 
 1. Add `apps/<name>/` with the app, its `package.json` scripts, `.env.example`, `Dockerfile`
-   (unless it is a shell), `clubedge.stack.json`, and its deployment service facts where
-   applicable.
+   (unless it is a shell or a mobile app), `clubedge.stack.json`, and its deployment service
+   facts where applicable.
 2. Implement the module options it supports, as files in its folder, and list them.
 3. Run the Starter's `scripts/template-manifest.test.ts`, then generate a project with
    `--template-dir` and run its checks.
@@ -159,6 +164,12 @@ Nothing else changes: not the CLI, not the other stacks, not the module descript
 Schema 5 is schema 4 with the `shell` role; nothing else changes. A Starter that offers a shell
 declares schema 5, so a CLI that predates the role refuses it and asks to be updated instead of
 failing on an unknown role. Schema 4 manifests are read as before, without the role.
+
+## Schema 6
+
+Schema 6 is schema 5 with the `mobile` role, the same way: a Starter that offers a mobile app
+declares schema 6, a CLI that predates the role refuses it, and schema 4 and 5 manifests are read
+as before, without it.
 
 ## Older Starters
 

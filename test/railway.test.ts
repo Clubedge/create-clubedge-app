@@ -53,6 +53,25 @@ describe("Railway status", () => {
       /not as this CLI expects/,
     );
   });
+
+  it("gives Railway's reason when it refuses a VM", () => {
+    const refused = (stderr: string) => {
+      try {
+        parseRailwayStatus(stderr);
+      } catch (error) {
+        return (error as Error).message;
+      }
+      throw new Error("Expected a refusal.");
+    };
+    const disabled = refused(JSON.stringify({ status: "error", description: "Anonymous trials are temporarily disabled." }));
+    expect(disabled).toMatch(/^Railway did not start a VM: Anonymous trials are temporarily disabled\. Railway allows 3 free VMs per network/);
+    expect(disabled).not.toMatch(/update the CLI/);
+    // Without a message in the status line: the text Railway wrote around it, or else the line itself.
+    expect(refused(`Too many boxes from this IP today\n${JSON.stringify({ status: "error" })}`)).toMatch(
+      /^Railway did not start a VM: Too many boxes from this IP today\. /,
+    );
+    expect(refused(JSON.stringify({ status: "error", code: "ip_limit" }))).toContain('its answer was {"status":"error","code":"ip_limit"}');
+  });
 });
 
 describe("Railway host key", () => {

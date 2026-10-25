@@ -1,5 +1,6 @@
 // What add and remove do once the files are written: install, the report, and the outcome. pnpm
 // and the terminal output are replaced, so nothing is installed and the messages can be read.
+import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
@@ -9,9 +10,10 @@ import { parseCliArgs } from "../src/cli/args.js";
 import { executePlan } from "../src/core/execute.js";
 import { readTemplateManifest } from "../src/core/manifest.js";
 import { createPlan } from "../src/core/plan.js";
-import { readDirectoryTemplate } from "../src/core/source.js";
+import { downloadGitHubTemplate, readDirectoryTemplate } from "../src/core/source.js";
 import { main } from "../src/index.js";
 import { changeProject } from "../src/modify.js";
+import { starterPin } from "../src/package-info.js";
 import { detectPnpm, installDependencies } from "../src/steps/install.js";
 import { moduleStarterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
 
@@ -21,13 +23,27 @@ vi.mock("../src/steps/install.js", async (importOriginal) => ({
   installDependencies: vi.fn(),
 }));
 
+vi.mock("../src/core/source.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/core/source.js")>();
+  return {
+    ...actual,
+    downloadGitHubTemplate: vi.fn(),
+    resolveTemplateSource: vi.fn(async ({ ref, templateDir }: { ref?: string; templateDir?: string } = {}) => {
+      if (templateDir) return actual.readDirectoryTemplate(templateDir);
+      return vi.mocked(downloadGitHubTemplate)(ref ?? starterPin.starterRef);
+    }),
+  };
+});
+
+const spinnerStart = vi.fn();
+
 vi.mock("@clack/prompts", async (importOriginal) => {
   const prompts = await importOriginal<typeof import("@clack/prompts")>();
   return {
     ...prompts,
     intro: vi.fn(),
     outro: vi.fn(),
-    spinner: () => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn() }),
+    spinner: () => ({ start: spinnerStart, stop: vi.fn(), message: vi.fn() }),
     log: { info: vi.fn(), warn: vi.fn(), success: vi.fn(), message: vi.fn(), error: vi.fn(), step: vi.fn() },
   };
 });
@@ -56,6 +72,7 @@ async function generatedProject() {
   const inProject = () => vi.spyOn(process, "cwd").mockReturnValue(root);
   return {
     root,
+    source,
     run: (command: string[]) => (inProject(), changeProject(parseCliArgs(argv(command)))),
     main: (command: string[]) => (inProject(), main(argv(command))),
     read: (path: string) => readFile(join(root, path), "utf8"),
@@ -176,22 +193,78 @@ describe("early exit on no-op changes", () => {
   it("exits early without preparing templates when adding an already-configured module option", async () => {
     const project = await generatedProject();
     expect(await project.run(["add", "auth", "supabase"])).toBe("unchanged");
+    expect(spinnerStart).not.toHaveBeenCalled();
   });
 
   it("exits early without preparing templates when removing an already absent module", async () => {
     const project = await generatedProject();
-    expect(await project.run(["remove", "cache"])).toBe("unchanged");
+    const pkg = JSON.parse(await project.read("package.json"));
+    pkg.clubedge.modules.storage = "none";
+    await project.write("package.json", JSON.stringify(pkg, null, 2) + "\n");
+
+    expect(await project.run(["remove", "storage"])).toBe("unchanged");
+    expect(spinnerStart).not.toHaveBeenCalled();
   });
 
-  it("exits early without preparing templates when upgrading a project already on the target Starter", async () => {
+  it("fails with an unknown-module error when removing an unknown module id", async () => {
+    const project = await generatedProject();
+    await expect(project.run(["remove", "authh"])).rejects.toThrow('Unknown module "authh"');
+  });
+
+  it("exits early without preparing templates when upgrading a project already on the target commit", async () => {
     const project = await generatedProject();
     const pkg = JSON.parse(await project.read("package.json"));
-    // Run upgrade without template-dir to test the remote upgrade path
+    pkg.clubedge.starterCommit = starterPin.starterCommit;
+    await project.write("package.json", JSON.stringify(pkg, null, 2) + "\n");
+
     vi.spyOn(process, "cwd").mockReturnValue(project.root);
-    const outcome = await changeProject(
-      parseCliArgs(["upgrade", "--ref", pkg.clubedge.starterRef, "--force", "--yes"]),
+    const outcomeWithoutRef = await changeProject(parseCliArgs(["upgrade", "--force", "--yes"]));
+    expect(outcomeWithoutRef).toBe("unchanged");
+    expect(spinnerStart).not.toHaveBeenCalled();
+
+    const outcomeWithCommit = await changeProject(
+      parseCliArgs(["upgrade", "--ref", starterPin.starterCommit, "--force", "--yes"]),
     );
+    expect(outcomeWithCommit).toBe("unchanged");
+    expect(spinnerStart).not.toHaveBeenCalled();
+  });
+
+  it("still prepares both revisions when upgrade is passed a branch --ref equal to the recorded ref", async () => {
+    const project = await generatedProject();
+    const pkg = JSON.parse(await project.read("package.json"));
+    pkg.clubedge.starterCommit = "1".repeat(40);
+    pkg.clubedge.starterRef = "main";
+    await project.write("package.json", JSON.stringify(pkg, null, 2) + "\n");
+
+    vi.mocked(downloadGitHubTemplate).mockResolvedValue({
+      ...project.source,
+      kind: "github",
+      commit: "1".repeat(40),
+      ref: "main",
+      repository: "Clubedge/starter",
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+
+    const outcome = await changeProject(parseCliArgs(["upgrade", "--ref", "main", "--force", "--yes"]));
     expect(outcome).toBe("unchanged");
+    expect(spinnerStart).toHaveBeenCalledWith("Preparing both Starter revisions");
+    expect(downloadGitHubTemplate).toHaveBeenCalledWith("main");
+  });
+
+  it("succeeds on a no-op command with uncommitted changes", async () => {
+    const project = await generatedProject();
+    spawnSync("git", ["init", "-q"], { cwd: project.root });
+    spawnSync("git", ["config", "user.email", "ci@example.com"], { cwd: project.root });
+    spawnSync("git", ["config", "user.name", "CI"], { cwd: project.root });
+    spawnSync("git", ["add", "-A"], { cwd: project.root });
+    spawnSync("git", ["commit", "-qm", "Initial commit"], { cwd: project.root });
+
+    await project.write("dirty.txt", "uncommitted changes");
+
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+    const outcome = await changeProject(parseCliArgs(["add", "auth", "supabase", "--yes"]));
+    expect(outcome).toBe("unchanged");
+    expect(spinnerStart).not.toHaveBeenCalled();
   });
 });
 

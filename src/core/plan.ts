@@ -376,6 +376,11 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     .filter(([id]) => !selectedIds.has(id))
     .map(([, other]) => other);
   const moduleFiles = resolveModuleFiles(manifest, selection, stacks);
+  // pnpm audit stops skipping the advisories that only left-out stacks need.
+  const neededAdvisories = new Set(selected.flatMap(({ stack }) => stack.auditIgnores ?? []));
+  const droppedAdvisories = [...new Set(others.flatMap((other) => other.auditIgnores ?? []))].filter(
+    (id) => !neededAdvisories.has(id),
+  );
 
   // A slot is recorded when it offers a choice, so add, remove, and upgrade render the same apps.
   const recorded = selected.filter(
@@ -459,7 +464,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
       path: "package.json",
       description: `Name the package "${identity.packageName}" and record its origin`,
       apply: (text) =>
-        customizeRootManifest(text, identity, provenance, manifest.dockerImage, moduleFiles.scripts),
+        customizeRootManifest(text, identity, provenance, manifest.dockerImage, moduleFiles.scripts, droppedAdvisories),
     });
   }
   for (const { slot, stack } of selected) {

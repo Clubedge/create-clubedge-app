@@ -617,6 +617,19 @@ describe("schema 6 mobile apps", () => {
     );
   });
 
+  it("reads the advisories pnpm audit skips for a stack's dependencies, from schema 6", () => {
+    const advisories = ["GHSA-86w9-cpqp-85rv", "GHSA-mrhx-c7xc-m3w5"];
+    const read = (stacks: Packs["stacks"], manifest: object = mobileRoot) => parseTemplateManifest(JSON.stringify(manifest), { stacks, modules });
+
+    expect(read(withExpo({ auditIgnores: advisories })).stacks.expo!.auditIgnores).toEqual(advisories);
+    expect(() => read(withExpo({ auditIgnores: ["CVE-2026-0001"] }))).toThrow(
+      'apps/expo/clubedge.stack.json: auditIgnores: "CVE-2026-0001" is not a GitHub advisory id, such as GHSA-xxxx-xxxx-xxxx.',
+    );
+    expect(() => read(withShell({ auditIgnores: advisories }), shellRoot)).toThrow(
+      "apps/capacitor/clubedge.stack.json: auditIgnores needs template schema 6.",
+    );
+  });
+
   it("leaves the mobile role to schema 6, so schema 5 reads as before", () => {
     expect(() => parseTemplateManifest(JSON.stringify({ ...mobileRoot, schemaVersion: 5 }), mobilePacks)).toThrow(
       "clubedge.template.json: slots.mobile.roles must list one or more of: fullstack, frontend, api, shell.",
@@ -628,7 +641,7 @@ describe("schema 6 mobile apps", () => {
 });
 
 describe("a project with a mobile app", () => {
-  const plan = (selection: Record<string, string>) =>
+  const plan = (selection: Record<string, string>, manifest = mobileManifest) =>
     createPlan({
       targetDirectory: "/projects/my-product",
       identity: { packageName: "my-product", displayName: "My Product" },
@@ -649,7 +662,7 @@ describe("a project with a mobile app", () => {
           "apps/expo/src/config/site.json",
         ].map((path) => ({ from: path, to: path })),
       },
-      manifest: mobileManifest,
+      manifest,
       stacks: selection,
       cliVersion: "9.9.9",
       git: false,
@@ -685,6 +698,17 @@ describe("a project with a mobile app", () => {
     expect(Object.keys(services)).toEqual(["framework", "api"]);
     expect(dockerComposeSource("my-product", services)).not.toMatch(/\b(mobile|expo)\b/);
     expect(railwayIacSource("my-product", services)).toContain("resources: [framework, api]");
+  });
+
+  it("audits again, without the mobile app, the advisories only it needs pnpm audit to skip", () => {
+    const advisories = ["GHSA-86w9-cpqp-85rv", "GHSA-mrhx-c7xc-m3w5"];
+    const manifest = parseTemplateManifest(JSON.stringify(mobileRoot), { stacks: withExpo({ auditIgnores: advisories }), modules });
+    const starter = JSON.stringify({ name: "clubedge-starter", pnpm: { auditConfig: { ignoreGhsas: advisories } } });
+    const pnpm = (selection: Record<string, string>) =>
+      JSON.parse(plan(selection, manifest).edits.filter(({ path }) => path === "package.json").reduce((text, { apply }) => apply(text), starter)).pnpm;
+
+    expect(pnpm(native)).toEqual({ auditConfig: { ignoreGhsas: advisories } });
+    expect(pnpm({ framework: "vite", api: "fastapi" })).toBeUndefined();
   });
 
   it("keeps the sections marked for the mobile app", () => {

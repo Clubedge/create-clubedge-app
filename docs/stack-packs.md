@@ -84,6 +84,14 @@ for the slots in their order, offering only the stacks that fit the answers so f
   platforms. The CLI records these facts by slot in `package.json` under `clubedge.services`.
   `deploy` uses them to render Docker Compose or Railway services, preserving the API as a private
   service behind the frontend proxy.
+- `auditIgnores` (optional, schema 6) lists the advisories `pnpm audit` skips because of the
+  stack's dependencies, such as one in a build tool that has no fix yet. The Starter's
+  `package.json` lists them under `pnpm.auditConfig.ignoreGhsas`, and the CLI removes them from
+  projects without the stack, which then audit every advisory:
+
+  ```json
+  "auditIgnores": ["GHSA-86w9-cpqp-85rv"]
+  ```
 
 ## Stacks without a server
 
@@ -169,7 +177,8 @@ failing on an unknown role. Schema 4 manifests are read as before, without the r
 
 Schema 6 is schema 5 with the `mobile` role, the same way: a Starter that offers a mobile app
 declares schema 6, a CLI that predates the role refuses it, and schema 4 and 5 manifests are read
-as before, without it.
+as before, without it. Schema 6 also adds a stack's `auditIgnores`, which an older CLI would
+leave in every project.
 
 ## Older Starters
 

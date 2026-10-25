@@ -62,6 +62,7 @@ export function customizeRootManifest(
   provenance: Provenance,
   dockerImage: string,
   scripts: ScriptChanges = { set: {}, remove: [] },
+  droppedAdvisories: string[] = [],
 ): string {
   const manifest = JSON.parse(source);
   manifest.name = packageName;
@@ -70,6 +71,14 @@ export function customizeRootManifest(
     for (const name of scripts.remove) delete manifest.scripts[name];
   }
   if (Object.keys(scripts.set).length) manifest.scripts = { ...manifest.scripts, ...scripts.set };
+  // Advisories that only left-out stacks need are audited again; settings left empty go too.
+  const auditConfig = manifest.pnpm?.auditConfig;
+  if (droppedAdvisories.length && Array.isArray(auditConfig?.ignoreGhsas)) {
+    auditConfig.ignoreGhsas = auditConfig.ignoreGhsas.filter((id: unknown) => !droppedAdvisories.includes(id as string));
+    if (!auditConfig.ignoreGhsas.length) delete auditConfig.ignoreGhsas;
+    if (!Object.keys(auditConfig).length) delete manifest.pnpm.auditConfig;
+    if (!Object.keys(manifest.pnpm).length) delete manifest.pnpm;
+  }
   manifest.clubedge = {
     cliVersion: provenance.cliVersion,
     starterRepository: provenance.starterRepository,

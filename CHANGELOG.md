@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.43.0
+
+- Exit early on no-op add and upgrade before downloading remote Starter (#133).
+- Preserve workspace app version across upgrades (#134).
+- Still on Starter `v0.27.1`.
+
 ## 0.42.1
 
 - Default to Starter `v0.27.1` (#140): new projects carry the Clubedge Starter brand, and their mobile app shows it.

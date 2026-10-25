@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.42.1
+
+- Default to Starter `v0.27.1` (#140).
+
 ## 0.42.0
 
 - **Mobile apps with Capacitor**: default to Starter `v0.27.0` (#138). `--framework vite --api hono --shell capacitor` (or `--api fastapi`) packages the Vite frontend as an Android and iOS app in `apps/shell` (#135):

@@ -9,9 +9,10 @@
 // join that option's files, so the rest of the CLI sees one list per option, as before.
 //
 // Schema 5 only adds the shell role: an app that packages a frontend's build, such as a mobile
-// app. Schema 6 only adds the mobile role: a mobile app with its own native screens that calls
-// the API. Neither runs a server, so they have no Dockerfile or deployment, and their slots no
-// Dockerfile.
+// app. Schema 6 adds the mobile role: a mobile app with its own native screens that calls the
+// API. Neither runs a server, so they have no Dockerfile or deployment, and their slots no
+// Dockerfile. Schema 6 also lets a stack list the advisories `pnpm audit` skips for its
+// dependencies (`auditIgnores`), so projects without the stack stop skipping them.
 import { posix } from "node:path";
 import {
   fields,
@@ -31,6 +32,9 @@ import type { StackDeployment, TemplateManifest, TemplateModule, TemplateSlot, T
 export const STACKS_DIRECTORY = "apps";
 export const STACK_FILE = "clubedge.stack.json";
 export const MODULES_DIRECTORY = "clubedge/modules";
+
+/** A GitHub advisory id, as `pnpm.auditConfig.ignoreGhsas` lists them. */
+const ADVISORY = /^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$/;
 
 /** The descriptors of a schema 4 Starter, read from its files. */
 export interface Packs {
@@ -70,7 +74,7 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
   const descriptorFiles: string[] = [];
   const conditional = optionalStringArray(data, "conditional");
   for (const { directory, data: descriptor } of packs.stacks) {
-    const { id, stack, files } = parseStack(directory, descriptor, slots, modules, knownRoles);
+    const { id, stack, files } = parseStack(directory, descriptor, slots, modules, knownRoles, data.schemaVersion as number);
     if (stacks[id]) throw new ManifestError(`${directory}/${STACK_FILE}: stack id "${id}" is already used.`);
     stacks[id] = stack;
     descriptorFiles.push(`${directory}/${STACK_FILE}`);
@@ -141,6 +145,7 @@ function parseStack(
   slots: Record<string, TemplateSlot>,
   modules: Record<string, TemplateModule>,
   knownRoles: readonly StackRole[],
+  schemaVersion: number,
 ): { id: string; stack: TemplateStack; files: StackFiles } {
   const file = `${directory}/${STACK_FILE}`;
   const read = fields(file);
@@ -204,6 +209,11 @@ function parseStack(
 
   const toolchain = data.toolchain === undefined ? undefined : parseToolchain(file, data.toolchain);
   const deployment = data.deployment === undefined ? undefined : parseDeployment(file, data.deployment);
+  // The field comes with schema 6, so an older Starter may not name it, even with an empty list.
+  if (data.auditIgnores !== undefined && schemaVersion < 6) read.fail("auditIgnores needs template schema 6.");
+  const auditIgnores = read.optionalStringArray(data, "auditIgnores");
+  const advisory = auditIgnores.find((id) => !ADVISORY.test(id));
+  if (advisory !== undefined) read.fail(`auditIgnores: "${advisory}" is not a GitHub advisory id, such as GHSA-xxxx-xxxx-xxxx.`);
   return {
     id,
     stack: {
@@ -216,6 +226,7 @@ function parseStack(
       modules: implemented,
       ...(toolchain ? { toolchain } : {}),
       ...(deployment ? { deployment } : {}),
+      ...(auditIgnores.length ? { auditIgnores } : {}),
     },
     files,
   };

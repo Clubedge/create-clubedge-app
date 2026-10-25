@@ -55,6 +55,18 @@ describe("customizeRootManifest", () => {
     expect(JSON.parse(output).clubedge).not.toHaveProperty("starterCommit");
     expect(output.endsWith("}\n")).toBe(true);
   });
+
+  it("audits again the advisories that only left-out stacks need", () => {
+    const advisories = ["GHSA-86w9-cpqp-85rv", "GHSA-mrhx-c7xc-m3w5"];
+    const pnpm = { overrides: { esbuild: "^0.25.0" }, auditConfig: { ignoreGhsas: advisories } };
+    const customize = (dropped: string[], settings: object = pnpm) =>
+      JSON.parse(customizeRootManifest(JSON.stringify({ pnpm: settings }), identity, provenance, "clubedge-starter", undefined, dropped)).pnpm;
+
+    expect(customize([])).toEqual(pnpm);
+    expect(customize(["GHSA-86w9-cpqp-85rv"])).toEqual({ ...pnpm, auditConfig: { ignoreGhsas: ["GHSA-mrhx-c7xc-m3w5"] } });
+    expect(customize(advisories)).toEqual({ overrides: pnpm.overrides });
+    expect(customize(advisories, { auditConfig: pnpm.auditConfig })).toBeUndefined();
+  });
 });
 
 describe("customizeReadme", () => {

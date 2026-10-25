@@ -97,6 +97,11 @@ export interface TemplateStack {
   modules: Record<string, string[]>;
   toolchain?: Toolchain;
   deployment?: StackDeployment;
+  /**
+   * Advisories `pnpm audit` skips for this stack's dependencies, which the Starter's package.json
+   * lists under `pnpm.auditConfig.ignoreGhsas`. Projects without the stack stop skipping them.
+   */
+  auditIgnores?: string[];
 }
 
 /** One choice within a module, such as `storage: s3`. Paths use the Starter's layout. */

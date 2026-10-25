@@ -343,8 +343,6 @@ describe("upgrading to a newer Starter", () => {
     await writeFile(appPkgPath, JSON.stringify(appPkg, null, 2) + "\n");
 
     const project = await readProject(root);
-    expect(project.identity.appVersions?.["apps/web"]).toBe("2.0.0");
-
     const v2Manifest = await readTemplateManifest(v2.root);
     const { modules } = upgradedModules(v2Manifest, project);
     const plan = await planUpdate(
@@ -356,6 +354,49 @@ describe("upgrading to a newer Starter", () => {
 
     const updatedAppPkg = JSON.parse(await readFile(appPkgPath, "utf8"));
     expect(updatedAppPkg.version).toBe("2.0.0");
+    expect(plan.actions.find((action) => action.path === "apps/web/package.json")?.kind).not.toBe("conflict");
+  });
+
+  it("updates an untouched workspace app version to the new Starter's version", async () => {
+    const { v1, v2 } = await twoRevisions();
+    const v1WebPkgPath = join(v1.root, "apps", "web", "package.json");
+    const v1WebPkg = JSON.parse(await readFile(v1WebPkgPath, "utf8"));
+    v1WebPkg.version = "0.1.0";
+    await writeFile(v1WebPkgPath, JSON.stringify(v1WebPkg, null, 2) + "\n");
+
+    const v2WebPkgPath = join(v2.root, "apps", "web", "package.json");
+    const v2WebPkg = JSON.parse(await readFile(v2WebPkgPath, "utf8"));
+    v2WebPkg.version = "0.2.0";
+    await writeFile(v2WebPkgPath, JSON.stringify(v2WebPkg, null, 2) + "\n");
+
+    const root = join(await temporaryDirectory(), "untouched-app-product");
+    const v1Manifest = await readTemplateManifest(v1.root);
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "untouched-app-product", displayName: "Untouched App Product" },
+        source: { ...v1, ref: "v1.0.0", commit: "1".repeat(40) },
+        manifest: v1Manifest,
+        stacks: { framework: "next" },
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+
+    const project = await readProject(root);
+    const v2Manifest = await readTemplateManifest(v2.root);
+    const { modules } = upgradedModules(v2Manifest, project);
+    const plan = await planUpdate(
+      project,
+      { source: { ...v1, ref: project.starterRef, commit: project.starterCommit }, manifest: v1Manifest, modules: project.modules, cliVersion: project.cliVersion },
+      { source: { ...v2, ref: "v2.0.0", commit: "2".repeat(40) }, manifest: v2Manifest, modules, cliVersion: "2.0.0" },
+    );
+    await applyUpdate(plan);
+
+    const updatedAppPkg = JSON.parse(await readFile(join(root, "apps", "web", "package.json"), "utf8"));
+    expect(updatedAppPkg.version).toBe("0.2.0");
     expect(plan.actions.find((action) => action.path === "apps/web/package.json")?.kind).not.toBe("conflict");
   });
 

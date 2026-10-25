@@ -1,6 +1,6 @@
 // Reads an existing generated project and renders projects in memory, so commands that change
 // a project (add, remove, upgrade) can compare what the CLI generated with what it would now.
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathExists } from "../utils/fs.js";
 import { displayNameFromPackageName } from "../utils/names.js";
@@ -63,31 +63,6 @@ async function unreadableManifest(path: string, content: Buffer, directory: stri
   );
 }
 
-/** Reads the versions of workspace apps in apps/, so upgrades preserve them. */
-async function readAppVersions(root: string): Promise<Record<string, string>> {
-  const versions: Record<string, string> = {};
-  const appsDir = join(root, "apps");
-  try {
-    const entries = await readdir(appsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const appPkg = join(appsDir, entry.name, "package.json");
-        try {
-          const content = JSON.parse(await readFile(appPkg, "utf8"));
-          if (typeof content.version === "string") {
-            versions[`apps/${entry.name}`] = content.version;
-          }
-        } catch {
-          // Leave unreadable or missing package.json files out.
-        }
-      }
-    }
-  } catch {
-    // Leave missing apps directory out.
-  }
-  return versions;
-}
-
 /** Finds the generated project that contains `directory` and reads its provenance. */
 export async function readProject(directory: string): Promise<Project> {
   const start = resolve(directory);
@@ -110,14 +85,12 @@ export async function readProject(directory: string): Promise<Project> {
             "This project was created before create-clubedge-app 0.5.0 and does not record its modules, so it cannot be changed automatically.",
           );
         }
-        const appVersions = await readAppVersions(current);
         return {
           root: current,
           identity: {
             packageName: manifest.name,
             displayName: displayNameFromPackageName(manifest.name),
             version: typeof manifest.version === "string" ? manifest.version : "0.1.0",
-            ...(Object.keys(appVersions).length ? { appVersions } : {}),
           },
           cliVersion: origin.cliVersion,
           starterRepository: origin.starterRepository,

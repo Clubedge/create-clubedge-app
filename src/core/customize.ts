@@ -8,7 +8,6 @@ export interface ProjectIdentity {
   packageName: string;
   displayName: string;
   version?: string;
-  appVersions?: Record<string, string>;
 }
 
 /** Recorded in the generated package.json and README so a project can trace its origin. */

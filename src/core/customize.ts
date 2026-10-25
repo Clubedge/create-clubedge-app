@@ -26,6 +26,8 @@ export interface Provenance {
   services?: Record<string, ProjectService>;
   /** Readable module choices for the README, such as `Authentication: None`. */
   moduleSummary?: string[];
+  /** Pinned third-party plugins applied via --with. */
+  plugins?: Array<string | { name: string; version: string; integrity: string }>;
 }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
@@ -102,6 +104,7 @@ export function customizeRootManifest(
     ...recordStacks(provenance.stacks ?? {}),
     ...(provenance.modules ? { modules: provenance.modules } : {}),
     ...(provenance.services && Object.keys(provenance.services).length ? { services: provenance.services } : {}),
+    ...(provenance.plugins && provenance.plugins.length ? { plugins: provenance.plugins } : {}),
   };
 
   for (const script of ["docker:build", "docker:start"]) {
@@ -124,10 +127,13 @@ export function customizeReadme(
   const modulesLine = provenance.moduleSummary?.length
     ? `\n- Modules: ${provenance.moduleSummary.join(", ")}`
     : "";
+  const pluginsLine = provenance.plugins?.length
+    ? `\n- Plugins: ${provenance.plugins.map((p) => (typeof p === "string" ? p : `${p.name}@${p.version}`)).join(", ")}`
+    : "";
   const origin =
     `## Generated from\n\n` +
     `- Starter repository: \`${provenance.starterRepository}\`\n` +
-    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${stackLines}${modulesLine}\n` +
+    `- Starter ref: \`${provenance.starterRef}\`${commitLine}${stackLines}${modulesLine}${pluginsLine}\n` +
     `- CLI version: \`${provenance.cliVersion}\``;
 
   // Only the first heading is the project title; leave every other line as written.

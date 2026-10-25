@@ -2,6 +2,11 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.43.1
+
+- Show Railway's reason when it refuses a VM (#144).
+- Still on Starter `v0.27.1`.
+
 ## 0.43.0
 
 - **Upgrades keep each app's own version** (#134, by @ahmed-husssain):

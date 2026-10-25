@@ -47,11 +47,12 @@ export interface RailwayVm {
 
 /**
  * Finds Railway's JSON status line in a command's stderr. Returns null when there is none, and
- * throws when there is one without the fields this CLI needs.
+ * throws when there is one without the fields this CLI needs, with Railway's reason when it
+ * refused the VM.
  */
 export function parseRailwayStatus(stderr: string): RailwayVm | null {
-  for (const line of stderr.split(/\r?\n/)) {
-    const trimmed = line.trim();
+  const lines = stderr.split(/\r?\n/).map((line) => line.trim());
+  for (const trimmed of lines) {
     if (!trimmed.startsWith("{")) continue;
     let value: Record<string, unknown>;
     try {
@@ -60,6 +61,7 @@ export function parseRailwayStatus(stderr: string): RailwayVm | null {
       continue;
     }
     if (typeof value.status !== "string") continue;
+    if (value.status === "error") throw new Error(railwayRefusal(value, lines));
     const previewUrl = value.preview_url;
     const claimUrl = value.human_claim_url;
     const expiresAt = new Date(String(value.build_expires_at));
@@ -71,6 +73,20 @@ export function parseRailwayStatus(stderr: string): RailwayVm | null {
     return { status: value.status, state: String(value.state ?? ""), previewUrl: previewUrl.replace(/\/+$/, ""), claimUrl, expiresAt };
   }
   return null;
+}
+
+/**
+ * Why Railway refused a VM, in its own words: a message in its status line, else the text it
+ * wrote around that line, else the line itself. Its limits come after, since they are the usual
+ * cause.
+ */
+function railwayRefusal(value: Record<string, unknown>, lines: string[]): string {
+  const said = ["message", "error", "reason", "description", "detail"]
+    .map((key) => value[key])
+    .find((text): text is string => typeof text === "string" && text.trim() !== "");
+  const around = lines.filter((line) => line && !line.startsWith("{")).join(" ");
+  const reason = (said?.trim() || around || `its answer was ${JSON.stringify(value)}`).slice(0, 500).replace(/\.$/, "");
+  return `Railway did not start a VM: ${reason}. Railway allows 3 free VMs per network per day and turns anonymous VMs off while it is busy, so try again later or from another network; see ${railwayFreeVmUrl}.`;
 }
 
 /** Where the CLI keeps its own SSH key for Railway, apart from the user's ~/.ssh. */

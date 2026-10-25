@@ -146,6 +146,13 @@ describe("customizeAppManifest", () => {
     );
     expect(result).toEqual({ name: "@clubedge/web", private: true });
   });
+
+  it("preserves the app version when provided", () => {
+    const result = JSON.parse(
+      customizeAppManifest(JSON.stringify({ name: "@clubedge/web", version: "0.26.1" }), undefined, "1.0.0"),
+    );
+    expect(result).toEqual({ name: "@clubedge/web", version: "1.0.0" });
+  });
 });
 
 describe("stack provenance", () => {

@@ -3,6 +3,7 @@
 // through a three-way merge, see merge.ts.
 import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { customizeAppManifest } from "./customize.js";
 import { updateEnvFile, type EnvUpdate } from "./env.js";
 import type { TemplateManifest } from "./manifest.js";
 import { INCOMING_DIR, planMerge, sameContent, type MergeAction } from "./merge.js";
@@ -65,6 +66,24 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
   if (customReadme) {
     baseFiles.delete("README.md");
     targetFiles.delete("README.md");
+  }
+
+  // Workspace apps take the new Starter's version unless the project customized their version.
+  for (const [path, targetContent] of targetFiles) {
+    if (!path.startsWith("apps/") || !path.endsWith("/package.json")) continue;
+    const baseContent = baseFiles.get(path);
+    const currentContent = current.get(path);
+    if (!baseContent || !currentContent) continue;
+    try {
+      const basePkg = JSON.parse(baseContent.toString("utf8"));
+      const currentPkg = JSON.parse(currentContent.toString("utf8"));
+      if (typeof currentPkg.version === "string" && currentPkg.version !== basePkg.version) {
+        baseFiles.set(path, Buffer.from(customizeAppManifest(baseContent.toString("utf8"), undefined, currentPkg.version)));
+        targetFiles.set(path, Buffer.from(customizeAppManifest(targetContent.toString("utf8"), undefined, currentPkg.version)));
+      }
+    } catch {
+      // Leave unparseable manifests untouched.
+    }
   }
 
   const actions = planMerge(baseFiles, targetFiles, current);

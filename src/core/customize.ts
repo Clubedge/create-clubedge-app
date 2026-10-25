@@ -142,10 +142,11 @@ export function customizeLegacySource(source: string, { displayName }: ProjectId
     .replaceAll("Starter workspace", "Application workspace");
 }
 
-/** Gives a selected stack's app the package name generated projects use. */
-export function customizeAppManifest(source: string, appPackage: string): string {
+/** Gives a selected stack's app the package name generated projects use and preserves its version. */
+export function customizeAppManifest(source: string, appPackage?: string, version?: string): string {
   const manifest = JSON.parse(source);
-  manifest.name = appPackage;
+  if (appPackage) manifest.name = appPackage;
+  if (version !== undefined) manifest.version = version;
   return json(manifest);
 }
 

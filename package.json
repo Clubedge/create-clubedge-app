@@ -1,6 +1,6 @@
 {
   "name": "@clubedge/create-clubedge-app",
-  "version": "0.42.1",
+  "version": "0.43.0",
   "description": "Create React apps from Clubedge Starter with a CLI or local MCP server.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",

@@ -52,28 +52,45 @@ async function waitForText(a, selector, text, timeout = 60_000) {
 
 /**
  * Waits until text matching `pattern` is painted on screen, not just present: Playwright counts an
- * element as visible when it has a box, even at opacity 0 or clipped to 1px for screen readers,
- * and Stripe's pages render their content that way under a spinner, then fade it in. So the text
- * must be large enough to read, unhidden and opaque up its ancestors, with no spinner on top.
+ * element as visible when it has a box, even at opacity 0, clipped to 1px for screen readers, or
+ * under another element, and Stripe's pages render their content that way under a spinner, then
+ * reveal it. So the text must be large enough to read, unhidden and opaque up its ancestors, and
+ * the topmost element where it sits, with nothing on screen spinning, for a whole second.
  */
 async function waitForPainted(page, pattern, timeout = 60_000) {
   await page.waitForFunction(
     (source) => {
       const re = new RegExp(source, "i");
-      const spinners = document.querySelectorAll('[role="progressbar"], [aria-busy="true"], [class*="Spinner"], [class*="spinner"]');
-      for (const spinner of spinners) {
-        if (spinner.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+      const shown = (element) => {
+        if (!element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+        const box = element.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && box.bottom > 0 && box.right > 0 && box.top < innerHeight && box.left < innerWidth;
+      };
+      // A spinner by its markup, or, whatever its markup, anything on screen animating endlessly.
+      const busy =
+        [...document.querySelectorAll('[role="progressbar"], [aria-busy="true"], [class*="Spinner"], [class*="spinner"]')].some(shown) ||
+        document.getAnimations().some((animation) => {
+          const target = animation.effect?.target;
+          return animation.playState === "running" && animation.effect.getTiming().iterations === Infinity && target instanceof Element && shown(target);
+        });
+      let painted = false;
+      if (!busy) {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node && !painted; node = walker.nextNode()) {
+          if (!re.test(node.textContent ?? "")) continue;
+          const element = node.parentElement;
+          if (!element || !shown(element)) continue;
+          const box = element.getBoundingClientRect();
+          if (box.width < 16 || box.height < 8) continue;
+          // Nothing covers it: what is hit at the start of the text is the text's own element.
+          const hit = document.elementFromPoint(box.left + Math.min(box.width / 2, 12), box.top + box.height / 2);
+          painted = Boolean(hit && (element.contains(hit) || hit.contains(element)));
+        }
       }
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (!re.test(node.textContent ?? "")) continue;
-        const element = node.parentElement;
-        const box = element?.getBoundingClientRect();
-        if (!element || !box || box.width < 40 || box.height < 8) continue;
-        if (box.bottom < 0 || box.top > innerHeight) continue;
-        if (element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return true;
-      }
-      return false;
+      // Painted for a whole second, so a frame between two loading states does not count.
+      if (!painted) window.__paintedSince = undefined;
+      else window.__paintedSince ??= performance.now();
+      return painted && performance.now() - window.__paintedSince >= 1000;
     },
     pattern.source,
     { timeout, polling: 250 },
@@ -102,7 +119,7 @@ async function payOnStripeCheckout(a) {
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 60_000 });
   await page.waitForLoadState("networkidle").catch(() => {});
   // Checkout also loads behind a spinner: start once its form is on screen.
-  await waitForPainted(page, /pay with card|card information|contact information|payment method/i).catch(() => {});
+  await waitForPainted(page, /pay with card|card information|contact information|payment method/i, 20_000).catch(() => {});
   await a.pause(1500);
   const visible = async (locator) => (await locator.count()) > 0 && (await locator.first().isVisible());
   // The app passes the signed-in user's email, which Checkout then shows read-only.
@@ -232,10 +249,16 @@ serve "pnpm dev" "http://localhost:3000/" dev`,
         if (stripeReal) {
           await a.click(a.page.locator("#billing").getByRole("button", { name: "Manage billing" }), 0);
           await a.page.waitForURL(/billing\.stripe\.com/, { timeout: 60_000 });
-          await a.page.waitForLoadState("networkidle").catch(() => {});
-          // The portal shows a spinner, then renders the subscription after its own requests. The
-          // text is in the page before it shows, so wait until it is painted, then let it be read.
-          await waitForPainted(a.page, /current subscription|cancel subscription|payment method/i);
+          // The portal shows a spinner, then renders the subscription after its own requests. Its
+          // headings are in the page before that, so wait for what only the loaded subscription
+          // shows, its price and the test card, painted, then let it be read. Now and then the
+          // portal stays on its spinner: reload it once then, and fail rather than record a spinner.
+          const loaded = /per (day|week|month|year)|4242/i;
+          await waitForPainted(a.page, loaded, 30_000).catch(async () => {
+            console.error("The billing portal was still loading after 30 seconds: reloading it.");
+            await a.page.reload();
+            await waitForPainted(a.page, loaded);
+          });
           await a.pause(4500);
           await a.scrollTo(a.page.getByText(/payment method/i).first(), 3000).catch(() => {});
         }

@@ -237,7 +237,7 @@ jobs:
         with:
           node-version: 22.12.0
       # A Python API (--api fastapi) runs its lint, typecheck, and tests with uv.
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
       - name: Install CLI dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the CLI and bundle the pinned Starter release

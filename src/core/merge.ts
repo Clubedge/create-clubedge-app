@@ -1,7 +1,8 @@
 // Three-way merge between what the CLI generated (base), what it would generate now (target),
 // and the project as it is (current). Changes from base to target are applied to the project
 // without losing the project's own edits. Pure: callers read and write the files.
-import { diff3Merge } from "node-diff3";
+import { diff3Merge, diffComm } from "node-diff3";
+import { mergePackageJson } from "./package-json-merge.js";
 
 export type FileMap = Map<string, Buffer>;
 
@@ -65,6 +66,24 @@ export function sameContent(a: Buffer, b: Buffer) {
   return normalize(a) === normalize(b);
 }
 
+/** Lines both sides agree on, or a conflict: your lines and the Starter's. */
+type Region = { ok: string[] } | { yours: string[]; theirs: string[] };
+
+/** The merged text, with conflict markers around each region where the two sides differ. */
+function withMarkers(regions: Region[]): { text: string; conflict: boolean } {
+  const lines: string[] = [];
+  let conflict = false;
+  for (const region of regions) {
+    if ("ok" in region) {
+      lines.push(...region.ok);
+      continue;
+    }
+    conflict = true;
+    lines.push(`<<<<<<< ${CONFLICT_LABELS.yours}`, ...region.yours, "=======", ...region.theirs, `>>>>>>> ${CONFLICT_LABELS.theirs}`);
+  }
+  return { text: lines.join("\n"), conflict };
+}
+
 /** Merges base -> target into current. Resolves null for binary files, which cannot be merged. */
 export function mergeText(
   current: Buffer,
@@ -74,28 +93,35 @@ export function mergeText(
   if (isBinary(current) || isBinary(base) || isBinary(target)) return null;
   const split = (content: Buffer) => normalize(content).split("\n");
   const regions = diff3Merge(split(current), split(base), split(target), { excludeFalseConflicts: true });
-  const lines: string[] = [];
-  let conflict = false;
-  for (const region of regions) {
-    if (region.ok) {
-      lines.push(...region.ok);
-      continue;
-    }
-    if (!region.conflict) continue;
-    conflict = true;
-    lines.push(
-      `<<<<<<< ${CONFLICT_LABELS.yours}`,
-      ...region.conflict.a,
-      "=======",
-      ...region.conflict.b,
-      `>>>>>>> ${CONFLICT_LABELS.theirs}`,
-    );
-  }
-  return { text: lines.join("\n"), conflict };
+  return withMarkers(
+    regions.flatMap((region): Region[] =>
+      region.ok ? [{ ok: region.ok }] : region.conflict ? [{ yours: region.conflict.a, theirs: region.conflict.b }] : [],
+    ),
+  );
+}
+
+/**
+ * Merges a package.json by key (see package-json-merge.ts), so edits to different keys never
+ * conflict, and markers wrap only the lines of a key both sides changed differently. Resolves
+ * null when a side does not parse, for mergeText to merge it by line.
+ */
+export function mergePackageJsonText(
+  current: Buffer,
+  base: Buffer,
+  target: Buffer,
+): { text: string; conflict: boolean } | null {
+  const merged = mergePackageJson(normalize(current), normalize(base), normalize(target));
+  if (!merged) return null;
+  return withMarkers(
+    diffComm(merged.yours.split("\n"), merged.theirs.split("\n")).map((region): Region =>
+      region.common !== undefined ? { ok: region.common } : { yours: region.buffer1, theirs: region.buffer2 },
+    ),
+  );
 }
 
 function merged(path: string, current: Buffer, base: Buffer, target: Buffer, binaryReason: string): MergeAction {
-  const result = mergeText(current, base, target);
+  const result =
+    (/(^|\/)package\.json$/.test(path) ? mergePackageJsonText(current, base, target) : null) ?? mergeText(current, base, target);
   if (!result) return { path, kind: "keep", reason: binaryReason, incoming: target };
   const content = withLineEndings(result.text, current);
   if (result.conflict) return { path, kind: "conflict", content, incoming: withLineEndings(normalize(target), current) };

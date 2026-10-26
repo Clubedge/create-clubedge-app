@@ -36,11 +36,12 @@ const historyRow = /^\| \d+\.\d+\.\d+ \| /;
 
 /**
  * Moves the Starter pin's tag and commit everywhere the docs name the current pin, leaving the
- * README's release history as it was.
+ * README's release history, and the releases changes came with ("since Starter v0.15.0"), as
+ * they were.
  */
 export function updatePinDocs({ readme, contributing }, from, to) {
   // The whole tag only: not v0.15.01 or v0.15.0.1, while a sentence's closing period still matches.
-  const tag = new RegExp(`(?<![\\w.])${escape(from.ref)}(?![\\w-]|\\.\\d)`, "g");
+  const tag = new RegExp(`(?<![\\w.])(?<!since Starter )${escape(from.ref)}(?![\\w-]|\\.\\d)`, "g");
   const swap = (line) => line.replace(tag, to.ref).replaceAll(from.commit, to.commit);
   return {
     readme: readme

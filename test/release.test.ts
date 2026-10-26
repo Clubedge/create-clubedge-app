@@ -48,7 +48,12 @@ describe("Starter pin", () => {
     const updated = updatePinDocs(docs, from, to);
     const history = (text: string) => text.split("\n").filter((line) => /^\| \d+\.\d+\.\d+ \| /.test(line));
     expect(history(updated.readme)).toEqual(history(docs.readme));
-    const current = (text: string) => text.split("\n").filter((line) => !/^\| \d+\.\d+\.\d+ \| /.test(line)).join("\n");
+    const current = (text: string) =>
+      text
+        .split("\n")
+        .filter((line) => !/^\| \d+\.\d+\.\d+ \| /.test(line))
+        .join("\n")
+        .replace(/since Starter v\d+\.\d+\.\d+/g, "");
     expect(current(updated.readme)).not.toContain(from.commit);
     expect(current(updated.readme)).not.toMatch(new RegExp(`\\b${from.ref.replaceAll(".", "\\.")}\\b`));
     expect(updated.readme).toContain(`commit ${to.commit}`);
@@ -59,6 +64,13 @@ describe("Starter pin", () => {
   it("matches whole tags only", () => {
     const text = { readme: "Starter v0.15.0, not v0.15.01 or v0.15.0.1", contributing: "" };
     expect(updatePinDocs(text, { ref: "v0.15.0", commit: "x".repeat(40) }, to).readme).toBe("Starter v9.9.9, not v0.15.01 or v0.15.0.1");
+  });
+
+  it("keeps the release a change came with", () => {
+    const text = { readme: "Pinned to v0.15.0; pnpm docker:dev does it since Starter v0.15.0.", contributing: "" };
+    expect(updatePinDocs(text, { ref: "v0.15.0", commit: "x".repeat(40) }, to).readme).toBe(
+      "Pinned to v9.9.9; pnpm docker:dev does it since Starter v0.15.0.",
+    );
   });
 });
 

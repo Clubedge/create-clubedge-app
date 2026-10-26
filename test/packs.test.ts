@@ -10,6 +10,7 @@ import type { Packs } from "../src/core/manifest-packs.js";
 import {
   createPlan,
   describePlan,
+  moduleChoices,
   ModuleError,
   selectModules,
   selectStacks,
@@ -853,6 +854,87 @@ describe("a project without a web app", () => {
     );
     // Without the optional flag, none is not a framework.
     expect(() => selectStacks(mobileManifest, apiOnly)).toThrow('Unknown framework "none". This Starter offers: next, vite.');
+  });
+
+  it("leaves out the web app's own files and scripts, and runs the API's scripts in their place", () => {
+    const frameworkSlot = { ...apiOnlyRoot.slots.framework, files: ["e2e", "playwright.config.ts"], scripts: ["test:e2e"], fallback: "api" };
+    const manifest = parseTemplateManifest(JSON.stringify({ ...apiOnlyRoot, slots: { ...apiOnlyRoot.slots, framework: frameworkSlot } }), mobilePacks);
+    const plan = (selection: Record<string, string>) =>
+      createPlan({
+        targetDirectory: "/projects/my-product",
+        identity: { packageName: "my-product", displayName: "My Product" },
+        source: {
+          repository: "Clubedge/clubedge-starter",
+          ref: "v1.0.0",
+          files: ["package.json", "playwright.config.ts", "e2e/app.spec.ts", "apps/vite/package.json", "apps/api-python/pyproject.toml"].map((path) => ({ from: path, to: path })),
+        },
+        manifest,
+        stacks: selection,
+        cliVersion: "9.9.9",
+        git: false,
+        install: false,
+      });
+    const scripts = {
+      dev: "turbo run dev --filter=@clubedge/web --filter=@clubedge/local-db",
+      "check:env": "pnpm --filter @clubedge/web check:env",
+      "test:e2e": "playwright test",
+      "docs:web": "echo @clubedge/web-docs",
+    };
+    const rootScripts = (selection: Record<string, string>) =>
+      JSON.parse(plan(selection).edits.filter(({ path }) => path === "package.json").reduce((text, { apply }) => apply(text), JSON.stringify({ scripts }))).scripts;
+
+    expect(plan(apiOnly).files.map(({ to }) => to)).toEqual(["package.json", "apps/api/pyproject.toml"]);
+    expect(rootScripts(apiOnly)).toEqual({
+      dev: "turbo run dev --filter=@clubedge/api --filter=@clubedge/local-db",
+      "check:env": "pnpm --filter @clubedge/api check:env",
+      "docs:web": "echo @clubedge/web-docs",
+    });
+    const withWeb = { framework: "vite", api: "fastapi" };
+    expect(plan(withWeb).files.map(({ to }) => to)).toEqual(expect.arrayContaining(["playwright.config.ts", "e2e/app.spec.ts"]));
+    expect(rootScripts(withWeb)).toEqual(scripts);
+  });
+
+  it("reads a slot's own files, scripts, and fallback from schema 6, with a fallback that names its package", () => {
+    const withSlot = (root: typeof apiOnlyRoot | typeof shellRoot, framework: Record<string, unknown>) =>
+      JSON.stringify({ ...root, slots: { ...root.slots, framework: { ...root.slots.framework, ...framework } } });
+    expect(() => parseTemplateManifest(withSlot(shellRoot, { files: ["e2e"] }), shellPacks)).toThrow(
+      "clubedge.template.json: slots.framework.files needs template schema 6.",
+    );
+    expect(() => parseTemplateManifest(withSlot(apiOnlyRoot, { fallback: "framework" }), mobilePacks)).toThrow(
+      "clubedge.template.json: slots.framework.fallback must name another slot.",
+    );
+    expect(() => parseTemplateManifest(withSlot(apiOnlyRoot, { fallback: "api", package: undefined }), mobilePacks)).toThrow(
+      "clubedge.template.json: slots.framework.fallback needs both slots to name their package.",
+    );
+  });
+
+  it("refuses the selections the Starter's rules name, and leaves them out of the choices", () => {
+    const rules = [
+      { when: "framework=none && deploy=vercel", message: "Vercel deploys a web app: choose --deploy docker." },
+      { when: "framework=none && mobile=none", message: "Without a web app, the API is for a mobile app: choose --mobile expo." },
+    ];
+    const deploy = { name: "Deployment", default: "vercel", scope: "project", options: { vercel: { name: "Vercel" }, docker: { name: "Docker" } } };
+    const manifest = parseTemplateManifest(JSON.stringify({ ...apiOnlyRoot, rules }), { stacks: mobileStacks, modules: { ...modules, deploy } });
+    const stacks = selectStacks(manifest, apiOnly);
+
+    // The default gives way to an option the rules allow, and a requested one gets the rule's reason.
+    expect(moduleChoices(manifest, stacks, "deploy")).toEqual(["docker"]);
+    expect(selectModules(manifest, {}, stacks).deploy).toBe("docker");
+    expect(() => selectModules(manifest, { deploy: "vercel" }, stacks)).toThrow("Vercel deploys a web app: choose --deploy docker.");
+    expect(moduleChoices(manifest, selectStacks(manifest, { framework: "vite", api: "fastapi" }), "deploy")).toEqual(["vercel", "docker"]);
+
+    expect(() => selectStacks(manifest, { framework: "none", api: "fastapi" })).toThrow("Without a web app, the API is for a mobile app: choose --mobile expo.");
+    expect(slotChoices(manifest, "mobile", { framework: "none", api: "fastapi" })).toEqual(["expo"]);
+  });
+
+  it("reads rules from schema 6, naming only the slots, stacks, modules, and options it has", () => {
+    const read = (root: object, rules: unknown, packs: Packs = mobilePacks) => () => parseTemplateManifest(JSON.stringify({ ...root, rules }), packs);
+    expect(read(shellRoot, [], shellPacks)).toThrow("clubedge.template.json: rules needs template schema 6.");
+    expect(read(apiOnlyRoot, [{ when: "storage=s3", message: "m" }])).toThrow('rules[0].when names "storage", which is neither a slot nor a module.');
+    expect(read(apiOnlyRoot, [{ when: "framework=svelte", message: "m" }])).toThrow('rules[0].when: framework has no "svelte".');
+    expect(read(apiOnlyRoot, [{ when: "auth=custom", message: "m" }])).toThrow('rules[0].when: auth has no "custom".');
+    expect(read(apiOnlyRoot, [{ when: "framework", message: "m" }])).toThrow('rules[0].when cannot be read: "framework".');
+    expect(read(apiOnlyRoot, [{ when: "framework=none" }])).toThrow(/rules\[0\]\.message/);
   });
 
   it("offers none as a framework, then only the API it needs, and lists it in the help", () => {

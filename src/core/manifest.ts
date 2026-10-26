@@ -58,6 +58,25 @@ export interface TemplateSlot {
   siteConfig?: string;
   /** Workspace packages (name to directory) only this slot's apps use; left out when it is empty. */
   packages: Record<string, string>;
+  /** Starter paths only this slot's apps use, such as browser tests; left out when it is empty (schema 6). */
+  files?: string[];
+  /** Root package.json scripts only this slot's apps use; removed when it is empty (schema 6). */
+  scripts?: string[];
+  /**
+   * The slot whose package the root scripts filter on when this one is empty (schema 6): without
+   * a web app, `pnpm dev`, filtered on the web app's package, starts the API instead.
+   */
+  fallback?: string;
+}
+
+/**
+ * A selection the Starter refuses (schema 6). `when` is a condition on slots and modules, written
+ * as in `clubedge:if` markers, such as `framework=none && payments!=none`; `message` says why, and
+ * what to choose instead.
+ */
+export interface TemplateRule {
+  when: string;
+  message: string;
 }
 
 /**
@@ -157,6 +176,8 @@ export interface TemplateManifest {
   conditional: string[];
   /** Template files that should not be copied into generated projects. */
   exclude: string[];
+  /** Selections the Starter refuses, with the reason each gives (schema 6). */
+  rules?: TemplateRule[];
 }
 
 /** The schema version of a manifest file, checked against what this CLI reads. */

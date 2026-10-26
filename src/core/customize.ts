@@ -50,10 +50,20 @@ function recordStacks(stacks: Record<string, string>) {
   };
 }
 
-/** Root package.json scripts that module options set or that left-out options remove. */
+/**
+ * Root package.json scripts that module options set or that left-out options remove, and the
+ * package names the scripts filter on that change, from an empty slot's to its fallback's.
+ */
 export interface ScriptChanges {
   set: Record<string, string>;
   remove: string[];
+  rename?: Record<string, string>;
+}
+
+/** A command with one package name replaced where it stands on its own, as in `--filter=<name>`. */
+function renamePackage(command: string, from: string, to: string): string {
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return command.replace(new RegExp(`(^|[\\s='"])${escaped}(?=$|[\\s'"])`, "g"), `$1${to}`);
 }
 
 export function customizeRootManifest(
@@ -71,6 +81,11 @@ export function customizeRootManifest(
     for (const name of scripts.remove) delete manifest.scripts[name];
   }
   if (Object.keys(scripts.set).length) manifest.scripts = { ...manifest.scripts, ...scripts.set };
+  for (const [from, to] of Object.entries(scripts.rename ?? {})) {
+    for (const [name, command] of Object.entries<unknown>(manifest.scripts ?? {})) {
+      if (typeof command === "string") manifest.scripts[name] = renamePackage(command, from, to);
+    }
+  }
   // Advisories that only left-out stacks need are audited again; settings left empty go too.
   const auditConfig = manifest.pnpm?.auditConfig;
   if (droppedAdvisories.length && Array.isArray(auditConfig?.ignoreGhsas)) {
@@ -252,17 +267,22 @@ const MARKER = /^\s*(?:\/\/|#|%%|<!--|\{?\/\*)\s*clubedge:(if|end)\b\s*(.*?)\s*(
 // A single line kept only when its condition holds: "- Item <!-- clubedge:only auth=supabase -->".
 const LINE_MARKER = /\s*(?:\/\/|#|<!--|\{?\/\*)\s*clubedge:only\s+(.+?)\s*(?:-->|\*\/\}?)?\s*$/;
 
+/** The parts of a condition such as `framework=none && payments!=none`, as markers and rules write them. */
+export function conditionParts(expression: string, location: string): Array<{ key: string; equals: boolean; values: string[] }> {
+  return expression.split("&&").map((part) => {
+    const match = /^\s*([a-z][a-z0-9-]*)\s*(!?=)\s*([a-z0-9|-]+)\s*$/.exec(part);
+    if (!match) throw new ConditionalError(`${location}: cannot read the condition "${expression}".`);
+    return { key: match[1]!, equals: match[2] === "=", values: match[3]!.split("|") };
+  });
+}
+
 function evaluateCondition(expression: string, selection: Selection, location: string): boolean {
   // Maintainer-only sections of the Starter repository never reach a generated project.
   if (expression.trim() === "starter-repository") return false;
-  return expression.split("&&").every((part) => {
-    const match = /^\s*([a-z][a-z0-9-]*)\s*(!?=)\s*([a-z0-9|-]+)\s*$/.exec(part);
-    if (!match) throw new ConditionalError(`${location}: cannot read the condition "${expression}".`);
-    const [, key, operator, values] = match;
-    const selected = selection[key!];
+  return conditionParts(expression, location).every(({ key, equals, values }) => {
+    const selected = selection[key];
     if (selected === undefined) throw new ConditionalError(`${location}: unknown key "${key}".`);
-    const matches = values!.split("|").includes(selected);
-    return operator === "=" ? matches : !matches;
+    return values.includes(selected) === equals;
   });
 }
 

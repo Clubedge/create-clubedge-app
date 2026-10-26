@@ -25,10 +25,20 @@ A slot is a place for one app in generated projects. The Starter declares:
 
 A slot may also name `packages` only its apps use (the API contract, for example), left out
 when it is empty, and its own `siteConfig`, which the CLI names after the project like the
-framework's.
+framework's. From schema 6, a slot that can be left empty may also name:
+
+- `files`: Starter paths only its apps use, such as browser tests, left out when it is empty;
+- `scripts`: root `package.json` scripts only its apps use, removed when it is empty;
+- `fallback`: the slot whose package the root scripts filter on when it is empty. With
+  `"fallback": "api"` on the framework slot, `pnpm dev` (`turbo run dev --filter=@clubedge/web`)
+  starts the API in a project without a web app. Both slots name their `package`.
 
 A stack has one role, which puts it in one slot. A slot without a `default` is optional:
-`--api none` leaves it empty. The roles must fit together: a `frontend` calls an API, so it
+`--api none` leaves it empty. A slot with a `default` can be optional too, with
+`"optional": true` (schema 6): `--framework none` leaves the web app out of a project that is
+only an API and its mobile app. The project records `none` for that slot, so `add`, `remove`,
+and `upgrade` keep it empty instead of bringing the default back. A project needs a web app or
+an API. The roles must fit together: a `frontend` calls an API, so it
 needs an `api` stack, and a `fullstack` app has its own server, so it takes none. A `shell`
 packages a frontend's static build as a mobile app (Capacitor, for Android and iOS), so it
 needs a `frontend`, which still needs its API; a `fullstack` app renders its pages on its
@@ -39,6 +49,25 @@ for the slots in their order, offering only the stacks that fit the answers so f
 
 `clubedge:if` and `clubedge:only` conditions name a slot by its id, like a module:
 `shell!=none`, `mobile=expo`, or `framework=vite && shell=capacitor`.
+
+## Rules
+
+From schema 6, `clubedge.template.json` can list the selections the Starter refuses, each a
+condition written like a marker's, with the reason the CLI gives:
+
+```json
+"rules": [
+  {
+    "when": "framework=none && payments!=none",
+    "message": "Without a web app, payments have no pages to send users back to: choose --payments none, or a web app."
+  }
+]
+```
+
+A rule counts once every slot and module it names has a value, so prompts and `add` only offer
+what the rules allow given the answers so far, a default the rules refuse gives way to the first
+option they allow, and a requested option they refuse fails with the rule's message. The CLI
+refuses a rule that names a slot, stack, module, or option the Starter does not have.
 
 ## A stack descriptor
 
@@ -154,7 +183,8 @@ publishes the images to GitHub's container registry. A full-stack stack needs no
 facts for Docker: its app is the root Dockerfile's image, the `web` service on port 3000. For
 Railway, it creates a public frontend service and a private API service, configures their health
 checks and API migrations, and connects them over Railway's private network. The generated
-`.railway/railway.ts` is the source of truth for those service settings.
+`.railway/railway.ts` is the source of truth for those service settings. Without a web app, the
+API is the public service on both: Caddy serves it, and Railway gives it the public domain.
 
 ## Adding a stack
 
@@ -178,7 +208,8 @@ failing on an unknown role. Schema 4 manifests are read as before, without the r
 Schema 6 is schema 5 with the `mobile` role, the same way: a Starter that offers a mobile app
 declares schema 6, a CLI that predates the role refuses it, and schema 4 and 5 manifests are read
 as before, without it. Schema 6 also adds a stack's `auditIgnores`, which an older CLI would
-leave in every project.
+leave in every project, a slot's `optional`, which an older CLI would ignore, bringing the
+default back, a slot's `files`, `scripts`, and `fallback`, and the template's `rules`.
 
 ## Older Starters
 

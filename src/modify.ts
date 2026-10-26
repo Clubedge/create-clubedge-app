@@ -100,7 +100,7 @@ async function assertSafeToChange(project: Project, args: CliArgs, interactive: 
 function available(manifest: TemplateManifest, project: Project, moduleId: string, optionId: string) {
   const option = manifest.modules[moduleId]!.options[optionId]!;
   return (
-    moduleChoices(manifest, selectStacks(manifest, project.stacks), moduleId).includes(optionId) &&
+    moduleChoices(manifest, selectStacks(manifest, project.stacks), moduleId, project.modules).includes(optionId) &&
     Object.entries(option.requires).every(([other, allowed]) => allowed.includes(project.modules[other] ?? ""))
   );
 }

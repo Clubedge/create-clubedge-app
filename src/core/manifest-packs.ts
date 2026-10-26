@@ -14,6 +14,7 @@
 // Dockerfile. Schema 6 also lets a stack list the advisories `pnpm audit` skips for its
 // dependencies (`auditIgnores`), so projects without the stack stop skipping them.
 import { posix } from "node:path";
+import { conditionParts } from "./customize.js";
 import {
   fields,
   ID,
@@ -27,7 +28,7 @@ import {
   stackRoles,
   type StackRole,
 } from "./manifest-fields.js";
-import type { StackDeployment, TemplateManifest, TemplateModule, TemplateSlot, TemplateStack, Toolchain } from "./manifest.js";
+import type { StackDeployment, TemplateManifest, TemplateModule, TemplateRule, TemplateSlot, TemplateStack, Toolchain } from "./manifest.js";
 
 export const STACKS_DIRECTORY = "apps";
 export const STACK_FILE = "clubedge.stack.json";
@@ -56,6 +57,7 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
     slots[fields(MANIFEST_FILE).requireId(id, "slot")] = parseSlot(id, entry, knownRoles, data.schemaVersion as number);
   }
   if (Object.keys(slots).length === 0) fail("slots must describe at least one slot.");
+  checkFallbacks(slots);
 
   const modules: Record<string, TemplateModule> = {};
   for (const id of data.modules as string[]) {
@@ -99,6 +101,7 @@ export function parsePackManifest(data: Record<string, unknown>, packs: Packs): 
     conditional: [...new Set(conditional)],
     // The descriptors describe the Starter; generated projects never contain them.
     exclude: [...optionalStringArray(data, "exclude"), MODULES_DIRECTORY, ...descriptorFiles],
+    ...(data.rules !== undefined ? { rules: parseRules(data, slots, stacks, modules) } : {}),
   };
 }
 
@@ -119,6 +122,14 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[],
   if (slot.optional !== undefined && schemaVersion < 6) read.fail(`slots.${id}.optional needs template schema 6.`);
   if (slot.optional !== undefined && typeof slot.optional !== "boolean") read.fail(`slots.${id}.optional must be true or false.`);
   const optional = slot.optional === true && defaultStack !== undefined;
+  // Schema 6: the files and root scripts only the slot's apps use, left out when it is empty, and
+  // the slot whose package the root scripts filter on instead.
+  for (const field of ["files", "scripts", "fallback"]) {
+    if (slot[field] !== undefined && schemaVersion < 6) read.fail(`slots.${id}.${field} needs template schema 6.`);
+  }
+  const files = read.optionalStringArray(slot, "files");
+  const scripts = read.optionalStringArray(slot, "scripts");
+  const fallback = read.optionalString(slot, "fallback");
   // A Dockerfile is for apps that run a server; a slot that only takes shells or mobile apps has none.
   const servers = (roles as StackRole[]).some(runsServer);
   return {
@@ -136,7 +147,62 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[],
     ...(optional ? { optional: true as const } : {}),
     ...(siteConfig ? { siteConfig } : {}),
     packages: read.optionalStringRecord(slot, "packages"),
+    ...(files.length ? { files } : {}),
+    ...(scripts.length ? { scripts } : {}),
+    ...(fallback ? { fallback } : {}),
   };
+}
+
+/** A slot's fallback names another slot, and both name their packages, which root scripts filter on. */
+function checkFallbacks(slots: Record<string, TemplateSlot>) {
+  for (const [id, slot] of Object.entries(slots)) {
+    if (slot.fallback === undefined) continue;
+    const other = slots[slot.fallback];
+    if (!other || slot.fallback === id) throw new ManifestError(`${MANIFEST_FILE}: slots.${id}.fallback must name another slot.`);
+    if (!slot.package || !other.package) {
+      throw new ManifestError(`${MANIFEST_FILE}: slots.${id}.fallback needs both slots to name their package.`);
+    }
+  }
+}
+
+/**
+ * The selections the Starter refuses (schema 6), each a condition on slots and modules, as in
+ * markers, with the reason it gives. The conditions name only slots, stacks, modules, and options
+ * the Starter has.
+ */
+function parseRules(
+  data: Record<string, unknown>,
+  slots: Record<string, TemplateSlot>,
+  stacks: Record<string, TemplateStack>,
+  modules: Record<string, TemplateModule>,
+): TemplateRule[] {
+  const { fail } = fields(MANIFEST_FILE);
+  if (data.rules === undefined) return [];
+  if ((data.schemaVersion as number) < 6) fail("rules needs template schema 6.");
+  if (!Array.isArray(data.rules)) fail("rules must list the selections the Starter refuses.");
+  return (data.rules as unknown[]).map((entry, index) => {
+    const where = `rules[${index}]`;
+    const read = fields(MANIFEST_FILE, `${where}.`);
+    if (!isRecord(entry)) read.fail(`${where} must be an object.`);
+    const rule = { when: read.requireString(entry as Record<string, unknown>, "when"), message: read.requireString(entry as Record<string, unknown>, "message") };
+    let parts: ReturnType<typeof conditionParts>;
+    try {
+      parts = conditionParts(rule.when, `${where}.when`);
+    } catch {
+      read.fail(`${where}.when cannot be read: "${rule.when}".`);
+    }
+    for (const { key, values } of parts!) {
+      const known = slots[key]
+        ? [...Object.keys(stacks).filter((stack) => stacks[stack]!.slot === key), "none"]
+        : modules[key]
+          ? Object.keys(modules[key]!.options)
+          : null;
+      if (!known) read.fail(`${where}.when names "${key}", which is neither a slot nor a module.`);
+      const unknown = values.find((value) => !known!.includes(value));
+      if (unknown !== undefined) read.fail(`${where}.when: ${key} has no "${unknown}".`);
+    }
+    return rule;
+  });
 }
 
 interface StackFiles {

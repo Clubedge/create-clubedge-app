@@ -857,7 +857,13 @@ describe("a project without a web app", () => {
   });
 
   it("leaves out the web app's own files and scripts, and runs the API's scripts in their place", () => {
-    const frameworkSlot = { ...apiOnlyRoot.slots.framework, files: ["e2e", "playwright.config.ts"], scripts: ["test:e2e"], fallback: "api" };
+    const frameworkSlot = {
+      ...apiOnlyRoot.slots.framework,
+      files: ["e2e", "playwright.config.ts"],
+      filesWhenEmpty: ["apps/expo/src/app/reset-password.tsx"],
+      scripts: ["test:e2e"],
+      fallback: "api",
+    };
     const manifest = parseTemplateManifest(JSON.stringify({ ...apiOnlyRoot, slots: { ...apiOnlyRoot.slots, framework: frameworkSlot } }), mobilePacks);
     const plan = (selection: Record<string, string>) =>
       createPlan({
@@ -866,7 +872,14 @@ describe("a project without a web app", () => {
         source: {
           repository: "Clubedge/clubedge-starter",
           ref: "v1.0.0",
-          files: ["package.json", "playwright.config.ts", "e2e/app.spec.ts", "apps/vite/package.json", "apps/api-python/pyproject.toml"].map((path) => ({ from: path, to: path })),
+          files: [
+            "package.json",
+            "playwright.config.ts",
+            "e2e/app.spec.ts",
+            "apps/vite/package.json",
+            "apps/api-python/pyproject.toml",
+            "apps/expo/src/app/reset-password.tsx",
+          ].map((path) => ({ from: path, to: path })),
         },
         manifest,
         stacks: selection,
@@ -883,7 +896,9 @@ describe("a project without a web app", () => {
     const rootScripts = (selection: Record<string, string>) =>
       JSON.parse(plan(selection).edits.filter(({ path }) => path === "package.json").reduce((text, { apply }) => apply(text), JSON.stringify({ scripts }))).scripts;
 
-    expect(plan(apiOnly).files.map(({ to }) => to)).toEqual(["package.json", "apps/api/pyproject.toml"]);
+    // The mobile app's reset screen opens the emailed links a website would otherwise open.
+    expect(plan(apiOnly).files.map(({ to }) => to)).toEqual(["package.json", "apps/api/pyproject.toml", "apps/mobile/src/app/reset-password.tsx"]);
+    expect(plan({ ...apiOnly, framework: "vite" }).files.map(({ to }) => to)).not.toContain("apps/mobile/src/app/reset-password.tsx");
     expect(rootScripts(apiOnly)).toEqual({
       dev: "turbo run dev --filter=@clubedge/api --filter=@clubedge/local-db",
       "check:env": "pnpm --filter @clubedge/api check:env",

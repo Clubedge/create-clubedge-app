@@ -362,10 +362,13 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
       if (manifest.stacks[stacks[slotId] ?? ""]) usedPackages.set(name, directory);
     }
   }
-  // An empty slot's own files and root scripts are left out (schema 6).
+  // An empty slot's own files and root scripts are left out, and so are the files a filled slot
+  // only uses when it is empty (schema 6).
   const filled = (slotId: string) => Boolean(manifest.stacks[stacks[slotId] ?? ""]);
   const emptySlots = Object.entries(manifest.slots).filter(([slotId]) => !filled(slotId));
-  const emptySlotFiles = emptySlots.flatMap(([, slot]) => slot.files ?? []);
+  const unusedSlotFiles = Object.entries(manifest.slots).flatMap(([slotId, slot]) =>
+    filled(slotId) ? (slot.filesWhenEmpty ?? []) : (slot.files ?? []),
+  );
 
   // Selected options set their scripts; scripts only left-out options define are removed.
   const scripts: ScriptChanges = { set: {}, remove: [] };
@@ -403,7 +406,7 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
     replacements,
     variantSources,
     isDroppedOwnedPath: (path: string) =>
-      emptySlotFiles.some((owned) => isWithin(path, owned)) ||
+      unusedSlotFiles.some((owned) => isWithin(path, owned)) ||
       ([...ownedPaths].some((owned) => isWithin(path, owned)) && ![...keptPaths].some((kept) => isWithin(path, kept))),
   };
 }

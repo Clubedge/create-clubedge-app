@@ -122,12 +122,13 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[],
   if (slot.optional !== undefined && schemaVersion < 6) read.fail(`slots.${id}.optional needs template schema 6.`);
   if (slot.optional !== undefined && typeof slot.optional !== "boolean") read.fail(`slots.${id}.optional must be true or false.`);
   const optional = slot.optional === true && defaultStack !== undefined;
-  // Schema 6: the files and root scripts only the slot's apps use, left out when it is empty, and
-  // the slot whose package the root scripts filter on instead.
-  for (const field of ["files", "scripts", "fallback"]) {
+  // Schema 6: the files and root scripts only the slot's apps use, left out when it is empty, the
+  // files only used when it is empty, and the slot whose package the root scripts filter on then.
+  for (const field of ["files", "filesWhenEmpty", "scripts", "fallback"]) {
     if (slot[field] !== undefined && schemaVersion < 6) read.fail(`slots.${id}.${field} needs template schema 6.`);
   }
   const files = read.optionalStringArray(slot, "files");
+  const filesWhenEmpty = read.optionalStringArray(slot, "filesWhenEmpty");
   const scripts = read.optionalStringArray(slot, "scripts");
   const fallback = read.optionalString(slot, "fallback");
   // A Dockerfile is for apps that run a server; a slot that only takes shells or mobile apps has none.
@@ -148,6 +149,7 @@ function parseSlot(id: string, entry: unknown, knownRoles: readonly StackRole[],
     ...(siteConfig ? { siteConfig } : {}),
     packages: read.optionalStringRecord(slot, "packages"),
     ...(files.length ? { files } : {}),
+    ...(filesWhenEmpty.length ? { filesWhenEmpty } : {}),
     ...(scripts.length ? { scripts } : {}),
     ...(fallback ? { fallback } : {}),
   };

@@ -28,6 +28,8 @@ when it is empty, and its own `siteConfig`, which the CLI names after the projec
 framework's. From schema 6, a slot that can be left empty may also name:
 
 - `files`: Starter paths only its apps use, such as browser tests, left out when it is empty;
+- `filesWhenEmpty`: Starter paths only used when it is empty, left out when it is filled, such
+  as a mobile app's screen for the emailed links a website would otherwise open;
 - `scripts`: root `package.json` scripts only its apps use, removed when it is empty;
 - `fallback`: the slot whose package the root scripts filter on when it is empty. With
   `"fallback": "api"` on the framework slot, `pnpm dev` (`turbo run dev --filter=@clubedge/web`)

@@ -60,6 +60,11 @@ export interface TemplateSlot {
   packages: Record<string, string>;
   /** Starter paths only this slot's apps use, such as browser tests; left out when it is empty (schema 6). */
   files?: string[];
+  /**
+   * Starter paths only used when this slot is empty, such as a mobile app's screen for the links
+   * a website would otherwise open; left out when it is filled (schema 6).
+   */
+  filesWhenEmpty?: string[];
   /** Root package.json scripts only this slot's apps use; removed when it is empty (schema 6). */
   scripts?: string[];
   /**

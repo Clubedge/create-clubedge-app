@@ -528,7 +528,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.41.0 | v0.26.0 | A conflicted package.json no longer breaks later commands (`--detailed-exit-code`); doctor finds conflict markers; projects own their version and README |
 | 0.42.0 | v0.27.0 | Starter v0.27.0: mobile apps with Capacitor (`--shell capacitor`, template schema 5); client addresses per platform; Docker Compose behind Caddy, with images on GHCR |
 | 0.43.0 | v0.27.1 | Upgrades keep each app's own version; add, remove, and upgrade that change nothing skip the Starter download |
-| 0.44.0 | v0.28.0 | Wait for the billing portal's subscription, not its headings; The mobile role for native apps (template schema 6); Stacks list the advisories pnpm audit skips for their dependencies; Projects without a website (--framework none); Default to Starter v0.28.0 |
+| 0.44.0 | v0.28.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
 
 ## Community
 

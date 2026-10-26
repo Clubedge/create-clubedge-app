@@ -2,6 +2,22 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.44.0
+
+- **The native app with Expo**: default to Starter `v0.28.0` (#151). `--mobile expo` adds `apps/mobile`, an Android and iOS app with its own native screens, which calls the project's API (#147):
+  - Template schema 6 adds the `mobile` role: an app with its own screens that calls an API. Like a shell, it runs no server, so it has no Dockerfile or deployment, and `deploy` leaves it out. Older CLIs refuse a schema 6 Starter and ask for an update.
+  - It needs an API, `--api hono` or `--api fastapi`: with React + Vite, or without a website. Next.js and TanStack Start have no separate API for it to call, so they refuse `--mobile expo`. It can sit next to the Capacitor app (`--shell capacitor`).
+  - A mobile stack lists the module options it implements, and the others are refused with it: Expo signs in with Better Auth, Supabase, or nothing.
+  - Interactive runs ask about it after the framework and the API.
+  - The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.28.0) cover the app's screens, sign-in, update notice, and builds.
+- **Projects without a website** (#148): `--framework none --api hono` (or `fastapi`), with or without `--mobile expo`, creates an API, and the native app that calls it directly:
+  - Schema 6 slots can be optional. The project records `framework: none`, so `add`, `remove`, and `upgrade` keep it without a web app.
+  - A slot names the files and root scripts only its apps use, left out when it is empty, such as the browser tests, and the slot whose package the root scripts use instead, so `pnpm dev` starts the API.
+  - Templates list the selections they refuse, with the reason (`rules`). Prompts and `add` offer only what the rules allow, and a refused option fails with the reason. Without a website, the Starter refuses payments, Inngest, FastAPI with Better Auth, and deploy targets other than Docker and Railway.
+  - `deploy` publishes the API itself: as the public app behind Caddy with Docker Compose, or as one public service on Railway, with Better Auth's URL and secret. Vercel, Netlify, Fly.io, and Render deploy a web app, so they refuse a project without one, and `deploy --preview` refuses it with the Railway commands for a preview by hand.
+- **Audit exceptions per stack** (#150): a stack lists the advisories `pnpm audit` skips because of its dependencies (`auditIgnores`), and projects without the stack audit them again. The Starter's Expo stack skips two in Expo's development CLI that have no usable fix.
+- The showcase waits for the billing portal's subscription before recording it, so its video no longer ends on a spinner (#146).
+
 ## 0.43.1
 
 - **`try` shows Railway's reason when Railway refuses a VM** (#144):

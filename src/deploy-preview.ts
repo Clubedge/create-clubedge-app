@@ -58,8 +58,15 @@ async function migrate(root: string, branch: NeonBranch) {
 }
 
 export async function deployPreview(args: CliArgs, project: Project, cli: string, envFile: Record<string, string>): Promise<void> {
-  // A preview is one service named after the package; a frontend and an API are two.
+  // A preview is one service named after the package; a frontend and an API are two, and an API
+  // without a web app is named after its service.
   const separate = Object.values(project.services).filter(({ role }) => role !== "fullstack");
+  if (separate.length === 1) {
+    const service = serviceName(`${serviceName(project.identity.packageName)}-${separate[0]!.id}`);
+    throw new UsageError(
+      `deploy --preview works with a web app for now, and this project runs only its API (${service}). Deploy production with \`${cli} deploy\`; for a preview on Railway, copy production with \`railway environment new <name> --duplicate production\`, then run \`railway up --service ${service} --environment <name>\`.`,
+    );
+  }
   if (separate.length > 1) {
     const base = serviceName(project.identity.packageName);
     const services = separate.map(({ id }) => serviceName(`${base}-${id}`)).join(" and ");

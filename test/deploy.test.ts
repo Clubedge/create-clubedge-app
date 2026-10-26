@@ -25,6 +25,7 @@ import {
   parseRedisUrl,
   parseRailwayDomain,
   parseVariables,
+  planApiAlone,
   planServicePair,
   planVariables,
   railwayCliVersion,
@@ -391,6 +392,40 @@ describe("the workflow that publishes the images", () => {
   });
 });
 
+describe("Railway variables for an API without a web app", () => {
+  const alone = {
+    modules: { auth: "better-auth", cache: "memory" },
+    keys: ["HOST", "PORT", "DATABASE_URL", "BETTER_AUTH_URL"],
+    url: "https://notes-api.up.railway.app",
+    existing: {},
+    envFile: { BETTER_AUTH_URL: "http://localhost:3001" },
+    secret: () => "s3cret",
+    databases: { DATABASE_URL: "${{Postgres.DATABASE_URL}}" },
+    port: 3001,
+    clientAddress: clientAddresses.railway,
+  };
+
+  it("runs Better Auth in the public API, at the API's own address", () => {
+    const plan = planApiAlone(alone);
+    expect(plan.set).toMatchObject({
+      PORT: "3001",
+      DATABASE_URL: "${{Postgres.DATABASE_URL}}",
+      BETTER_AUTH_URL: "https://notes-api.up.railway.app",
+      BETTER_AUTH_SECRET: "s3cret",
+      CLIENT_IP_HEADER: "x-real-ip",
+    });
+    // The image sets HOST.
+    expect(plan.unset).toEqual([]);
+  });
+
+  it("keeps a public BETTER_AUTH_URL from the env file, and the service's secret", () => {
+    const plan = planApiAlone({ ...alone, envFile: { BETTER_AUTH_URL: "https://api.example.com" }, existing: { BETTER_AUTH_SECRET: "kept" } });
+    expect(plan.set.BETTER_AUTH_URL).toBe("https://api.example.com");
+    expect(plan.set).not.toHaveProperty("BETTER_AUTH_SECRET");
+    expect(planApiAlone({ ...alone, modules: { auth: "supabase" } }).set).not.toHaveProperty("BETTER_AUTH_SECRET");
+  });
+});
+
 describe("Railway variables for a frontend and an API", () => {
   const apiKeys = ["HOST", "PORT", "FRONTEND_URL", "DATABASE_URL", "DATABASE_URL_DIRECT", "BETTER_AUTH_URL"];
   const pair = {
@@ -599,6 +634,17 @@ describe("Railway configuration as code", () => {
     // Variables stay with deploy and the dashboard; no region, so Railway's default applies.
     expect(source).toContain("variables: { managed: false }");
     expect(source).not.toContain("replicas");
+  });
+
+  it("builds an API without a web app from its own Dockerfile, as the one service", () => {
+    const source = railwayIacSource("edge-notes", {
+      api: { id: "hono", role: "api", app: "apps/api", dockerfile: "apps/api/Dockerfile", port: 3001, healthPath: "/api/health", platforms: ["railway"] },
+    });
+    expect(source).toContain('const api = service("edge-notes-hono", {');
+    expect(source).toContain('dockerfilePath: "apps/api/Dockerfile"');
+    expect(source).toContain('preDeploy: "node /app/migrate.mjs"');
+    expect(source).toContain("resources: [api]");
+    expect(source).not.toContain("API_URL");
   });
 
   it("connects the frontend to the API by stack role, not by its slot name", () => {

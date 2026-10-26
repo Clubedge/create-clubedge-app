@@ -232,6 +232,21 @@ export function planServicePair(input: {
 }
 
 /**
+ * The variables of an API deployed without a web app, as the public service its mobile app calls.
+ * It gets what planVariables provides, with the platform's client-address settings. With Better
+ * Auth, which then runs in the API, BETTER_AUTH_URL is the API's public URL, unless the env file
+ * names another public one, and the secret is generated unless the service already has one.
+ */
+export function planApiAlone(input: Parameters<typeof planVariables>[0]): VariablePlan {
+  const plan = planVariables(input);
+  const configured = input.envFile.BETTER_AUTH_URL;
+  if (input.modules.auth === "better-auth") plan.set.BETTER_AUTH_URL = configured && !isLocalUrl(configured) ? configured : input.url;
+  // The image listens on every interface: its Dockerfile sets HOST.
+  plan.unset = plan.unset.filter((key) => plan.set[key] === undefined && key !== "HOST");
+  return plan;
+}
+
+/**
  * DATABASE_URL_DIRECT for a database hosted elsewhere: the env file's, or for a pooled Neon URL the
  * same URL without -pooler. Never next to the platform's own database (no external URL), where it
  * would send migrations to another database.
@@ -357,7 +372,8 @@ export const railwayIacPath = ".railway/railway.ts";
  * the variables stay managed by `deploy` and the dashboard, and the region is Railway's default.
  */
 export function railwayIacSource(service: string, services?: Record<string, ProjectService>): string {
-  if (services && Object.keys(services).length > 1) {
+  // A frontend and its API, or an API without a web app: each app builds its own Dockerfile.
+  if (services && Object.values(services).some(({ role }) => role !== "fullstack")) {
     const identifier = (slot: string) => slot.replace(/[^a-zA-Z0-9_$]/g, "_");
     const apiEntry = Object.entries(services).find(([, item]) => item.role === "api");
     const api = apiEntry?.[1];
@@ -742,10 +758,18 @@ export const fullstackService: ProjectService = {
   platforms: ["docker"],
 };
 
-/** The service the public reaches: a frontend, whose API stays private, else the full-stack app. */
+/**
+ * The service the public reaches: a frontend, whose API stays private, else the full-stack app,
+ * else an API without a web app, which its mobile app calls directly.
+ */
 export function publicService(services: Record<string, ProjectService>): ProjectService {
   const apps = Object.values(services);
-  return apps.find(({ role }) => role === "frontend") ?? apps.find(({ role }) => role === "fullstack") ?? fullstackService;
+  return (
+    apps.find(({ role }) => role === "frontend") ??
+    apps.find(({ role }) => role === "fullstack") ??
+    apps.find(({ role }) => role === "api") ??
+    fullstackService
+  );
 }
 
 /**
@@ -763,8 +787,8 @@ export function buildArgumentKeys(service: ProjectService, keys: string[]): stri
  * ports: it serves DOMAIN over HTTPS, with certificates it obtains and renews. `frontendKeys` are
  * the variables the public app's env example lists: the values its image compiles in become build
  * arguments, and a frontend's others runtime variables, such as Better Auth's when the frontend's
- * server runs auth. Compose reads their values from its --env-file; the public URL defaults to
- * https://DOMAIN.
+ * server runs auth. For an API without a web app, the public app, they are the API's. Compose reads
+ * their values from its --env-file; the public URL defaults to https://DOMAIN.
  */
 export function dockerComposeSource(project: string, services: Record<string, ProjectService>, frontendKeys: string[] = []): string {
   const apps = Object.values(services);
@@ -778,23 +802,28 @@ export function dockerComposeSource(project: string, services: Record<string, Pr
   // client-address settings default to Caddy's.
   const runtimeKeys = frontendKeys.filter((key) => !key.startsWith("VITE_") && !["API_URL", "PORT", ...clientAddressKeys].includes(key));
   // Better Auth runs in the frontend's server: the API asks it for the session over the Compose network.
-  const authUrl = api && frontendKeys.includes("BETTER_AUTH_URL") ? `http://${web.id}:${web.port}` : null;
+  const authUrl = api && api !== web && frontendKeys.includes("BETTER_AUTH_URL") ? `http://${web.id}:${web.port}` : null;
 
   const environment = (service: ProjectService): string[] => {
+    // A frontend has no env_file: CLIENT_IP_HEADER from the env file needs a line of its own.
+    const address = [
+      "      # Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.",
+      ...(service.role === "frontend" ? clientAddressKeys : Object.keys(behindCaddy)).map((key) => `      ${key}: ${fromEnv(key, behindCaddy[key])}`),
+    ];
     if (service.role === "api") {
+      // The API listens on every interface, whatever HOST the env file has from development.
+      if (service === web) {
+        // Without a web app, the API is the public app, and runs Better Auth itself.
+        const auth = frontendKeys.includes("BETTER_AUTH_URL") ? [`      BETTER_AUTH_URL: ${fromEnv("BETTER_AUTH_URL", publicUrl)}`] : [];
+        return ["      HOST: 0.0.0.0", ...address, ...auth];
+      }
       return [
-        // The API listens on every interface, whatever HOST the env file has from development.
         "      HOST: 0.0.0.0",
         `      # Reached only through ${web.id}, which passes on the client's address as the one X-Forwarded-For entry.`,
         ...clientAddressKeys.map((key) => `      ${key}: ${JSON.stringify(behindWeb[key] ?? "")}`),
         ...(authUrl ? [`      BETTER_AUTH_URL: ${authUrl}`] : []),
       ];
     }
-    // A frontend has no env_file: CLIENT_IP_HEADER from the env file needs a line of its own.
-    const address = [
-      "      # Caddy, the one proxy in front, sets X-Forwarded-For to the client's address.",
-      ...(service.role === "frontend" ? clientAddressKeys : Object.keys(behindCaddy)).map((key) => `      ${key}: ${fromEnv(key, behindCaddy[key])}`),
-    ];
     if (service.role !== "frontend") return [...appUrlKeys.map((key) => `      ${key}: ${fromEnv(key, publicUrl)}`), ...address];
     return [
       ...(api ? [`      API_URL: http://${api.id}:${api.port}`] : []),

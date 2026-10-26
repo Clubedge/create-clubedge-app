@@ -21,6 +21,10 @@ export const SUPPORTED_SCHEMA_VERSION = 6;
 
 export { stackRoles, type StackRole };
 
+/** Whether a slot can be left empty (--<slot> none): it has no default, or says it is optional. */
+export const isOptionalSlot = (slot: Pick<TemplateSlot, "default" | "optional">) =>
+  slot.default === undefined || slot.optional === true;
+
 /**
  * A place for one app in generated projects, such as the web app in apps/web. The selected
  * stack's app, environment example, and Dockerfile move here. Slots without a default are
@@ -43,12 +47,41 @@ export interface TemplateSlot {
   /** The stack used when none is requested; absent for optional slots. */
   default?: string;
   /**
+   * A slot with a default that can still be left empty with --<slot> none (schema 6), such as
+   * the framework slot of a project that is only an API and a mobile app.
+   */
+  optional?: true;
+  /**
    * The app's own site config in generated projects, named like the project, for slots other
    * than the framework slot (which uses the manifest's siteConfig).
    */
   siteConfig?: string;
   /** Workspace packages (name to directory) only this slot's apps use; left out when it is empty. */
   packages: Record<string, string>;
+  /** Starter paths only this slot's apps use, such as browser tests; left out when it is empty (schema 6). */
+  files?: string[];
+  /**
+   * Starter paths only used when this slot is empty, such as a mobile app's screen for the links
+   * a website would otherwise open; left out when it is filled (schema 6).
+   */
+  filesWhenEmpty?: string[];
+  /** Root package.json scripts only this slot's apps use; removed when it is empty (schema 6). */
+  scripts?: string[];
+  /**
+   * The slot whose package the root scripts filter on when this one is empty (schema 6): without
+   * a web app, `pnpm dev`, filtered on the web app's package, starts the API instead.
+   */
+  fallback?: string;
+}
+
+/**
+ * A selection the Starter refuses (schema 6). `when` is a condition on slots and modules, written
+ * as in `clubedge:if` markers, such as `framework=none && payments!=none`; `message` says why, and
+ * what to choose instead.
+ */
+export interface TemplateRule {
+  when: string;
+  message: string;
 }
 
 /**
@@ -148,6 +181,8 @@ export interface TemplateManifest {
   conditional: string[];
   /** Template files that should not be copied into generated projects. */
   exclude: string[];
+  /** Selections the Starter refuses, with the reason each gives (schema 6). */
+  rules?: TemplateRule[];
 }
 
 /** The schema version of a manifest file, checked against what this CLI reads. */

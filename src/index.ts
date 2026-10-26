@@ -104,7 +104,7 @@ async function chooseModules(
   const chosen = { ...requested };
   for (const [id, module] of Object.entries(manifest.modules)) {
     if (chosen[id] !== undefined) continue;
-    const implemented = moduleChoices(manifest, stacks, id);
+    const implemented = moduleChoices(manifest, stacks, id, chosen);
     const available = Object.entries(module.options).filter(([optionId, option]) =>
       implemented.includes(optionId) &&
       Object.entries(option.requires).every(([other, allowed]) => {

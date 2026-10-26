@@ -1,5 +1,5 @@
 import process from "node:process";
-import type { TemplateManifest } from "../core/manifest.js";
+import { isOptionalSlot, type TemplateManifest } from "../core/manifest.js";
 import { NO_STACK, stacksIn } from "../core/plan.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "../package-info.js";
 
@@ -86,7 +86,7 @@ export function selectionHelp(manifest: TemplateManifest | null): string {
   }
   return [
     ...Object.entries(manifest.slots).flatMap(([id, slot]) => {
-      const stacks = [...stacksIn(manifest, id), ...(slot.default === undefined ? [NO_STACK] : [])];
+      const stacks = [...stacksIn(manifest, id), ...(isOptionalSlot(slot) ? [NO_STACK] : [])];
       return stacks.length > 1 ? [line(`--${id} <id>`, `${slot.name}: ${choices(stacks, slot.default ?? NO_STACK)}`)] : [];
     }),
     ...Object.entries(manifest.modules).map(([id, module]) =>

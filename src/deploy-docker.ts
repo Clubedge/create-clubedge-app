@@ -34,12 +34,16 @@ export async function deployWithDocker(args: CliArgs, project: Project, cli: str
     throw new UsageError(`The selected stacks do not declare Docker deployment support for ${unsupported.map(([slot]) => slot).join(", ")}.`);
   }
   // A full-stack framework's stack records no service: the app is the root Dockerfile's image.
+  // Without a web app, the API is the project's one service.
+  const apiOnly = project.stacks[FRAMEWORK_SLOT] === "none";
   const fullstack = Object.values(project.services).find(({ role }) => role === "fullstack") ?? fullstackService;
-  const services = separate.length > 1 ? Object.fromEntries(separate) : { [FRAMEWORK_SLOT]: fullstack };
+  const services = separate.length > 1 || apiOnly ? Object.fromEntries(separate) : { [FRAMEWORK_SLOT]: fullstack };
   const apps = Object.values(services);
   const api = apps.find(({ role }) => role === "api");
   const web = publicService(services);
-  const keys = exampleKeys(await readFile(join(root, ".env.example"), "utf8").catch(() => ""));
+  // The public app's variables: the frontend's or full-stack app's example, else the API's own.
+  const publicExample = apiOnly && api ? `${api.app}/.env.example` : ".env.example";
+  const keys = exampleKeys(await readFile(join(root, publicExample), "utf8").catch(() => ""));
   const files: Array<[string, string]> = [
     [composePath, dockerComposeSource(serviceName(project.identity.packageName), services, keys)],
     ["Caddyfile", caddyfileSource(services)],
@@ -57,7 +61,7 @@ export async function deployWithDocker(args: CliArgs, project: Project, cli: str
   if (args.dryRun) {
     log.message(
       [
-        `• ${composePath}: ${apps.map((service) => `${service.id} (${service.dockerfile}, port ${service.port})`).join(" and ")}${api ? `; ${web.id} proxies /api to ${api.id} over the Compose network` : ""}`,
+        `• ${composePath}: ${apps.map((service) => `${service.id} (${service.dockerfile}, port ${service.port})`).join(" and ")}${api && api !== web ? `; ${web.id} proxies /api to ${api.id} over the Compose network` : ""}`,
         `• Caddy in front, the only service with published ports (80 and 443): it serves https://<DOMAIN> and renews its certificates`,
         `• Caddyfile: every request for DOMAIN goes to ${web.id}:${web.port}`,
         `• ${releaseImagesPath}: each published GitHub release builds the images for linux/amd64 and linux/arm64 into ${registry}-<service>`,
@@ -87,7 +91,7 @@ export async function deployWithDocker(args: CliArgs, project: Project, cli: str
     log.warn(`Kept your ${changed.join(" and ")}, which ${changed.length === 1 ? "differs" : "differ"} from what deploy writes. Move ${changed.length === 1 ? "it" : "them"} away and run deploy again for the generated version.`);
   }
 
-  const examples = [".env.example", ...apps.filter(({ role }) => role === "api").map(({ app }) => `${app}/.env.example`)];
+  const examples = [...(apiOnly ? [] : [".env.example"]), ...apps.filter(({ role }) => role === "api").map(({ app }) => `${app}/.env.example`)];
   const compiled = apps.flatMap((service) => buildArgumentKeys(service, keys));
   // The service that owns the database runs the migrations: the API, else the full-stack app.
   const migrator = api ?? web;

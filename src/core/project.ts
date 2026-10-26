@@ -5,8 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathExists } from "../utils/fs.js";
 import { displayNameFromPackageName } from "../utils/names.js";
 import { recordedStacks, type ProjectIdentity } from "./customize.js";
-import type { TemplateManifest } from "./manifest.js";
-import type { ProjectService } from "./manifest.js";
+import { FRAMEWORK_SLOT, type ProjectService, type TemplateManifest } from "./manifest.js";
 import { countConflicts, INCOMING_DIR, type FileMap } from "./merge.js";
 import { createPlan } from "./plan.js";
 import type { TemplateSource } from "./source.js";
@@ -118,7 +117,7 @@ export interface ProjectEnvFile {
   local: string;
 }
 
-/** The web app's: every project has it, with its example at the root. */
+/** The web app's, with its example at the root: every project has one, unless it has no web app. */
 const webEnvFile: ProjectEnvFile = { example: ".env.example", local: "apps/web/.env.local" };
 const appEnvFile = (app: string): ProjectEnvFile => ({ example: `${app}/.env.example`, local: `${app}/.env.local` });
 
@@ -132,7 +131,9 @@ function apiDirectory(project: Pick<Project, "services" | "stacks">): string | n
 /** Each app's env files: the web app's, then the API's, which keeps both in its own folder. */
 export function projectEnvFiles(project: Pick<Project, "services" | "stacks">): ProjectEnvFile[] {
   const api = apiDirectory(project);
-  return [webEnvFile, ...(api ? [appEnvFile(api)] : [])];
+  // A project recorded with framework "none" is only an API (and its mobile app).
+  const web = project.stacks[FRAMEWORK_SLOT] !== "none";
+  return [...(web ? [webEnvFile] : []), ...(api ? [appEnvFile(api)] : [])];
 }
 
 /**

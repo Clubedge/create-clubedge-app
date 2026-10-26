@@ -1,7 +1,7 @@
 // What deploy writes for Docker Compose, and what it does with the files already there. The
 // terminal output is replaced, so the messages can be read.
 import { spawnSync } from "node:child_process";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { log, note } from "@clack/prompts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +74,25 @@ describe("deploy with Docker Compose", () => {
     await deploy(target);
     expect(await readFile(join(target.root, "Caddyfile"), "utf8")).toContain("\treverse_proxy web:3000\n");
     expect(steps()).toContain("the variables of .env.example and apps/api/.env.example");
+    expect(steps()).toContain("run --rm api node /app/migrate.mjs");
+  });
+
+  it("runs an API without a web app as the public app, behind Caddy", async () => {
+    const api: ProjectService = { id: "api", role: "api", app: "apps/api", dockerfile: "apps/api/Dockerfile", port: 3001, healthPath: "/api/health", platforms: ["docker", "railway"] };
+    const target = { ...(await project({ api })), stacks: { framework: "none", api: "hono", mobile: "expo" } };
+    await mkdir(join(target.root, "apps/api"), { recursive: true });
+    await writeFile(join(target.root, "apps/api/.env.example"), "PORT=3001\nBETTER_AUTH_URL=http://localhost:3001\nDATABASE_URL=\n");
+    await deploy(target);
+
+    const compose = await readFile(join(target.root, "compose.yaml"), "utf8");
+    expect(compose).toBe(dockerComposeSource("my-app", { api }, ["PORT", "BETTER_AUTH_URL", "DATABASE_URL"]));
+    // Caddy passes it the client's address, and Better Auth, which runs in it, gets the public URL.
+    expect(compose).toContain("      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}\n");
+    expect(compose).toContain("      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${DOMAIN}}\n");
+    expect(compose).not.toContain("Reached only through");
+    expect(compose).toMatch(/ {4}depends_on:\n {6}- api\n\nvolumes:/);
+    expect(await readFile(join(target.root, "Caddyfile"), "utf8")).toContain("\treverse_proxy api:3001\n");
+    expect(steps()).toContain("In .env.production: DOMAIN, your domain, and the variables of apps/api/.env.example.");
     expect(steps()).toContain("run --rm api node /app/migrate.mjs");
   });
 

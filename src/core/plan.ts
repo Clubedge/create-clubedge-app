@@ -1,5 +1,6 @@
 import {
   applyConditionals,
+  conditionParts,
   customizeAppManifest,
   customizeLegacySource,
   customizeLockfile,
@@ -14,7 +15,8 @@ import {
   type ScriptChanges,
   type Selection,
 } from "./customize.js";
-import { FRAMEWORK_SLOT, type StackRole, type TemplateManifest, type TemplateSlot, type TemplateStack, type Toolchain } from "./manifest.js";
+import { runsServer } from "./manifest-fields.js";
+import { FRAMEWORK_SLOT, isOptionalSlot, type StackRole, type TemplateManifest, type TemplateSlot, type TemplateStack, type Toolchain } from "./manifest.js";
 import type { TemplateSource } from "./source.js";
 
 export interface FileEdit {
@@ -126,7 +128,7 @@ export function selectStacks(manifest: TemplateManifest, requested: Record<strin
 
   const selection: Selection = {};
   for (const [slotId, slot] of Object.entries(manifest.slots)) {
-    const optional = slot.default === undefined;
+    const optional = isOptionalSlot(slot);
     const id = requested[slotId] ?? slot.default ?? NO_STACK;
     if (!(optional && id === NO_STACK) && manifest.stacks[id]?.slot !== slotId) {
       const choices = [...stacksIn(manifest, slotId), ...(optional ? [NO_STACK] : [])].join(", ");
@@ -135,9 +137,23 @@ export function selectStacks(manifest: TemplateManifest, requested: Record<strin
     selection[slotId] = id;
   }
 
-  const conflict = roleConflict(manifest, selection);
+  const conflict = roleConflict(manifest, selection) ?? ruleConflict(manifest, selection);
   if (conflict) throw new StackError(conflict);
   return selection;
+}
+
+/**
+ * Why the Starter's rules refuse a selection, or null. A rule counts once every slot and module
+ * it names has a value, so prompts can leave out the choices it refuses, given the answers so far.
+ */
+export function ruleConflict(manifest: TemplateManifest, selection: Selection): string | null {
+  for (const rule of manifest.rules ?? []) {
+    const parts = conditionParts(rule.when, "clubedge.template.json rules");
+    if (parts.every(({ key }) => selection[key] !== undefined) && parts.every(({ key, equals, values }) => values.includes(selection[key]!) === equals)) {
+      return rule.message;
+    }
+  }
+  return null;
 }
 
 /**
@@ -180,6 +196,11 @@ function roleConflict(manifest: TemplateManifest, chosen: Selection, pending: st
   if (mobile && !api && !apiPending) {
     return `${mobile.name} is a mobile app and calls an API: choose one with ${slotFlag(apiSlot ?? "api")}${apis}.`;
   }
+  // Something has to run: a web app, or an API.
+  const serverPending = pending.some((id) => manifest.slots[id]!.roles.some(runsServer));
+  if (!stacks.some((stack) => runsServer(stack.role)) && !serverPending) {
+    return `A project needs a web app or an API: choose one with ${slotFlag(FRAMEWORK_SLOT)}${apiSlot ? ` or ${slotFlag(apiSlot)}` : ""}.`;
+  }
   return null;
 }
 
@@ -191,8 +212,10 @@ export function slotChoices(manifest: TemplateManifest, slotId: string, chosen: 
   const slot = manifest.slots[slotId]!;
   const slotIds = Object.keys(manifest.slots);
   const pending = slotIds.slice(slotIds.indexOf(slotId) + 1).filter((id) => chosen[id] === undefined);
-  const candidates = [...stacksIn(manifest, slotId), ...(slot.default === undefined ? [NO_STACK] : [])];
-  return candidates.filter((id) => roleConflict(manifest, { ...chosen, [slotId]: id }, pending) === null);
+  const candidates = [...stacksIn(manifest, slotId), ...(isOptionalSlot(slot) ? [NO_STACK] : [])];
+  return candidates.filter(
+    (id) => roleConflict(manifest, { ...chosen, [slotId]: id }, pending) === null && ruleConflict(manifest, { ...chosen, [slotId]: id }) === null,
+  );
 }
 
 /** The selected stacks, each with its slot, in slot order. */
@@ -206,11 +229,13 @@ function selectedApps(manifest: TemplateManifest, stacks: Selection) {
 /**
  * The options of a module the selected stacks can use: every selected stack that implements
  * the module must implement the option. Project-wide modules (local infrastructure,
- * deployment) are not tied to a stack.
+ * deployment) are not tied to a stack. The Starter's rules leave out the options they refuse
+ * with the stacks and the modules already `chosen`.
  */
-export function moduleChoices(manifest: TemplateManifest, stacks: Selection, moduleId: string): string[] {
+export function moduleChoices(manifest: TemplateManifest, stacks: Selection, moduleId: string, chosen: Selection = {}): string[] {
   const module = manifest.modules[moduleId]!;
-  const all = Object.keys(module.options);
+  const allowed = (option: string) => ruleConflict(manifest, { ...stacks, ...chosen, [moduleId]: option }) === null;
+  const all = Object.keys(module.options).filter(allowed);
   if (module.scope === "project") return all;
   const involved = selectedApps(manifest, stacks).filter(({ stack }) => stack.modules[moduleId]);
   return all.filter((option) => involved.length > 0 && involved.every(({ stack }) => stack.modules[moduleId]!.includes(option)));
@@ -240,7 +265,7 @@ export function selectModules(
   const apps = selectedApps(manifest, stacks);
   const selection: Selection = {};
   for (const [id, module] of Object.entries(manifest.modules)) {
-    const choices = moduleChoices(manifest, stacks, id);
+    const choices = moduleChoices(manifest, stacks, id, selection);
     const fallback = choices.includes(module.default) ? module.default : (choices[0] ?? module.default);
     const option = requested[id] ?? fallback;
     if (!module.options[option]) {
@@ -248,6 +273,8 @@ export function selectModules(
         `Unknown ${id} option "${option}". Choose one of: ${Object.keys(module.options).join(", ")}.`,
       );
     }
+    const refused = ruleConflict(manifest, { ...stacks, ...selection, [id]: option });
+    if (refused) throw new ModuleError(refused);
     if (!choices.includes(option)) {
       const optionName = `${module.options[option]!.name} (--${id} ${option})`;
       const lacking = apps.find(({ stack }) => stack.modules[id] && !stack.modules[id]!.includes(option));
@@ -271,6 +298,9 @@ export function selectModules(
       }
     }
   }
+  // Rules that name modules decided after the one they refuse.
+  const refused = ruleConflict(manifest, { ...stacks, ...selection });
+  if (refused) throw new ModuleError(refused);
   return selection;
 }
 
@@ -332,6 +362,13 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
       if (manifest.stacks[stacks[slotId] ?? ""]) usedPackages.set(name, directory);
     }
   }
+  // An empty slot's own files and root scripts are left out, and so are the files a filled slot
+  // only uses when it is empty (schema 6).
+  const filled = (slotId: string) => Boolean(manifest.stacks[stacks[slotId] ?? ""]);
+  const emptySlots = Object.entries(manifest.slots).filter(([slotId]) => !filled(slotId));
+  const unusedSlotFiles = Object.entries(manifest.slots).flatMap(([slotId, slot]) =>
+    filled(slotId) ? (slot.filesWhenEmpty ?? []) : (slot.files ?? []),
+  );
 
   // Selected options set their scripts; scripts only left-out options define are removed.
   const scripts: ScriptChanges = { set: {}, remove: [] };
@@ -344,7 +381,21 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
       }
     }
   }
+  for (const [, slot] of emptySlots) {
+    for (const name of slot.scripts ?? []) {
+      offeredScripts.add(name);
+      delete scripts.set[name];
+    }
+  }
   scripts.remove = [...offeredScripts].filter((name) => !(name in scripts.set));
+  // Root scripts that filter on an empty slot's package filter on its fallback's instead, such
+  // as `pnpm dev` starting the API when there is no web app.
+  const rename: Record<string, string> = {};
+  for (const [, slot] of emptySlots) {
+    const fallback = slot.fallback === undefined ? undefined : manifest.slots[slot.fallback];
+    if (slot.package && fallback?.package && filled(slot.fallback!)) rename[slot.package] = fallback.package;
+  }
+  if (Object.keys(rename).length) scripts.rename = rename;
 
   const removedPackages = [...offeredPackages].filter(([name]) => !usedPackages.has(name));
   return {
@@ -355,8 +406,8 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
     replacements,
     variantSources,
     isDroppedOwnedPath: (path: string) =>
-      [...ownedPaths].some((owned) => isWithin(path, owned)) &&
-      ![...keptPaths].some((kept) => isWithin(path, kept)),
+      unusedSlotFiles.some((owned) => isWithin(path, owned)) ||
+      ([...ownedPaths].some((owned) => isWithin(path, owned)) && ![...keptPaths].some((kept) => isWithin(path, kept))),
   };
 }
 
@@ -378,8 +429,16 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
 
   // A slot is recorded when it offers a choice, so add, remove, and upgrade render the same apps.
   const recorded = selected.filter(
-    ({ slotId, slot }) => stacksIn(manifest, slotId).length + (slot.default === undefined ? 1 : 0) > 1,
+    ({ slotId, slot }) => stacksIn(manifest, slotId).length + (isOptionalSlot(slot) ? 1 : 0) > 1,
   );
+  // A slot left empty that would otherwise take its default, such as the framework slot of a
+  // project without a web app, is recorded as none, so add, remove, and upgrade leave it empty.
+  const recordedSlots = Object.entries(manifest.slots).flatMap(([slotId, slot]) => {
+    const app = recorded.find((entry) => entry.slotId === slotId);
+    if (app) return [{ slotId, id: app.id, summary: `${slot.name}: ${app.stack.name}` }];
+    if (slot.default !== undefined && stacks[slotId] === NO_STACK) return [{ slotId, id: NO_STACK, summary: `${slot.name}: none` }];
+    return [];
+  });
   const apps = selected.map(({ slotId, slot, id, stack }) => ({ slot: slotId, slotName: slot.name, id, name: stack.name }));
   const modules = Object.entries(selection).map(([id, option]) => ({
     id,
@@ -405,10 +464,10 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     starterRepository: source.repository,
     starterRef: source.ref,
     ...(source.commit ? { starterCommit: source.commit } : {}),
-    ...(recorded.length
+    ...(recordedSlots.length
       ? {
-          stacks: Object.fromEntries(recorded.map(({ slotId, id }) => [slotId, id])),
-          stackSummary: recorded.map(({ slot, stack }) => `${slot.name}: ${stack.name}`),
+          stacks: Object.fromEntries(recordedSlots.map(({ slotId, id }) => [slotId, id])),
+          stackSummary: recordedSlots.map(({ summary }) => summary),
         }
       : {}),
     ...(modules.length

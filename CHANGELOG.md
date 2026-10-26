@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.44.0
+
+- Wait for the billing portal's subscription, not its headings (#146).
+- The mobile role for native apps (template schema 6) (#147).
+- Stacks list the advisories pnpm audit skips for their dependencies (#150).
+- Projects without a website (--framework none) (#148).
+- Default to Starter `v0.28.0` (#151).
+
 ## 0.43.1
 
 - **`try` shows Railway's reason when Railway refuses a VM** (#144):

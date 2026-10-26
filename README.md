@@ -267,6 +267,7 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 
 - Files you never changed are updated, added, or deleted.
 - Files you changed keep your edits. Where the module change touches the same lines, the file gets conflict markers (`<<<<<<< yours` ... `>>>>>>> clubedge`) for you to resolve. The Starter's whole new version of each such file is saved in `.clubedge/incoming/` to compare with yours (`git diff --no-index <file> .clubedge/incoming/<file>`); Git ignores that folder, so delete it when you are done.
+- `package.json` files merge by key, not by line: a script, dependency, or override you added next to the Starter's keeps both, and markers wrap only a key you both changed to different values, such as the same dependency's range. The file keeps your key order, indentation, and line endings.
 - Your own files are never touched.
 - Each app's local env file (`apps/web/.env.local`, and `apps/api/.env.local`, `apps/shell/.env.local`, or `apps/mobile/.env.local` when the project has them) keeps your values. Values still at their generated defaults follow the new selection, and new variables are added.
 - `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.

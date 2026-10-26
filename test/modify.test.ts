@@ -80,10 +80,13 @@ async function generatedProject() {
   };
 }
 
-/** The project's own dependency, on the line `remove storage` rewrites. */
-async function addOwnDependency(project: Awaited<ReturnType<typeof generatedProject>>) {
+/**
+ * The project's own range for the storage package, the key `remove storage` removes: a conflict
+ * even when package.json merges by key.
+ */
+async function changeStorageDependency(project: Awaited<ReturnType<typeof generatedProject>>) {
   const manifest = await project.read("apps/web/package.json");
-  await project.write("apps/web/package.json", manifest.replace('"@clubedge/storage-s3":"workspace:*"', '$&,"zod":"^4.2.0"'));
+  await project.write("apps/web/package.json", manifest.replace('"@clubedge/storage-s3":"workspace:*"', '"@clubedge/storage-s3":"workspace:^"'));
 }
 
 const warnings = () => vi.mocked(log.warn).mock.calls.map(([message]) => message);
@@ -107,9 +110,24 @@ describe("changeProject after the files are written", () => {
     expect(warnings()).toEqual([]);
   });
 
+  it("merges a dependency the project added next to one the change removes, and installs", async () => {
+    const project = await generatedProject();
+    const manifest = await project.read("apps/web/package.json");
+    await project.write("apps/web/package.json", manifest.replace('"@clubedge/storage-s3":"workspace:*"', '$&,"zod":"^4.2.0"'));
+
+    expect(await project.run(["remove", "storage"])).toBe("changed");
+
+    expect(JSON.parse(await project.read("apps/web/package.json")).dependencies).toEqual({
+      "@clubedge/auth-supabase": "workspace:*",
+      zod: "^4.2.0",
+    });
+    expect(installDependencies).toHaveBeenCalledOnce();
+    expect(warnings()).toEqual([]);
+  });
+
   it("skips pnpm install when a package.json has conflict markers, and says why", async () => {
     const project = await generatedProject();
-    await addOwnDependency(project);
+    await changeStorageDependency(project);
 
     expect(await project.run(["remove", "storage"])).toBe("conflicts");
 
@@ -140,7 +158,7 @@ describe("changeProject after the files are written", () => {
 
   it("says why pnpm commands fail with --no-install too", async () => {
     const project = await generatedProject();
-    await addOwnDependency(project);
+    await changeStorageDependency(project);
     await project.run(["remove", "storage", "--no-install"]);
     expect(warnings()[0]).toMatch(/^apps\/web\/package\.json has conflict markers, which pnpm cannot read/);
   });
@@ -170,14 +188,14 @@ describe("changeProject after the files are written", () => {
 describe("the exit code of a change", () => {
   it("is 2 for conflicts only with --detailed-exit-code", async () => {
     const project = await generatedProject();
-    await addOwnDependency(project);
+    await changeStorageDependency(project);
     await project.main(["remove", "storage", "--no-install", "--detailed-exit-code"]);
     expect(process.exitCode).toBe(2);
   });
 
   it("stays 0 for conflicts without it, as the upgrade workflow in existing projects expects", async () => {
     const project = await generatedProject();
-    await addOwnDependency(project);
+    await changeStorageDependency(project);
     await project.main(["remove", "storage", "--no-install"]);
     expect(process.exitCode).toBeUndefined();
   });

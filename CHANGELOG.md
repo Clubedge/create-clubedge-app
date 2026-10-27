@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.45.0
+
+- Bump astral-sh/setup-uv from 10.3.0 to 10.3.2 in the actions group (#154).
+- Merge package.json by key, with markers only around a key both changed (#158).
+- Default to Starter `v0.29.0` (#159).
+
 ## 0.44.0
 
 - **The native app with Expo**: default to Starter `v0.28.0` (#151). `--mobile expo` adds `apps/mobile`, an Android and iOS app with its own native screens, which calls the project's API (#147):

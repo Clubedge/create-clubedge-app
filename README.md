@@ -544,7 +544,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.43.0 | v0.27.1 | Upgrades keep each app's own version; add, remove, and upgrade that change nothing skip the Starter download |
 | 0.44.0 | v0.28.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
 | 0.45.0 | v0.29.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
-| 0.46.0 | v0.30.0 | Leave out the registry packages of module options a project does not use; Add and remove the apps installed on devices; Default to Starter v0.30.0 |
+| 0.46.0 | v0.30.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
 
 ## Community
 

@@ -142,6 +142,12 @@ export interface ModuleOption {
   name: string;
   /** Workspace packages (name to directory) this option uses. Unused ones are left out. */
   packages: Record<string, string>;
+  /**
+   * Packages from the registry that apps depend on only for this option, such as a native
+   * plugin, which links into the app wherever it is a dependency. Projects without the option
+   * leave them out of every package.json and the lockfile; one a selected option lists stays.
+   */
+  dependencies: string[];
   /** Paths owned by this option. A path is kept only when a selected option owns it. */
   files: string[];
   /** Default files replaced by variants when this option is selected: target to variant. */

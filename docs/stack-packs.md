@@ -164,6 +164,21 @@ Supabase option owns the browser session and adds its access token to contract r
 and FastAPI Supabase options verify that token server-side and normalize the user to the contract's
 `User` type. Only the publishable key is sent to the browser; provider secrets stay in the API env.
 
+An option's `packages` are workspace packages, left out with their folders when the option is
+not selected. Its `dependencies` (optional) are packages from the registry that apps depend on
+directly, only for this option, such as a native plugin: a native module links into an app
+wherever it is a dependency, used or not, so projects without the option leave it out of every
+`package.json` and of the lockfile's importers. A package another selected option lists stays.
+CLIs before 0.46.0 ignore the field and keep the packages.
+
+```json
+"native": {
+  "name": "FCM and APNs",
+  "packages": { "@clubedge/push": "packages/push", "@clubedge/push-native": "packages/push-native" },
+  "dependencies": ["expo-notifications", "@capacitor/push-notifications"]
+}
+```
+
 ## Deployment services
 
 Stacks can declare deployment facts without teaching the CLI stack-specific rules:

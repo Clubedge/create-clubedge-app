@@ -101,10 +101,23 @@ export function parseRequires(file: string, value: unknown, prefix: string): Rec
 export interface ParsedOption {
   name: string;
   packages: Record<string, string>;
+  dependencies: string[];
   files: string[];
   replace: Record<string, string>;
   requires: Record<string, string[]>;
   scripts: Record<string, string>;
+}
+
+/** An npm package name, scoped or not, such as expo-notifications or @capacitor/push-notifications. */
+const PACKAGE_NAME = /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
+
+/** `dependencies`: packages from the registry, by name. */
+function parseDependencies(file: string, value: unknown, prefix: string): string[] {
+  if (value === undefined) return [];
+  if (!isStringArray(value) || !value.every((name) => PACKAGE_NAME.test(name))) {
+    throw new ManifestError(`${file}: ${prefix}dependencies must be an array of package names.`);
+  }
+  return value;
 }
 
 /** A module's name, default, and options; `prefix` locates it in its file. */
@@ -127,6 +140,7 @@ export function parseModule(file: string, entry: unknown, prefix: string) {
     options[optionId] = {
       name: read.requireString(values, "name"),
       packages: read.optionalStringRecord(values, "packages"),
+      dependencies: parseDependencies(file, values.dependencies, optionPrefix),
       files: read.optionalStringArray(values, "files"),
       replace: read.optionalStringRecord(values, "replace"),
       requires: parseRequires(file, values.requires, optionPrefix),

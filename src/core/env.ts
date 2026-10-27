@@ -71,10 +71,27 @@ export function updateEnvFile(local: string, baseExample: string, targetExample:
     lines.splice(start, at - start + 1, ...(generated ? replacement : replacement.slice(-1)));
   }
 
+  /**
+   * Gives a variable whose value stays the target's comments, if the developer kept the base's:
+   * another change of the selection then still finds them as generated, and removes them with it.
+   */
+  function refreshComments(key: string) {
+    const at = find(lines, key);
+    const comments = commentsAbove(lines, at);
+    const baseComments = commentsAbove(base, find(base, key));
+    const targetComments = commentsAbove(target, find(target, key));
+    if (sameLines(comments, baseComments) && !sameLines(baseComments, targetComments)) {
+      lines.splice(at - comments.length, comments.length, ...targetComments);
+    }
+  }
+
   for (const [key, before] of baseValues) {
     if (!mine.has(key)) continue;
     const after = targetValues.get(key);
-    if (after === before || mine.get(key) === after) continue;
+    if (after === before || mine.get(key) === after) {
+      if (after !== undefined) refreshComments(key);
+      continue;
+    }
     const generated = mine.get(key) === before;
     if (after === undefined) {
       (generated ? result.removed : result.unused).push(key);

@@ -393,7 +393,7 @@ function describe(plan: UpdatePlan): string {
       env.updated.length ? `updates ${env.updated.join(", ")}` : "",
       env.removed.length ? `removes ${env.removed.join(", ")}` : "",
     ].filter(Boolean);
-    lines.push(`${"update".padEnd(8)} ${path} ${dim(`(${parts.join("; ")})`)}`);
+    lines.push(`${"update".padEnd(8)} ${path} ${dim(`(${parts.length ? parts.join("; ") : "comments follow the example"})`)}`);
   }
   return lines.join("\n");
 }

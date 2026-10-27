@@ -417,6 +417,90 @@ jobs:
         shell: bash
         run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install lint typecheck test build
 
+  # add and remove for the apps installed on devices: a project that takes the native app and the
+  # shell after it was created, then drops one, must match a project generated with what is left,
+  # apart from its own edit and the removed app's env file, and still build.
+  change-apps:
+    name: change-apps (${{ matrix.api }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { api: hono, changes: "add mobile expo|add shell capacitor|remove mobile", removed: apps/mobile, final: --shell capacitor }
+          - {
+              api: fastapi,
+              changes: "add shell capacitor|add mobile expo auth better-auth|remove shell",
+              removed: apps/shell,
+              final: --mobile expo --auth better-auth,
+            }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      # A Python API (--api fastapi) runs its lint, typecheck, and tests with uv.
+      - uses: astral-sh/setup-uv@v10.3.2
+        if: matrix.api == 'fastapi'
+      - name: Build, bundle, and pack the CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm bundle-template
+          npm pack --pack-destination "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/packed-cli"
+          tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/packed-cli"
+          npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
+          echo "CLI=$RUNNER_TEMP/packed-cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+      - name: Generate a project and change it
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$CLI" "$RUNNER_TEMP/changed/my-app" --framework vite --api ${{ matrix.api }} --no-install --yes
+          cd "$RUNNER_TEMP/changed/my-app"
+          git config user.email ci@example.com
+          git config user.name CI
+          git add -A
+          git commit -qm "Generated project"
+          echo "Notes of our own." >> README.md
+          git commit -qam "Our change"
+      - name: Add and remove apps one at a time
+        working-directory: ${{ runner.temp }}/changed/my-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS='|' read -ra changes <<< "${{ matrix.changes }}"
+          for change in "${changes[@]}"; do
+            echo "::group::$change"
+            node "$CLI" $change --no-install --yes
+            git add -A
+            git commit -qm "$change"
+            echo "::endgroup::"
+          done
+      - name: Match a project generated with the final selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The removed app leaves only its env file, which is the developer's to delete.
+          test "$(ls -A "$RUNNER_TEMP/changed/my-app/${{ matrix.removed }}")" = ".env.local"
+          rm -r "$RUNNER_TEMP/changed/my-app/${{ matrix.removed }}"
+          node "$CLI" "$RUNNER_TEMP/fresh/my-app" --framework vite --api ${{ matrix.api }} ${{ matrix.final }} --no-install --no-git --yes
+          diff -r -x .git -x node_modules "$RUNNER_TEMP/changed/my-app" "$RUNNER_TEMP/fresh/my-app" > "$RUNNER_TEMP/diff.txt" || true
+          cat "$RUNNER_TEMP/diff.txt"
+          # Our README line is the only difference.
+          test "$(grep -c '^[<>]' "$RUNNER_TEMP/diff.txt")" = 1
+          grep -qx '< Notes of our own.' "$RUNNER_TEMP/diff.txt"
+      - name: Install, lint, typecheck, test, and build the changed project
+        working-directory: ${{ runner.temp }}/changed/my-app
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check-project.sh" install lint typecheck test build
+
   # upgrade from an earlier Starter release to the pinned one on a project with an edit of its
   # own: the result must match a project generated from the pinned release, apart from that edit.
   upgrade-project:

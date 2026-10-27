@@ -117,8 +117,9 @@ Usage:
   upgrade, status, doctor, try, deploy, or neon. Without a module or option, add and remove ask
   for them.
 
-  add and remove change modules of an existing project, several at once as one
-  change, and upgrade moves it to a newer Starter (this CLI's release unless --ref
+  add and remove change modules of an existing project, and its apps installed on
+  devices (add mobile expo, add shell capacitor, remove mobile), several at once as
+  one change, and upgrade moves it to a newer Starter (this CLI's release unless --ref
   is given) and lists the Starter releases it crosses. The change is merged into
   your code; lines you changed that it also changes get conflict markers. Commit
   first so you can review the result with git diff.

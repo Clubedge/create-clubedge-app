@@ -234,6 +234,119 @@ STORAGE_BUCKET=
 # clubedge:end
 `;
 
+/**
+ * A schema 6 Starter with stack packs: Next.js or a Vite frontend with an API, plus the apps
+ * installed on devices, a native app (Expo) and a shell that packages the frontend (Capacitor).
+ * Expo implements only some of the auth options.
+ */
+export function appStarterFiles(): Record<string, string> {
+  const slot = (path: string, name: string, roles: string[], extra: Record<string, unknown> = {}) => ({
+    name,
+    question: `${name}?`,
+    path,
+    env: { example: `${path}/.env.example`, target: `${path}/.env.local` },
+    roles,
+    ...extra,
+  });
+  const root = {
+    schemaVersion: 6,
+    name: "clubedge-starter",
+    packageManager: "pnpm",
+    siteConfig: "apps/web/src/config/site.json",
+    dockerImage: "clubedge-starter",
+    slots: {
+      framework: {
+        ...slot("apps/web", "Framework", ["fullstack", "frontend"]),
+        package: "@clubedge/web",
+        env: { example: ".env.example", target: "apps/web/.env.local" },
+        dockerfile: "Dockerfile",
+        default: "next",
+        optional: true,
+      },
+      api: {
+        ...slot("apps/api", "API", ["api"]),
+        package: "@clubedge/api",
+        dockerfile: "apps/api/Dockerfile",
+        siteConfig: "apps/api/src/config/site.json",
+      },
+      mobile: { ...slot("apps/mobile", "Mobile app", ["mobile"]), package: "@clubedge/mobile-app", siteConfig: "apps/mobile/src/config/site.json" },
+      shell: { ...slot("apps/shell", "Mobile shell", ["shell"]), package: "@clubedge/shell" },
+    },
+    modules: ["auth", "deploy"],
+    conditional: ["README.md", ".github/workflows/ci.yml"],
+    exclude: ["clubedge.template.json"],
+  };
+  const everyAuth = { auth: { "better-auth|firebase|none": {} } };
+  const stack = (data: Record<string, unknown>) => JSON.stringify({ envExample: ".env.example", ...data });
+  const site = JSON.stringify(siteConfig);
+  const importer = (name: string) => `    dependencies:\n      ${name}:\n        specifier: ^1.0.0\n        version: 1.0.0\n`;
+  return {
+    "clubedge.template.json": JSON.stringify(root),
+    "clubedge/modules/auth.json": JSON.stringify({
+      name: "Authentication",
+      default: "better-auth",
+      options: { "better-auth": { name: "Better Auth" }, firebase: { name: "Firebase Authentication" }, none: { name: "None" } },
+    }),
+    "clubedge/modules/deploy.json": JSON.stringify({ name: "Deployment", default: "docker", scope: "project", options: { docker: { name: "Docker" } } }),
+    "apps/web/clubedge.stack.json": stack({ id: "next", name: "Next.js", role: "fullstack", envExample: "../../.env.example", dockerfile: "../../Dockerfile", modules: everyAuth }),
+    "apps/vite/clubedge.stack.json": stack({ id: "vite", name: "React + Vite", role: "frontend", dockerfile: "Dockerfile", modules: everyAuth }),
+    "apps/api/clubedge.stack.json": stack({ id: "hono", name: "Hono", role: "api", dockerfile: "Dockerfile", modules: everyAuth }),
+    "apps/expo/clubedge.stack.json": stack({
+      id: "expo",
+      name: "Expo",
+      role: "mobile",
+      modules: { auth: { none: {}, "better-auth": { files: ["src/app/sign-in.tsx"] } } },
+    }),
+    "apps/capacitor/clubedge.stack.json": stack({ id: "capacitor", name: "Capacitor", role: "shell" }),
+    "package.json": JSON.stringify({ name: "clubedge-starter", scripts: { dev: "turbo dev" } }),
+    "README.md": "# Clubedge Starter\n\n<!-- clubedge:if mobile!=none -->\nThe native app.\n<!-- clubedge:end -->\n\nDone.\n",
+    ".github/workflows/ci.yml": [
+      "name: CI",
+      "jobs:",
+      "  web:",
+      "    runs-on: ubuntu-latest",
+      "# clubedge:if mobile!=none",
+      "  expo:",
+      "    runs-on: ubuntu-latest",
+      "# clubedge:end",
+      "# clubedge:if shell!=none",
+      "  shell:",
+      "    runs-on: ubuntu-latest",
+      "# clubedge:end",
+      "",
+    ].join("\n"),
+    "pnpm-lock.yaml": [
+      "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n",
+      `  apps/api:\n${importer("hono")}`,
+      `  apps/capacitor:\n${importer("'@capacitor/core'")}`,
+      `  apps/expo:\n${importer("expo")}`,
+      `  apps/vite:\n${importer("vite")}`,
+      `  apps/web:\n${importer("next")}`,
+    ].join("\n"),
+    ".env.example": "NEXT_PUBLIC_SITE_URL=\n",
+    Dockerfile: "FROM node\n",
+    "apps/web/package.json": JSON.stringify({ name: "@clubedge/web" }),
+    "apps/web/src/config/site.json": site,
+    "apps/vite/package.json": JSON.stringify({ name: "@clubedge/vite" }),
+    "apps/vite/.env.example": "VITE_API_URL=\n",
+    "apps/vite/Dockerfile": "FROM node\n",
+    "apps/vite/src/config/site.json": site,
+    "apps/api/package.json": JSON.stringify({ name: "@clubedge/api" }),
+    "apps/api/.env.example": "DATABASE_URL=\n",
+    "apps/api/Dockerfile": "FROM node\n",
+    "apps/api/src/config/site.json": site,
+    "apps/expo/package.json": JSON.stringify({ name: "@clubedge/expo" }),
+    "apps/expo/.env.example": "EXPO_PUBLIC_API_URL=\n",
+    "apps/expo/app.config.ts": "export default {};\n",
+    "apps/expo/src/app/index.tsx": "export default function Home() { return null; }\n",
+    "apps/expo/src/app/sign-in.tsx": "export default function SignIn() { return null; }\n",
+    "apps/expo/src/config/site.json": site,
+    "apps/capacitor/package.json": JSON.stringify({ name: "@clubedge/capacitor" }),
+    "apps/capacitor/.env.example": "WEB_URL=\n",
+    "apps/capacitor/capacitor.config.ts": "export default {};\n",
+  };
+}
+
 export function moduleStarterFiles(): Record<string, string> {
   const appPackage = (name: string) =>
     JSON.stringify({

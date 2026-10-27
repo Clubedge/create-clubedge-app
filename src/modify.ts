@@ -1,17 +1,19 @@
 // `add`, `remove`, and `upgrade` change an existing project. The project's recorded Starter
-// commit and modules (base) and the new state (target: other modules, or a newer Starter) are
-// rendered in memory, and the difference is merged into the project (see core/update.ts).
+// commit, apps, and modules (base) and the new state (target: other modules or apps, or a newer
+// Starter) are rendered in memory, and the difference is merged into the project (see
+// core/update.ts).
 import { confirm, isCancel, log, multiselect, outro, select, spinner } from "@clack/prompts";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
+import { runsServer } from "./core/manifest-fields.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { compareVersions } from "./core/health.js";
 import { countConflicts, type MergeAction } from "./core/merge.js";
 import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
-import { moduleChoices, selectModules, selectStacks } from "./core/plan.js";
+import { moduleChoices, NO_STACK, selectModules, selectStacks, slotChoices, stacksIn } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
 import {
   downloadGitHubTemplate,
@@ -24,14 +26,41 @@ import { cliVersion, starterPin } from "./package-info.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { describeNewDatabase, projectDatabaseEnv, provisionNeonDatabase } from "./neon.js";
 import { detectPnpm, installDependencies } from "./steps/install.js";
-import { listTemplateFiles } from "./utils/fs.js";
+import { listTemplateFiles, pathExists } from "./utils/fs.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
 
 type ChangeCommand = Extract<CliArgs["command"], { name: "add" | "remove" | "upgrade" }>;
-/** add or remove with every argument known. */
+/**
+ * add or remove with every argument known. A change names a module, or an app's slot such as
+ * `mobile` with its stack (`add mobile expo`), which `remove` empties.
+ */
 type ModuleCommand =
   | { name: "add"; changes: Array<{ module: string; option: string }> }
   | { name: "remove"; modules: string[] };
+
+/**
+ * The slots add and remove can fill or empty: those of the apps installed on devices, a shell or a
+ * mobile app, which run no server. The framework and the API are chosen when a project is
+ * created, since its deployment, database, and data are built around them.
+ */
+export function appSlots(manifest: TemplateManifest): string[] {
+  return Object.keys(manifest.slots).filter((id) => manifest.slots[id]!.roles.every((role) => !runsServer(role)));
+}
+
+/** Choices in a sentence: "a", "a or b", or "a, b, or c". */
+const orList = (names: string[]) => (names.length > 2 ? `${names.slice(0, -1).join(", ")}, or ${names.at(-1)}` : names.join(" or "));
+
+/** A slot's name inside a sentence: "the framework", "the mobile app", but "the API". */
+const lowerName = (name: string) => (/^[A-Z]{2,}$/.test(name) ? name : name.toLowerCase());
+
+/** The stack a project, or one side of a change, has in a slot, or none. */
+const stackIn = (side: { stacks?: Record<string, string> }, slotId: string) => side.stacks?.[slotId] ?? NO_STACK;
+
+/** The stacks of an app slot that fit the project's other apps, for prompts. */
+function addableStacks(manifest: TemplateManifest, project: Project, slotId: string): string[] {
+  const { [slotId]: _, ...others } = selectStacks(manifest, project.stacks);
+  return slotChoices(manifest, slotId, others).filter((id) => id !== NO_STACK && id !== stackIn(project, slotId));
+}
 
 /** How to run the CLI in this project: its `clubedge` script when it has one. */
 export async function cliCommand(project: Project): Promise<string> {
@@ -122,42 +151,69 @@ export async function completeCommand(
   if (!interactive) {
     throw new UsageError(
       command.name === "add"
-        ? "Usage: add <module> <option>, for example: add cache redis. Run it in a terminal to choose from a list."
-        : "Usage: remove <module>, for example: remove storage. Run it in a terminal to choose from a list.",
+        ? "Usage: add <module> <option>, for example: add cache redis, or add mobile expo. Run it in a terminal to choose from a list."
+        : "Usage: remove <module>, for example: remove storage, or remove mobile. Run it in a terminal to choose from a list.",
     );
   }
 
-  // The modules: named on the command line, or picked from a list (several at once).
+  // The apps and modules: named on the command line, or picked from a list (several at once).
   let moduleIds = command.name === "add" ? command.changes.map((change) => change.module) : [];
   if (!moduleIds.length) {
+    const apps = appSlots(manifest).filter((id) =>
+      command.name === "add" ? addableStacks(manifest, project, id).length > 0 : stackIn(project, id) !== NO_STACK,
+    );
     const choices = Object.entries(manifest.modules).filter(([id, module]) =>
       command.name === "add" ? true : Boolean(module.options.none) && project.modules[id] !== "none",
     );
-    if (!choices.length) throw new UsageError("No module can be removed: every removable module is already none.");
+    if (!choices.length && !apps.length) throw new UsageError("Nothing can be removed: every removable module is already none, and the project has no app to remove.");
     const value = await multiselect({
       message:
         command.name === "add"
-          ? "Which modules do you want to add or switch? (space to pick, enter to confirm)"
-          : "Which modules do you want to remove? (space to pick, enter to confirm)",
+          ? "What do you want to add or switch? (space to pick, enter to confirm)"
+          : "What do you want to remove? (space to pick, enter to confirm)",
       required: true,
-      options: choices.map(([id, module]) => ({
-        value: id,
-        label: module.name,
-        hint: `now: ${module.options[project.modules[id] ?? ""]?.name ?? project.modules[id] ?? "not set"}`,
-      })),
+      options: [
+        ...apps.map((id) => ({
+          value: id,
+          label: manifest.slots[id]!.name,
+          hint: `now: ${manifest.stacks[stackIn(project, id)]?.name ?? "none"}`,
+        })),
+        ...choices.map(([id, module]) => ({
+          value: id,
+          label: module.name,
+          hint: `now: ${module.options[project.modules[id] ?? ""]?.name ?? project.modules[id] ?? "not set"}`,
+        })),
+      ],
     });
     if (isCancel(value)) return null;
     moduleIds = value;
   }
   if (command.name === "remove") return { name: "remove", modules: moduleIds };
 
-  // Then an option for each module that was not given one. They apply together, so options that
-  // only work together (Supabase Auth with Supabase Storage) can be picked in one go.
+  // Then an option for each module, or a stack for each app, that was not given one. They apply
+  // together, so options that only work together (Supabase Auth with Supabase Storage) can be
+  // picked in one go.
   const changes: Array<{ module: string; option: string }> = [];
   for (const moduleId of moduleIds) {
     const given = command.changes.find((change) => change.module === moduleId)?.option;
     if (given) {
       changes.push({ module: moduleId, option: given });
+      continue;
+    }
+    const slot = appSlots(manifest).includes(moduleId) ? manifest.slots[moduleId]! : undefined;
+    if (slot) {
+      // With one stack that fits, there is nothing to ask; with none, the change says why.
+      const stacks = addableStacks(manifest, project, moduleId);
+      if (stacks.length > 1) {
+        const stack = await select({
+          message: `${slot.name}: which one?`,
+          options: stacks.map((id) => ({ value: id, label: manifest.stacks[id]!.name })),
+        });
+        if (isCancel(stack)) return null;
+        changes.push({ module: moduleId, option: stack });
+      } else {
+        changes.push({ module: moduleId, option: stacks[0] ?? stacksIn(manifest, moduleId)[0] ?? NO_STACK });
+      }
       continue;
     }
     const module = manifest.modules[moduleId];
@@ -183,18 +239,75 @@ export async function completeCommand(
 }
 
 /**
- * The selection after add or remove, validated against the Starter's manifest. Every change
- * applies before requirements are checked, so changes that only work together, such as Supabase
- * Auth with Supabase Storage, can be made in one command.
+ * Why a project cannot take the app added to `slotId`, in terms of what it would need: add and
+ * remove never change the framework or the API, so the way there is a new project. Null when
+ * the app fits its role, and the Starter's own rules decide.
  */
-export function changedModules(manifest: TemplateManifest, project: Project, command: ModuleCommand, cli: string) {
+function appConflict(manifest: TemplateManifest, stacks: Record<string, string>, slotId: string): string | null {
+  const app = manifest.stacks[stacks[slotId] ?? ""];
+  if (!app) return null;
+  const selected = Object.values(selectStacksLoosely(manifest, stacks)).flatMap((id) => manifest.stacks[id] ?? []);
+  const withRole = (role: string) => selected.find((stack) => stack.role === role);
+  const ids = (role: string) => Object.keys(manifest.stacks).filter((id) => manifest.stacks[id]!.role === role);
+  const fixed = "A project's framework and API are chosen when it is created, so add cannot change them";
+  if (app.role === "mobile" && !withRole("api")) {
+    const site = withRole("fullstack");
+    return (
+      `${app.name} calls the project's API, and this project has none${site ? `: ${site.name} serves its own pages` : ""}. ` +
+      `${fixed}: for ${app.name}, create a project with --framework ${orList([...ids("frontend"), NO_STACK])}, and --api ${orList(ids("api"))}.`
+    );
+  }
+  if (app.role === "shell" && !withRole("frontend")) {
+    const site = withRole("fullstack");
+    return (
+      `${app.name} packages a frontend's static files, and ${site ? `${site.name} renders its pages on its server` : "this project has no website"}. ` +
+      `${fixed}: for ${app.name}, create a project with --framework ${orList(ids("frontend"))}.`
+    );
+  }
+  return null;
+}
+
+/** The stack per slot as recorded, with each empty slot's default, without checking roles. */
+function selectStacksLoosely(manifest: TemplateManifest, stacks: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(manifest.slots).map(([id, slot]) => [id, stacks[id] ?? slot.default ?? NO_STACK]),
+  );
+}
+
+/**
+ * The apps and modules after add or remove, validated against the Starter's manifest. Every
+ * change applies before requirements are checked, so changes that only work together, such as
+ * Supabase Auth with Supabase Storage, or the native app with an auth it implements, can be made
+ * in one command. `stacks` keeps the project's recorded form, with the changed app slots set.
+ */
+export function changedSelection(manifest: TemplateManifest, project: Project, command: ModuleCommand, cli: string) {
   const changes =
-    command.name === "add" ? command.changes : command.modules.map((module) => ({ module, option: "none" }));
+    command.name === "add" ? command.changes : command.modules.map((module) => ({ module, option: NO_STACK }));
+  const apps = appSlots(manifest);
+  const stacks: Record<string, string> = { ...project.stacks };
+  const changedApps: string[] = [];
   const requested = { ...project.modules };
   for (const { module: id, option } of changes) {
+    const slot = manifest.slots[id];
+    if (slot) {
+      if (!apps.includes(id)) {
+        throw new UsageError(
+          `The ${lowerName(slot.name)} is chosen when a project is created: add and remove change modules${apps.length ? ` and the apps installed on devices (${apps.join(", ")})` : ""}.`,
+        );
+      }
+      const offered = stacksIn(manifest, id);
+      if (option !== NO_STACK && !offered.includes(option)) {
+        throw new UsageError(`Unknown ${lowerName(slot.name)} "${option}". Choose one of: ${offered.join(", ")}.`);
+      }
+      stacks[id] = option;
+      changedApps.push(id);
+      continue;
+    }
     const module = manifest.modules[id];
     if (!module) {
-      throw new UsageError(`Unknown module "${id}". Choose one of: ${Object.keys(manifest.modules).join(", ")}.`);
+      throw new UsageError(
+        `Unknown module "${id}". Choose one of: ${Object.keys(manifest.modules).join(", ")}${apps.length ? `, or an app: ${apps.join(", ")}` : ""}.`,
+      );
     }
     if (command.name === "remove" && !module.options.none) {
       const others = Object.keys(module.options).filter((other) => other !== project.modules[id]);
@@ -207,9 +320,32 @@ export function changedModules(manifest: TemplateManifest, project: Project, com
     }
     requested[id] = option;
   }
-  // Validates requirements between modules, such as Supabase Storage needing Supabase Auth, and
-  // that the project's stacks implement the new options.
-  return selectModules(manifest, requested, selectStacks(manifest, project.stacks));
+
+  // An added app must fit the project's other apps, and implement the modules it uses: a module
+  // option it lacks can be switched in the same command.
+  for (const slotId of changedApps) {
+    const conflict = appConflict(manifest, stacks, slotId);
+    if (conflict) throw new UsageError(conflict);
+    const app = manifest.stacks[stacks[slotId]!];
+    for (const [moduleId, implemented] of Object.entries(app?.modules ?? {})) {
+      const option = requested[moduleId];
+      if (option === undefined || implemented.includes(option)) continue;
+      const module = manifest.modules[moduleId]!;
+      throw new UsageError(
+        `${app!.name} does not implement ${module.options[option]?.name ?? option} (${moduleId} ${option}). It implements: ${implemented.join(", ")}. ` +
+          `Switch it in the same command, for example: ${cli} add ${slotId} ${stacks[slotId]} ${moduleId} ${implemented.find((id) => id !== NO_STACK) ?? implemented[0]}`,
+      );
+    }
+  }
+  // Validates the Starter's rules for the apps, requirements between modules, such as Supabase
+  // Storage needing Supabase Auth, and that the project's stacks implement the new options.
+  const selection = selectStacks(manifest, stacks);
+  return { stacks, modules: selectModules(manifest, requested, selection), apps: changedApps };
+}
+
+/** The modules after add or remove (see changedSelection). */
+export function changedModules(manifest: TemplateManifest, project: Project, command: ModuleCommand, cli: string) {
+  return changedSelection(manifest, project, command, cli).modules;
 }
 
 /**
@@ -249,7 +385,8 @@ function describe(plan: UpdatePlan): string {
   const lines = plan.actions.map((action) => `${verbs[action.kind].padEnd(8)} ${action.path}`);
   if (plan.lockfile.kind === "replace") lines.push(`${"update".padEnd(8)} pnpm-lock.yaml`);
   if (plan.lockfile.kind === "install") lines.push(`${"install".padEnd(8)} pnpm-lock.yaml ${dim("(pnpm install reconciles your dependency changes)")}`);
-  for (const { path, update: env, changed } of plan.envs) {
+  for (const { path, update: env, changed, create } of plan.envs) {
+    if (create) lines.push(`${"add".padEnd(8)} ${path} ${dim("(from its example)")}`);
     if (!env || !changed) continue;
     const parts = [
       env.added.length ? `adds ${env.added.join(", ")}` : "",
@@ -314,9 +451,9 @@ function report(plan: UpdatePlan) {
         .join("\n")}`,
     );
   }
-  for (const { path, update: env } of plan.envs) {
+  for (const { path, update: env, create } of plan.envs) {
     if (!env) {
-      log.info(`${path} does not exist yet; create it from the example file.`);
+      if (!create) log.info(`${path} does not exist yet; create it from the example file.`);
       continue;
     }
     if (env.customized.length) {
@@ -338,6 +475,8 @@ interface Change {
   notes: string[];
   /** upgrade: one line per Starter release it crosses, when GitHub could be reached. */
   releases?: string;
+  /** add and remove: the app slots the change fills or empties. */
+  apps: string[];
 }
 
 /** Works out what the command changes; resolves null when the project is already there. */
@@ -349,17 +488,29 @@ async function planChange(
   target: TemplateSource | null,
   cli: string,
 ): Promise<Change | null> {
-  const baseSide = { source: asRecorded(base, project), manifest: baseManifest, modules: project.modules, cliVersion: project.cliVersion };
+  const baseSide = {
+    source: asRecorded(base, project),
+    manifest: baseManifest,
+    stacks: project.stacks,
+    modules: project.modules,
+    cliVersion: project.cliVersion,
+  };
 
   if (command.name !== "upgrade") {
-    const modules = changedModules(baseManifest, project, command, cli);
+    const { stacks, modules, apps } = changedSelection(baseManifest, project, command, cli);
+    const changedApps = apps.filter((id) => stackIn({ stacks }, id) !== stackIn(project, id));
     const changed = Object.keys(modules).filter((id) => modules[id] !== project.modules[id]);
-    if (!changed.length) return null;
+    if (!changed.length && !changedApps.length) return null;
+    const stackName = (id: string) => baseManifest.stacks[id]?.name ?? NO_STACK;
     return {
       base: baseSide,
-      target: { ...baseSide, modules, cliVersion },
-      summary: changed.map((id) => `${baseManifest.modules[id]!.name}: ${project.modules[id]} -> ${modules[id]}`).join(", "),
+      target: { ...baseSide, stacks, modules, cliVersion },
+      summary: [
+        ...changedApps.map((id) => `${baseManifest.slots[id]!.name}: ${stackName(stackIn(project, id))} -> ${stackName(stackIn({ stacks }, id))}`),
+        ...changed.map((id) => `${baseManifest.modules[id]!.name}: ${project.modules[id]} -> ${modules[id]}`),
+      ].join(", "),
       notes: [],
+      apps: changedApps,
     };
   }
 
@@ -388,10 +539,11 @@ async function planChange(
   }
   return {
     base: baseSide,
-    target: { source: target, manifest: targetManifest, modules, cliVersion },
+    target: { source: target, manifest: targetManifest, stacks: project.stacks, modules, cliVersion },
     summary: `Starter ${project.starterRef} -> ${target.ref}`,
     notes,
     releases,
+    apps: [],
   };
 }
 
@@ -421,6 +573,29 @@ async function addNeonDatabase(project: Project, args: CliArgs, cli: string) {
   }
 }
 
+/**
+ * Where an app the change adds is, and what is left of one it removes: the files that were never
+ * the Starter's, such as its env file, its dependencies, or native projects, stay.
+ */
+async function reportApps(project: Project, change: Change) {
+  const { manifest } = change.target;
+  for (const slotId of change.apps) {
+    const slot = manifest.slots[slotId]!;
+    const stack = manifest.stacks[stackIn(change.target, slotId)];
+    if (stack) {
+      log.info(`${stack.name} is in ${slot.path}, with its settings in ${slot.env.target}. SETUP.md now has the steps to run and build it.`);
+      continue;
+    }
+    const folder = join(project.root, slot.path);
+    const left = (await pathExists(folder)) ? (await readdir(folder)).sort() : [];
+    if (!left.length) continue;
+    const shown = `${left.slice(0, 4).join(", ")}${left.length > 4 ? ", ..." : ""}`;
+    log.info(
+      `${slot.path} still holds what was never the Starter's (${shown}): its settings, dependencies, or native projects. Delete the folder once you no longer need them.`,
+    );
+  }
+}
+
 /** What add, remove, or upgrade did: "conflicts" when it wrote conflict markers to resolve. */
 export type ChangeOutcome = "unchanged" | "changed" | "conflicts";
 
@@ -443,7 +618,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
   if (
     command.name === "add" &&
     command.changes.length > 0 &&
-    command.changes.every((c) => c.option && project.modules[c.module] === c.option)
+    command.changes.every((c) => c.option && (project.modules[c.module] ?? project.stacks[c.module]) === c.option)
   ) {
     outro("The project already uses that selection; nothing to change.");
     return "unchanged";
@@ -523,6 +698,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     }
 
     report(plan);
+    await reportApps(project, change);
     for (const note of change.notes) log.info(note);
     if (installError) {
       const reason = installError instanceof Error ? installError.message : String(installError);

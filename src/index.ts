@@ -89,13 +89,14 @@ async function chooseModules(
   requested: Record<string, string>,
   interactive: boolean,
 ): Promise<Record<string, string> | null> {
-  const unasked = Object.keys(manifest.modules).filter((id) => requested[id] === undefined);
+  // Modules with a choice for these apps: a module only a mobile app uses has one for a website.
+  const unasked = Object.keys(manifest.modules).filter(
+    (id) => requested[id] === undefined && moduleChoices(manifest, stacks, id, requested).length > 1,
+  );
   if (!interactive || unasked.length === 0) return requested;
 
   const customize = await confirm({
-    message: `Customize the included services (${Object.values(manifest.modules)
-      .map((module) => module.name.toLowerCase())
-      .join(", ")})?`,
+    message: `Customize the included services (${unasked.map((id) => manifest.modules[id]!.name.toLowerCase()).join(", ")})?`,
     initialValue: false,
   });
   if (isCancel(customize)) return null;
@@ -113,7 +114,8 @@ async function chooseModules(
         return value === undefined || allowed.includes(value);
       }),
     );
-    if (available.length === 0) continue;
+    // With one option left, there is nothing to ask.
+    if (available.length < 2) continue;
     const value = await select({
       message: module.name,
       initialValue: available.some(([optionId]) => optionId === module.default)
@@ -278,7 +280,7 @@ async function createProject(args: CliArgs): Promise<void> {
   const directory = relative(process.cwd(), targetDirectory) || ".";
   const scripts = JSON.parse(await readFile(join(targetDirectory, "package.json"), "utf8")).scripts ?? {};
   const later = scripts.clubedge
-    ? `Change modules later with \`pnpm clubedge add\` or \`pnpm clubedge remove\`, and get Starter updates with \`pnpm clubedge upgrade\`.\n\n`
+    ? `Change modules and mobile apps later with \`pnpm clubedge add\` or \`pnpm clubedge remove\`, and get Starter updates with \`pnpm clubedge upgrade\`.\n\n`
     : "";
   outro(
     `Next steps:\n  cd ${directory}\n${migrate ? `  ${pnpmCommand} ${migrate}\n` : ""}  ${pnpmCommand} dev\n\n` +
@@ -333,8 +335,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       await tryOnRailway(args);
     } else {
       const intros = {
-        add: "Add a module to this project",
-        remove: "Remove a module from this project",
+        add: "Add a module or an app to this project",
+        remove: "Remove a module or an app from this project",
         upgrade: "Upgrade this project to a newer Starter",
       };
       intro(intros[args.command.name]);

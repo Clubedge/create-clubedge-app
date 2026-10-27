@@ -2,6 +2,20 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.46.0
+
+- **Add and remove the apps installed on devices** (#161), so a project created without them can take them later, and drop them again, without starting over: `pnpm clubedge add mobile expo` for the native app, `pnpm clubedge add shell capacitor` for the shell that packages the website, and `pnpm clubedge remove mobile` or `pnpm clubedge remove shell`. The shell needs Starter v0.27.0 or later, and the native app v0.28.0.
+  - Adding an app brings its folder, its CI job and the Starter's other sections for it, its dependencies, and its local env file. `package.json` records it, so later changes and upgrades keep it.
+  - The app must fit the project, and the CLI says which project can have it when this one can't. When the project's option for a module is one the app lacks, such as a sign-in the native app doesn't have yet, switch it in the same command: `pnpm clubedge add mobile expo auth better-auth`.
+  - Removing an app deletes the Starter's files and lists what was never the Starter's, such as the shell's `android/` and `ios/` projects, to delete once you no longer need them.
+  - The framework and the API stay as the project was created.
+  - When a change keeps a variable in a local env file, the comments above it that you never edited now follow the example's, so a later change that removes the variable removes them too.
+- **Module options can name the registry packages only they need** (#162), in a new `dependencies` field. A project without the option leaves them out, such as the notification plugins in projects without push. Stack packs can use it too ([stack packs](https://github.com/Clubedge/create-clubedge-app/blob/main/docs/stack-packs.md)).
+- **Starter v0.30.0** by default (#163). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.30.0) cover:
+  - store releases for both mobile apps, signed, from your computer or a workflow, with build numbers made from each app's version;
+  - push notifications for both apps (`--push expo` or `--push native`);
+  - over-the-air updates for the native app (`--ota eas`).
+
 ## 0.45.0
 
 - **Starter v0.29.0** by default (#159). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.29.0) cover:

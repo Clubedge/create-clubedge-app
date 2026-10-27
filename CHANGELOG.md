@@ -2,6 +2,10 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.46.1
+
+- Default to Starter `v0.30.1` (#167).
+
 ## 0.46.0
 
 - **Add and remove the apps installed on devices** (#161), so a project created without them can take them later, and drop them again, without starting over: `pnpm clubedge add mobile expo` for the native app, `pnpm clubedge add shell capacitor` for the shell that packages the website, and `pnpm clubedge remove mobile` or `pnpm clubedge remove shell`. The shell needs Starter v0.27.0 or later, and the native app v0.28.0.

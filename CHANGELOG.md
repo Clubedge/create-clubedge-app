@@ -2,6 +2,14 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.46.1
+
+- **Starter v0.30.1** by default (#167). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.30.1) cover:
+  - the native app (`--mobile expo`) reaching its API again: since v0.29.0, each of its calls to the API threw after the API had answered, so the account never loaded, and saving a name or deleting the account failed;
+  - getting the fix to installed apps: a new build in the stores, then `APP_MINIMUM_VERSION` on the API, which sends older installs to the update screen, or an over-the-air update with `--ota eas`;
+  - end-to-end tests of both mobile apps on an Android emulator;
+  - Expo SDK 58's latest patch versions.
+
 ## 0.46.0
 
 - **Add and remove the apps installed on devices** (#161), so a project created without them can take them later, and drop them again, without starting over: `pnpm clubedge add mobile expo` for the native app, `pnpm clubedge add shell capacitor` for the shell that packages the website, and `pnpm clubedge remove mobile` or `pnpm clubedge remove shell`. The shell needs Starter v0.27.0 or later, and the native app v0.28.0.

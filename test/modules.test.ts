@@ -14,6 +14,7 @@ describe("parsing schema 3 modules", () => {
     expect(manifest.modules.storage!.options.supabase).toEqual({
       name: "Supabase Storage",
       packages: { "@clubedge/storage-supabase": "packages/storage-supabase" },
+      dependencies: [],
       files: ["apps/web/src/server/storage.ts", "apps/start/src/server/storage.ts"],
       replace: {
         "apps/web/src/server/storage.ts": "apps/web/src/server/variants/storage.supabase.ts",
@@ -25,6 +26,7 @@ describe("parsing schema 3 modules", () => {
     expect(manifest.modules.storage!.options.none).toEqual({
       name: "None",
       packages: {},
+      dependencies: [],
       files: [],
       replace: {},
       requires: {},
@@ -239,6 +241,71 @@ describe("createPlan with modules", () => {
 
   it("refuses an invalid combination before planning any file", () => {
     expect(() => createPlan({ ...input, modules: { auth: "none", storage: "supabase" } })).toThrow(ModuleError);
+  });
+});
+
+describe("registry packages of module options", () => {
+  // A module whose options bring native plugins, which link into an app wherever they are a
+  // dependency: projects without the option must not install them.
+  const push = {
+    name: "Push notifications",
+    default: "none",
+    options: {
+      expo: { name: "Expo push service", dependencies: ["expo-notifications"] },
+      native: { name: "FCM and APNs", dependencies: ["expo-notifications", "@capacitor/push-notifications"] },
+      none: { name: "None" },
+    },
+  };
+  const withPush = { ...input, manifest: parseTemplateManifest(withModules({ ...modulesManifest.modules, push })) };
+  const app = JSON.stringify({
+    name: "@clubedge/web",
+    dependencies: { "@capacitor/push-notifications": "^8.0.0", "expo-notifications": "~58.0.0", zod: "^4" },
+  });
+  const lockfile = [
+    "lockfileVersion: '9.0'",
+    "",
+    "importers:",
+    "",
+    "  apps/web:",
+    "    dependencies:",
+    "      '@capacitor/push-notifications':",
+    "        specifier: ^8.0.0",
+    "        version: 8.0.0",
+    "      expo-notifications:",
+    "        specifier: ~58.0.0",
+    "        version: 58.0.0",
+    "      zod:",
+    "        specifier: ^4",
+    "        version: 4.0.0",
+    "",
+  ].join("\n");
+  const edited = (plan: ReturnType<typeof createPlan>, path: string, text: string) =>
+    plan.edits.filter((edit) => edit.path === path).reduce((result, { apply }) => apply(result), text);
+
+  it("leaves out of each app and the lockfile the packages only left-out options list", () => {
+    const expo = createPlan({ ...withPush, modules: { push: "expo" } });
+    expect(Object.keys(JSON.parse(edited(expo, "apps/web/package.json", app)).dependencies)).toEqual(["expo-notifications", "zod"]);
+    expect(edited(expo, "pnpm-lock.yaml", lockfile)).not.toContain("@capacitor/push-notifications");
+    expect(edited(expo, "pnpm-lock.yaml", lockfile)).toContain("      expo-notifications:\n        specifier: ~58.0.0\n");
+
+    const none = createPlan({ ...withPush, modules: { push: "none" } });
+    expect(Object.keys(JSON.parse(edited(none, "apps/web/package.json", app)).dependencies)).toEqual(["zod"]);
+    expect(edited(none, "pnpm-lock.yaml", lockfile)).not.toMatch(/notifications/);
+
+    // A package two options list stays with either.
+    const native = createPlan({ ...withPush, modules: { push: "native" } });
+    expect(Object.keys(JSON.parse(edited(native, "apps/web/package.json", app)).dependencies)).toHaveLength(3);
+  });
+
+  it.each([
+    ["a path", ["packages/push"]],
+    ["an uppercase name", ["Expo-Notifications"]],
+    ["a string", "expo-notifications"],
+  ])("rejects %s", (_label, dependencies) => {
+    const broken = { ...push, options: { ...push.options, expo: { name: "Expo push service", dependencies } } };
+    expect(() => parseTemplateManifest(withModules({ ...modulesManifest.modules, push: broken }))).toThrow(
+      "clubedge.template.json: modules.push.options.expo.dependencies must be an array of package names.",
+    );
   });
 });
 

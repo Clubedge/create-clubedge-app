@@ -334,6 +334,8 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
   const keptPaths = new Set<string>();
   const usedPackages = new Map<string, string>();
   const offeredPackages = new Map<string, string>();
+  const usedDependencies = new Set<string>();
+  const offeredDependencies = new Set<string>();
   const variantSources = new Set<string>();
   /** Variant source path to the default file it replaces. */
   const replacements = new Map<string, string>();
@@ -348,6 +350,10 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
       for (const [name, directory] of Object.entries(option.packages)) {
         offeredPackages.set(name, directory);
         if (selected) usedPackages.set(name, directory);
+      }
+      for (const name of option.dependencies) {
+        offeredDependencies.add(name);
+        if (selected) usedDependencies.add(name);
       }
       for (const [target, variant] of Object.entries(option.replace)) {
         variantSources.add(variant);
@@ -398,9 +404,12 @@ function resolveModuleFiles(manifest: TemplateManifest, selection: Selection, st
   if (Object.keys(rename).length) scripts.rename = rename;
 
   const removedPackages = [...offeredPackages].filter(([name]) => !usedPackages.has(name));
+  // Registry packages only left-out options list go the way of left-out workspace packages:
+  // out of each app's package.json and the lockfile's importers.
+  const removedDependencies = [...offeredDependencies].filter((name) => !usedDependencies.has(name));
   return {
     scripts,
-    removedPackageNames: removedPackages.map(([name]) => name),
+    removedPackageNames: [...removedPackages.map(([name]) => name), ...removedDependencies],
     removedPackageDirectories: removedPackages.map(([, directory]) => directory),
     replacedTargets: new Set(replacements.values()),
     replacements,

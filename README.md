@@ -148,7 +148,7 @@ With the Hono API, the decoupled stacks support every module option the full-sta
 A project can have a mobile app in two ways, and both at once:
 
 - **A shell** packages the Vite frontend as an Android and iOS app with [Capacitor](https://capacitorjs.com), so the app shows the same pages as the website (since CLI 0.42.0, with Starter v0.27.0).
-- **A native app** has its own screens, built with [Expo](https://expo.dev) and React Native, and calls the same API (since CLI 0.44.0, with Starter v0.29.0).
+- **A native app** has its own screens, built with [Expo](https://expo.dev) and React Native, and calls the same API (since CLI 0.44.0, with Starter v0.28.0).
 
 Earlier Starters have neither, and the CLI refuses `--shell` and `--mobile` with them.
 
@@ -167,7 +167,7 @@ A shell packages the frontend's static files, so it needs `--framework vite`, an
 
 #### Without a website
 
-A project can also be only an API and its native app: `--framework none` leaves the web app out (since CLI 0.44.0, with Starter v0.29.0).
+A project can also be only an API and its native app: `--framework none` leaves the web app out (since CLI 0.44.0, with Starter v0.28.0).
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework none --api hono --mobile expo

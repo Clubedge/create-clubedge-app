@@ -530,7 +530,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.42.0 | v0.27.0 | Starter v0.27.0: mobile apps with Capacitor (`--shell capacitor`, template schema 5); client addresses per platform; Docker Compose behind Caddy, with images on GHCR |
 | 0.43.0 | v0.27.1 | Upgrades keep each app's own version; add, remove, and upgrade that change nothing skip the Starter download |
 | 0.44.0 | v0.28.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
-| 0.45.0 | v0.29.0 | Bump astral-sh/setup-uv from 10.3.0 to 10.3.2 in the actions group; Merge package.json by key, with markers only around a key both changed; Default to Starter v0.29.0 |
+| 0.45.0 | v0.29.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
 
 ## Community
 

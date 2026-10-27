@@ -4,9 +4,16 @@ All notable changes to `create-clubedge-app` are documented here.
 
 ## 0.45.0
 
-- Bump astral-sh/setup-uv from 10.3.0 to 10.3.2 in the actions group (#154).
-- Merge package.json by key, with markers only around a key both changed (#158).
-- Default to Starter `v0.29.0` (#159).
+- **Starter v0.29.0** by default (#159). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.29.0) cover:
+  - an update policy for apps installed on phones: a minimum announced for a date, values per platform, and APIs that answer apps below the minimum `426 update_required`;
+  - a new design for the native app (`--mobile expo`);
+  - splash screens that are never cropped or stretched.
+- **`package.json` merges by key** (#158) when `add`, `remove`, or `upgrade` merges the Starter's changes into your project:
+  - A key only one side changed takes that side's value, and objects merge key by key, so your dependencies and the Starter's no longer collide line by line.
+  - A key both sides changed differently is a conflict, with the usual markers around that key's lines only.
+  - Your key order and indentation are kept. A file that doesn't parse, such as one with markers left from an earlier merge, merges by line as before.
+- **The Starter pin** keeps the release a change came with in notes such as "since CLI 0.44.0, with Starter v0.28.0", which moving the pin to v0.29.0 had changed.
+- CI uses astral-sh/setup-uv 10.3.2 (#154).
 
 ## 0.44.0
 

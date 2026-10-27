@@ -50,6 +50,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 41 | 0.43.0 | Upgrades keep each app's own version; add, remove, and upgrade that change nothing skip the Starter download |
 | 42 | 0.44.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
 | 43 | 0.45.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
+| 44 | 0.46.0 | Leave out the registry packages of module options a project does not use; Add and remove the apps installed on devices; Default to Starter v0.30.0 |
 
 ## CLI improvements
 

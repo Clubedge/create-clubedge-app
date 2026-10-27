@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.46.0
+
+- Leave out the registry packages of module options a project does not use (#162).
+- Add and remove the apps installed on devices (#161).
+- Default to Starter `v0.30.0` (#163).
+
 ## 0.45.0
 
 - **Starter v0.29.0** by default (#159). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.29.0) cover:

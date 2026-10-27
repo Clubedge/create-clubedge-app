@@ -72,6 +72,13 @@ describe("Starter pin", () => {
       "Pinned to v9.9.9; pnpm docker:dev does it since Starter v0.15.0.",
     );
   });
+
+  it("keeps the release a change came with, after the CLI release", () => {
+    const text = { readme: "Pinned to v0.15.0; the native app (since CLI 0.17.0, with Starter v0.15.0).", contributing: "" };
+    expect(updatePinDocs(text, { ref: "v0.15.0", commit: "x".repeat(40) }, to).readme).toBe(
+      "Pinned to v9.9.9; the native app (since CLI 0.17.0, with Starter v0.15.0).",
+    );
+  });
 });
 
 describe("changelog draft", () => {

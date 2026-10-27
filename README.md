@@ -148,7 +148,7 @@ With the Hono API, the decoupled stacks support every module option the full-sta
 A project can have a mobile app in two ways, and both at once:
 
 - **A shell** packages the Vite frontend as an Android and iOS app with [Capacitor](https://capacitorjs.com), so the app shows the same pages as the website (since CLI 0.42.0, with Starter v0.27.0).
-- **A native app** has its own screens, built with [Expo](https://expo.dev) and React Native, and calls the same API (since CLI 0.44.0, with Starter v0.29.0).
+- **A native app** has its own screens, built with [Expo](https://expo.dev) and React Native, and calls the same API (since CLI 0.44.0, with Starter v0.28.0).
 
 Earlier Starters have neither, and the CLI refuses `--shell` and `--mobile` with them.
 
@@ -167,7 +167,7 @@ A shell packages the frontend's static files, so it needs `--framework vite`, an
 
 #### Without a website
 
-A project can also be only an API and its native app: `--framework none` leaves the web app out (since CLI 0.44.0, with Starter v0.29.0).
+A project can also be only an API and its native app: `--framework none` leaves the web app out (since CLI 0.44.0, with Starter v0.28.0).
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app my-app --framework none --api hono --mobile expo
@@ -400,7 +400,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.44.0
+create-clubedge-app v0.45.0
         |
         v
 Clubedge Starter v0.29.0
@@ -411,7 +411,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.44.0` | `clubedge-starter@v0.29.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.45.0` | `clubedge-starter@v0.29.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -530,6 +530,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.42.0 | v0.27.0 | Starter v0.27.0: mobile apps with Capacitor (`--shell capacitor`, template schema 5); client addresses per platform; Docker Compose behind Caddy, with images on GHCR |
 | 0.43.0 | v0.27.1 | Upgrades keep each app's own version; add, remove, and upgrade that change nothing skip the Starter download |
 | 0.44.0 | v0.28.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
+| 0.45.0 | v0.29.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
 
 ## Community
 

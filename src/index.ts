@@ -114,8 +114,12 @@ async function chooseModules(
         return value === undefined || allowed.includes(value);
       }),
     );
-    // With one option left, there is nothing to ask.
-    if (available.length < 2) continue;
+    // With one option left, there is nothing to ask. It is still the answer: later modules'
+    // requirements check it, and the plan takes it rather than the default.
+    if (available.length < 2) {
+      if (available[0] !== undefined) chosen[id] = available[0][0];
+      continue;
+    }
     const value = await select({
       message: module.name,
       initialValue: available.some(([optionId]) => optionId === module.default)

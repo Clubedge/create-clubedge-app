@@ -165,7 +165,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono --mobi
 
 A shell packages the frontend's static files, so it needs `--framework vite`, and the frontend still needs its API (`--api hono` or `--api fastapi`). A native app calls the API through the website, as the shell does, so it needs one too. Next.js and TanStack Start render their pages on their own server and have no separate API for an app to call: the CLI refuses `--shell` and `--mobile` with them, and interactive runs only ask about a mobile app after a frontend and its API. A shell and a native app run no server, so `deploy` deploys the frontend and the API as above and leaves them out. The native app's Starter lists the sign-in options it supports, so the CLI refuses an `--auth` option the app does not have yet.
 
-A project created without them can add them later, and drop them again: `pnpm clubedge add mobile expo`, `add shell capacitor`, or `remove mobile` (since CLI 0.46.0, see [Change an existing project](#change-an-existing-project)).
+A project created without them can add them later, and drop them again: `pnpm clubedge add mobile expo`, `pnpm clubedge add shell capacitor`, or `pnpm clubedge remove mobile` (since CLI 0.46.0, see [Change an existing project](#change-an-existing-project)).
 
 #### Without a website
 

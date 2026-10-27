@@ -43,10 +43,13 @@ Run the CLI from the generated project directory:
 ```sh
 pnpm clubedge add payments stripe
 pnpm clubedge remove storage
+pnpm clubedge add mobile expo
 pnpm clubedge upgrade
 ```
 
 Check the project's Git state first. These commands preserve user edits and can report merge conflicts that need review. After a change, follow the CLI's instructions and run relevant checks, migrations, or service setup for the modules involved.
+
+`add` and `remove` also take the apps installed on devices: the native app (`mobile expo`) and the shell that packages the Vite frontend (`shell capacitor`). The framework and the API stay as the project was created; when the project cannot take an app, the CLI says which project can.
 
 ## Project guidance
 

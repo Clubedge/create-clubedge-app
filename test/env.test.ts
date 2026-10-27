@@ -46,6 +46,16 @@ describe("updateEnvFile", () => {
     );
   });
 
+  it("gives a value that stays the target's comment, unless the developer edited it, so a later change still removes it", () => {
+    // Another module's option rewords the comment above a variable this change keeps.
+    const base = "# The app's origins.\nMOBILE_ORIGINS=\n";
+    const target = "# The app's origins, which Better Auth trusts too.\nMOBILE_ORIGINS=\n";
+    const refreshed = updateEnvFile(base, base, target);
+    expect(refreshed.text).toBe(target);
+    expect(updateEnvFile(refreshed.text, target, "").text).toBe("");
+    expect(updateEnvFile("# my note\nMOBILE_ORIGINS=\n", base, target).text).toBe("# my note\nMOBILE_ORIGINS=\n");
+  });
+
   it("adds a variable at the end when the one it follows is missing", () => {
     const result = updateEnvFile("OTHER=1\n", "A=1\n", "A=1\n# New\nB=2\n");
     expect(result.text).toBe("OTHER=1\n\n# New\nB=2\n");

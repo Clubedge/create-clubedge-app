@@ -226,7 +226,7 @@ function parseCommand(positionals: string[]): Command {
   if (name === "add") {
     if (rest.length > 1 && rest.length % 2 === 1) {
       throw new UsageError(
-        "Usage: add [module option]..., for example: add cache redis, or add email resend payments stripe",
+        "Usage: add [module option]..., for example: add cache redis, add email resend payments stripe, or add mobile expo",
       );
     }
     const changes: ModuleChange[] =

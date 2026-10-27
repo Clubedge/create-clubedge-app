@@ -1,6 +1,6 @@
 // Changes an existing project from one generated state (base) to another (target): different
-// modules for add and remove, or a newer Starter for upgrade. The project's own edits survive
-// through a three-way merge, see merge.ts.
+// modules or apps for add and remove, or a newer Starter for upgrade. The project's own edits
+// survive through a three-way merge, see merge.ts.
 import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { customizeAppManifest } from "./customize.js";
@@ -18,6 +18,8 @@ const LOCKFILE = "pnpm-lock.yaml";
 export interface UpdateSide {
   source: Pick<TemplateSource, "root" | "files" | "repository" | "ref" | "commit">;
   manifest: TemplateManifest;
+  /** The stack per slot; the project's own when absent. add and remove change its apps here. */
+  stacks?: Record<string, string>;
   modules: Record<string, string>;
   cliVersion: string;
 }
@@ -30,8 +32,12 @@ export interface UpdatePlan {
    * "install": the project changed its dependencies, so `pnpm install` must reconcile them.
    */
   lockfile: { kind: "unchanged" } | { kind: "replace"; content: Buffer } | { kind: "install" };
-  /** Each app's local env file, such as apps/web/.env.local; `update` is null when it does not exist. */
-  envs: Array<{ path: string; update: EnvUpdate | null; changed: boolean }>;
+  /**
+   * Each app's local env file, such as apps/web/.env.local; `update` is null when it does not
+   * exist. An app the change adds gets its env file from its example (`create`), as a new project
+   * does.
+   */
+  envs: Array<{ path: string; update: EnvUpdate | null; changed: boolean; create?: Buffer }>;
 }
 
 export async function planUpdate(project: Project, base: UpdateSide, target: UpdateSide): Promise<UpdatePlan> {
@@ -40,16 +46,18 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
       source: side.source,
       manifest: side.manifest,
       identity: project.identity,
-      stacks: project.stacks,
+      stacks: side.stacks ?? project.stacks,
       modules: side.modules,
       cliVersion: side.cliVersion,
     });
   const before = await render(base);
   const after = await render(target);
 
-  // The lockfile and the local env files are handled on their own below.
-  const envFiles = [...after.envFiles, ...before.envFiles.filter(({ to }) => !after.envFiles.some((file) => file.to === to))];
-  const special = [LOCKFILE, ...envFiles.map(({ to }) => to)];
+  // The lockfile and the local env files are handled on their own below. The env file of an app
+  // the change removes is left as it is: it is the developer's, and Git ignores it.
+  const envFiles = after.envFiles;
+  const removedEnvFiles = before.envFiles.filter(({ to }) => !after.envFiles.some((file) => file.to === to));
+  const special = [LOCKFILE, ...[...envFiles, ...removedEnvFiles].map(({ to }) => to)];
   const strip = (files: Map<string, Buffer>) =>
     new Map([...files].filter(([path]) => !special.includes(path)));
   const baseFiles = strip(before.files);
@@ -112,7 +120,14 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
     const text = (files: Map<string, Buffer>) => files.get(envFile.from)?.toString("utf8") ?? "";
     const local = current.get(envFile.to)?.toString("utf8");
     const update = local === undefined ? null : updateEnvFile(local, text(before.files), text(after.files));
-    return { path: envFile.to, update, changed: update !== null && update.text !== local };
+    const added = !before.envFiles.some(({ to }) => to === envFile.to);
+    const example = after.files.get(envFile.from);
+    return {
+      path: envFile.to,
+      update,
+      changed: update !== null && update.text !== local,
+      ...(local === undefined && added && example ? { create: example } : {}),
+    };
   });
 
   return { project, actions, lockfile, envs };
@@ -173,5 +188,12 @@ export async function applyUpdate(plan: UpdatePlan): Promise<void> {
   if (plan.lockfile.kind === "replace") await writeFile(join(root, LOCKFILE), plan.lockfile.content);
   for (const env of plan.envs) {
     if (env.update && env.changed) await writeFile(join(root, env.path), env.update.text);
+    if (env.create) {
+      await mkdir(dirname(join(root, env.path)), { recursive: true });
+      // An env file written since the plan was made is never replaced.
+      await writeFile(join(root, env.path), env.create, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error;
+      });
+    }
   }
 }

@@ -165,6 +165,8 @@ pnpm dlx @clubedge/create-clubedge-app my-app --framework vite --api hono --mobi
 
 A shell packages the frontend's static files, so it needs `--framework vite`, and the frontend still needs its API (`--api hono` or `--api fastapi`). A native app calls the API through the website, as the shell does, so it needs one too. Next.js and TanStack Start render their pages on their own server and have no separate API for an app to call: the CLI refuses `--shell` and `--mobile` with them, and interactive runs only ask about a mobile app after a frontend and its API. A shell and a native app run no server, so `deploy` deploys the frontend and the API as above and leaves them out. The native app's Starter lists the sign-in options it supports, so the CLI refuses an `--auth` option the app does not have yet.
 
+A project created without them can add them later, and drop them again: `pnpm clubedge add mobile expo`, `pnpm clubedge add shell capacitor`, or `pnpm clubedge remove mobile` (since CLI 0.46.0, see [Change an existing project](#change-an-existing-project)).
+
 #### Without a website
 
 A project can also be only an API and its native app: `--framework none` leaves the web app out (since CLI 0.44.0, with Starter v0.28.0).
@@ -250,7 +252,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 
 ## Change an existing project
 
-Inside a project created by the CLI, `add` and `remove` change modules, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them, with a list where you can pick several modules at once:
+Inside a project created by the CLI, `add` and `remove` change modules and the apps installed on devices, and `upgrade` moves the project to a newer Starter release. Projects from Starter v0.8.0 on have a `clubedge` script, so `pnpm clubedge add cache redis` works too. Without a module or option, `add` and `remove` ask for them, with a list where you can pick several modules and apps at once:
 
 ```sh
 pnpm clubedge add                                            # choose a module and option from a list
@@ -258,6 +260,8 @@ pnpm dlx @clubedge/create-clubedge-app add cache redis      # or switch: add aut
 pnpm dlx @clubedge/create-clubedge-app remove storage
 pnpm clubedge add email resend payments stripe              # several modules as one change
 pnpm clubedge remove storage payments
+pnpm clubedge add mobile expo                               # the native app; add shell capacitor packages the website
+pnpm clubedge remove mobile
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
 pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.29.0 # or a specific tag, branch, or commit
@@ -273,6 +277,15 @@ The CLI renders the project twice, from the Starter commit and modules recorded 
 - `pnpm-lock.yaml` is replaced if you never changed your dependencies; otherwise `pnpm install` reconciles it.
 
 Several modules in one command are applied as one change, and their requirements are checked together, so `add auth supabase storage supabase` works even though Supabase Storage needs Supabase Auth. When lines conflict, the CLI lists each file with its number of conflict blocks. Before an upgrade, it lists the Starter releases it crosses with the sections of their release notes, such as `v0.13.0  Observability, Tests, Also`.
+
+### Apps installed on devices
+
+Since CLI 0.46.0, `add` and `remove` also take the apps that run on phones rather than on a server: the native app (`add mobile expo`) and the shell that packages the website (`add shell capacitor`), with Starter v0.27.0 or later for the shell and v0.28.0 for the native app. The project's framework and API stay as they were created, since its deployment and data are built around them.
+
+- Adding an app brings its folder, its CI job and the rest of the Starter's sections for it, its dependencies in `pnpm-lock.yaml`, and its local env file, made from its example as a new project's is. `package.json` records it, so later changes and upgrades keep it.
+- The app must fit the project: the native app calls an API, so it needs `--framework vite` or `none` with an API, and the shell packages the Vite frontend. The CLI says which project can have the app when this one cannot.
+- An app implements the modules it uses, such as the native app's sign-in. When the project's option is one it lacks, switch it in the same command: `add mobile expo auth better-auth`.
+- Removing an app deletes the Starter's files and leaves what was never the Starter's, such as its env file, its `node_modules`, and the shell's `android/` and `ios/` projects. The CLI lists them, to delete once you no longer need them.
 
 The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 

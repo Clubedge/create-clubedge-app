@@ -212,6 +212,19 @@ describe("assertTargetIsUsable", () => {
     await expect(assertTargetIsUsable(parse(root).root)).rejects.toThrow("filesystem root");
     expect(await readFile(join(root, "keep.txt"), "utf8")).toBe("mine");
   });
+
+  it("refuses Windows reserved device names, with or without an extension", async () => {
+    const root = await temporaryDirectory();
+
+    for (const name of ["CON", "con.app", "COM1"]) {
+      await assertTargetIsUsable(join(root, name)).then(
+        () => expect.unreachable(`"${name}" should have been refused as a reserved device name`),
+        (error) => expect(error).toBeInstanceOf(TargetError),
+      );
+    }
+
+    await expect(assertTargetIsUsable(join(root, "console"))).resolves.toBeUndefined();
+  });
 });
 
 describe("readDirectoryTemplate", () => {

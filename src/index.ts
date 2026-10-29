@@ -1,6 +1,6 @@
 import { cancel, confirm, intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
 import { readFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { parseCliArgs, UsageError, type CliArgs } from "./cli/args.js";
 import { dim, helpText, showBanner } from "./cli/ui.js";
@@ -17,7 +17,7 @@ import { describeNewDatabase, neonCommand, provisionNeonDatabase } from "./neon.
 import { initializeGit } from "./steps/git.js";
 import { detectLauncher, detectPnpm, installDependencies } from "./steps/install.js";
 import { commandSucceeds, run } from "./utils/process.js";
-import { displayNameFromPackageName, packageNameFromDirectory } from "./utils/names.js";
+import { displayNameFromPackageName, isReservedDeviceName, packageNameFromDirectory } from "./utils/names.js";
 
 const minimumNode = [22, 12] as const;
 
@@ -34,7 +34,14 @@ async function askProjectDirectory(): Promise<string> {
   const value = await text({
     message: "Where should the new project be created?",
     placeholder: "my-app",
-    validate: (input) => (input?.trim() ? undefined : "Enter a project directory name."),
+    validate: (input) => {
+      const trimmed = input?.trim();
+      if (!trimmed) return "Enter a project directory name.";
+      if (isReservedDeviceName(basename(trimmed))) {
+        return `"${basename(trimmed)}" is a reserved device name on Windows. Choose another directory name.`;
+      }
+      return undefined;
+    },
   });
   if (isCancel(value)) {
     cancel("Operation cancelled.");

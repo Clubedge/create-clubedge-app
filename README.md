@@ -230,7 +230,7 @@ Options:
   -v, --version           Show the CLI version
 ```
 
-The target directory must be empty or not exist. The CLI never deletes or overwrites existing files, and if scaffolding fails it removes whatever it wrote, so a failed run leaves nothing behind.
+The target directory must be empty or not exist, and its name can't be one Windows reserves for a device, such as `CON`, `NUL`, or `COM1`, even on macOS or Linux; the same goes for any folder the CLI creates above it. The CLI never deletes or overwrites existing files, and if scaffolding fails it removes whatever it wrote, so a failed run leaves nothing behind.
 
 ```sh
 # Preview the files and edits without writing anything

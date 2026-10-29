@@ -225,6 +225,18 @@ describe("assertTargetIsUsable", () => {
 
     await expect(assertTargetIsUsable(join(root, "console"))).resolves.toBeUndefined();
   });
+
+  it("refuses a reserved name for a parent it would create", async () => {
+    const root = await temporaryDirectory();
+    await expect(assertTargetIsUsable(join(root, "CON", "my-app"))).rejects.toThrow('"CON" is a reserved device name');
+  });
+
+  // Making this folder on Windows would create the kind of folder the check guards against.
+  it.skipIf(process.platform === "win32")("accepts a reserved name for a parent that already exists", async () => {
+    const root = await temporaryDirectory();
+    await mkdir(join(root, "con"));
+    await expect(assertTargetIsUsable(join(root, "con", "my-app"))).resolves.toBeUndefined();
+  });
 });
 
 describe("readDirectoryTemplate", () => {

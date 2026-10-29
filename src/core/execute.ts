@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, parse } from "node:path";
 import { copyTemplateFiles, emptyDirectory, pathExists } from "../utils/fs.js";
+import { isReservedDeviceName } from "../utils/names.js";
 import type { ScaffoldPlan } from "./plan.js";
 import type { TemplateSource } from "./source.js";
 
@@ -9,10 +10,17 @@ export class TargetError extends Error {
   override name = "TargetError";
 }
 
-/** Refuses filesystem roots and non-empty directories. Never deletes or overwrites anything. */
+/** Refuses filesystem roots, reserved Windows device names, and non-empty directories. Never deletes or overwrites anything. */
 export async function assertTargetIsUsable(directory: string): Promise<void> {
   if (parse(directory).root === directory) {
     throw new TargetError("Choose a project subdirectory rather than a filesystem root.");
+  }
+  const root = parse(directory).root;
+  const segments = directory.slice(root.length).split(/[\\/]+/).filter(Boolean);
+  for (const segment of segments) {
+    if (isReservedDeviceName(segment)) {
+      throw new TargetError(`"${segment}" is a reserved device name on Windows. Choose another directory name.`);
+    }
   }
   try {
     const entries = await readdir(directory);

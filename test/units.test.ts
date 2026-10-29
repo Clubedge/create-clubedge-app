@@ -227,5 +227,7 @@ describe("quoteForCmd", () => {
     expect(quoteForCmd("C:\\Users\\Dell\\npm\\railway.exe")).toBe("C:\\Users\\Dell\\npm\\railway.exe");
     expect(quoteForCmd("two words")).toBe('"two words"');
     expect(quoteForCmd('say "hi" & exit')).toBe('"say ""hi"" & exit"');
+    expect(quoteForCmd("")).toBe('""');
+    expect(quoteForCmd("line1\nline2")).toBe('"line1line2"');
   });
 });

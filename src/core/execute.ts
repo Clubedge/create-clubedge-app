@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, parse } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { copyTemplateFiles, emptyDirectory, pathExists } from "../utils/fs.js";
 import { isReservedDeviceName } from "../utils/names.js";
 import type { ScaffoldPlan } from "./plan.js";
@@ -15,9 +15,12 @@ export async function assertTargetIsUsable(directory: string): Promise<void> {
   if (parse(directory).root === directory) {
     throw new TargetError("Choose a project subdirectory rather than a filesystem root.");
   }
-  const name = basename(directory);
-  if (isReservedDeviceName(name)) {
-    throw new TargetError(`"${name}" is a reserved device name on Windows. Choose another directory name.`);
+  const root = parse(directory).root;
+  const segments = directory.slice(root.length).split(/[\\/]+/).filter(Boolean);
+  for (const segment of segments) {
+    if (isReservedDeviceName(segment)) {
+      throw new TargetError(`"${segment}" is a reserved device name on Windows. Choose another directory name.`);
+    }
   }
   try {
     const entries = await readdir(directory);

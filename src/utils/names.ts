@@ -7,7 +7,10 @@ import { basename } from "node:path";
 const RESERVED_DEVICE_NAMES = /^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$/i;
 
 export function isReservedDeviceName(name: string): boolean {
-  return RESERVED_DEVICE_NAMES.test(name);
+  const dotIndex = name.indexOf(".");
+  const base = dotIndex === -1 ? name : name.slice(0, dotIndex);
+  const extension = dotIndex === -1 ? "" : name.slice(dotIndex);
+  return RESERVED_DEVICE_NAMES.test(base.replace(/ +$/, "") + extension);
 }
 
 export function packageNameFromDirectory(directory: string): string {

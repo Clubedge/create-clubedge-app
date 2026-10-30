@@ -1,7 +1,6 @@
-import { constants } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, parse } from "node:path";
-import { copyTemplateFiles, emptyDirectory, pathExists } from "../utils/fs.js";
+import { mkdir, readdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { basename, dirname, join, parse, relative, resolve } from "node:path";
+import { copyTemplateFiles, pathExists } from "../utils/fs.js";
 import { isReservedDeviceName } from "../utils/names.js";
 import type { ScaffoldPlan } from "./plan.js";
 import type { TemplateSource } from "./source.js";
@@ -37,9 +36,26 @@ export async function assertTargetIsUsable(directory: string): Promise<void> {
   }
 }
 
+/** Removes files created during scaffolding, then removes any empty directories left behind. */
+export async function cleanupWrittenFiles(target: string, files: string[], folders: string[] = []): Promise<void> {
+  const dirs = new Set<string>();
+  const targetPath = resolve(target);
+  for (const file of files) await rm(file, { force: true }).catch(() => {});
+  const paths = [...files.map((file) => dirname(file)), ...folders.map((folder) => folder.replace(/^\\\\\?\\/, ""))];
+  for (const p of paths) {
+    for (let cur = resolve(p); cur !== targetPath && cur !== dirname(cur) && !relative(targetPath, cur).startsWith(".."); cur = dirname(cur)) {
+      dirs.add(cur);
+    }
+  }
+  for (const dir of [...dirs].sort((a, b) => b.length - a.length)) {
+    await rmdir(dir).catch(() => {});
+  }
+}
+
 /**
  * Writes the project described by the plan. If any step fails, everything written so far is
- * removed: a directory the CLI created is deleted, and a pre-existing empty one is emptied.
+ * removed: a directory the CLI created is deleted, and for a pre-existing directory only files
+ * created during the run are removed, preserving any pre-existing contents.
  */
 export async function executePlan(plan: ScaffoldPlan, source: Pick<TemplateSource, "root">): Promise<void> {
   const target = plan.targetDirectory;
@@ -55,18 +71,18 @@ export async function executePlan(plan: ScaffoldPlan, source: Pick<TemplateSourc
     if (!(error && typeof error === "object" && "code" in error && error.code === "EEXIST")) throw error;
   }
 
+  const written: string[] = [];
+  const folders: string[] = [];
   try {
-    await copyTemplateFiles(source.root, target, plan.files);
+    await copyTemplateFiles(source.root, target, plan.files, written, folders);
     for (const edit of plan.edits) {
       const path = join(target, edit.path);
       await writeFile(path, edit.apply(await readFile(path, "utf8")));
     }
-    for (const envFile of plan.envFiles) {
-      await copyFile(join(target, envFile.from), join(target, envFile.to), constants.COPYFILE_EXCL);
-    }
+    await copyTemplateFiles(target, target, plan.envFiles, written, folders);
   } catch (error) {
     if (created) await rm(target, { recursive: true, force: true });
-    else await emptyDirectory(target);
+    else await cleanupWrittenFiles(target, written, folders);
     throw error;
   }
 }

@@ -1,11 +1,15 @@
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
+import { cleanupWrittenFiles, executePlan } from "../src/core/execute.js";
 import { pickBranchCommit, pickTagCommit } from "../src/core/source.js";
 import { assertSupportedNode } from "../src/index.js";
 import { cliVersion, starterPin } from "../src/package-info.js";
 import { detectLauncher } from "../src/steps/install.js";
-import { fromPackedPath, toPackedPath } from "../src/utils/fs.js";
+import { copyTemplateFiles, fromPackedPath, pathExists, toPackedPath } from "../src/utils/fs.js";
 import { displayNameFromPackageName, packageNameFromDirectory } from "../src/utils/names.js";
+import { temporaryDirectory, writeFiles } from "./helpers.js";
 
 describe("project naming", () => {
   it("normalizes a project directory into a package name", () => {
@@ -229,3 +233,75 @@ describe("quoteForCmd", () => {
     expect(quoteForCmd('say "hi" & exit')).toBe('"say ""hi"" & exit"');
   });
 });
+
+describe("executePlan rollback", () => {
+  it("preserves pre-existing files and removes written files and empty directories", async () => {
+    const root = await temporaryDirectory();
+    await writeFiles(root, {
+      "pre-existing.txt": "user work",
+      "keep-dir/keep.txt": "kept nested file",
+      "apps/web/scaffolded.txt": "written by cli",
+      "root-scaffolded.txt": "written by cli",
+    });
+
+    const written = [join(root, "apps", "web", "scaffolded.txt"), join(root, "root-scaffolded.txt")];
+    await cleanupWrittenFiles(root, written);
+
+    expect(await pathExists(join(root, "apps", "web", "scaffolded.txt"))).toBe(false);
+    expect(await pathExists(join(root, "apps", "web"))).toBe(false);
+    expect(await pathExists(join(root, "apps"))).toBe(false);
+    expect(await pathExists(join(root, "root-scaffolded.txt"))).toBe(false);
+    expect(await pathExists(join(root, "pre-existing.txt"))).toBe(true);
+    expect(await pathExists(join(root, "keep-dir", "keep.txt"))).toBe(true);
+    expect(await pathExists(root)).toBe(true);
+  });
+
+  it("cleans up written files and empty directories when scaffolding fails in a pre-existing directory", async () => {
+    const root = await temporaryDirectory();
+    const sourceRoot = await temporaryDirectory();
+    await writeFiles(sourceRoot, { "nested/file.txt": "template content" });
+
+    const plan = {
+      targetDirectory: root,
+      files: [{ from: "nested/file.txt", to: "nested/file.txt" }],
+      edits: [{ path: "nested/file.txt", apply: () => { throw new Error("Simulated failure during edit"); } }],
+      envFiles: [],
+    } as any;
+
+    await expect(executePlan(plan, { root: sourceRoot })).rejects.toThrow("Simulated failure during edit");
+
+    expect(await pathExists(root)).toBe(true);
+    expect(await pathExists(join(root, "nested"))).toBe(false);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it("removes the entire directory if it was created by the CLI and scaffolding fails", async () => {
+    const parent = await temporaryDirectory();
+    const root = join(parent, "new-project");
+    const sourceRoot = await temporaryDirectory();
+    await writeFiles(sourceRoot, { "template.txt": "template content" });
+
+    const plan = {
+      targetDirectory: root,
+      files: [{ from: "template.txt", to: "template.txt" }],
+      edits: [{ path: "template.txt", apply: () => { throw new Error("Simulated failure"); } }],
+      envFiles: [],
+    } as any;
+
+    await expect(executePlan(plan, { root: sourceRoot })).rejects.toThrow("Simulated failure");
+
+    expect(await pathExists(root)).toBe(false);
+  });
+
+  it("uses COPYFILE_EXCL to prevent overwriting existing files when copying templates", async () => {
+    const source = await temporaryDirectory();
+    const target = await temporaryDirectory();
+    await writeFiles(source, { "file.txt": "source content" });
+    await writeFiles(target, { "file.txt": "existing content" });
+
+    const written: string[] = [];
+    await expect(copyTemplateFiles(source, target, [{ from: "file.txt", to: "file.txt" }], written)).rejects.toThrow();
+    expect(written).toEqual([]);
+  });
+});
+

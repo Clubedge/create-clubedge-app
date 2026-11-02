@@ -57,7 +57,7 @@
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@clack/prompts": "^1.8.1",
     "giget": "^3.3.1",
     "node-diff3": "^3.2.1",

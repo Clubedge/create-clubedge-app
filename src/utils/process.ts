@@ -8,7 +8,10 @@ const useShell = process.platform === "win32";
 
 /** An argument as one word for cmd.exe: plain words as they are, anything else in double quotes. */
 export function quoteForCmd(argument: string): string {
-  return /^[\w@+=:,./\\-]+$/.test(argument) ? argument : `"${argument.replaceAll('"', '""')}"`;
+  if (argument === "") return '""';
+  if (/^[\w@+=:,./\\-]+$/.test(argument)) return argument;
+  const sanitized = argument.replace(/[\r\n]+/g, "").replaceAll('"', '""');
+  return `"${sanitized}"`;
 }
 
 /**

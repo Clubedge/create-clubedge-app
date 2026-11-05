@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, readdir, rm } from "node:fs/promises";
+import { access, constants, copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { runCapture } from "./process.js";
 
@@ -98,21 +98,17 @@ async function walk(root: string, directory: string): Promise<string[]> {
   return files;
 }
 
+/** Copies template files from sourceRoot to targetRoot, optionally recording written paths. */
 export async function copyTemplateFiles(
   sourceRoot: string,
   targetRoot: string,
   files: Array<{ from: string; to: string }>,
+  written?: string[],
 ): Promise<void> {
   for (const { from, to } of files) {
     const target = join(targetRoot, to);
     await mkdir(dirname(target), { recursive: true });
-    await copyFile(join(sourceRoot, from), target);
-  }
-}
-
-/** Removes everything inside a directory while keeping the directory itself. */
-export async function emptyDirectory(directory: string): Promise<void> {
-  for (const entry of await readdir(directory)) {
-    await rm(join(directory, entry), { recursive: true, force: true });
+    await copyFile(join(sourceRoot, from), target, constants.COPYFILE_EXCL);
+    written?.push(target);
   }
 }

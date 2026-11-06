@@ -27,6 +27,7 @@ export interface Project {
   stacks: Record<string, string>;
   modules: Record<string, string>;
   services: Record<string, ProjectService>;
+  plugins?: Array<string | { name: string; version: string; integrity: string }>;
 }
 
 /** The Starter's version of a file, saved by the last change in the `.clubedge` of a folder above it. */
@@ -98,6 +99,7 @@ export async function readProject(directory: string): Promise<Project> {
           stacks: recordedStacks(origin),
           modules: origin.modules,
           services: origin.services && typeof origin.services === "object" ? origin.services : {},
+          plugins: origin.plugins && Array.isArray(origin.plugins) ? origin.plugins : undefined,
         };
       }
     }

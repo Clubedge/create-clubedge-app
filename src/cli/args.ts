@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { validatePluginSpec } from "../steps/plugin.js";
 
 /** A module to add or switch; an interactive run asks for a missing option. */
 export interface ModuleChange {
@@ -27,6 +28,10 @@ export interface CliArgs {
   command: Command;
   projectDirectory?: string;
   framework?: string;
+  /**
+   * Pinned third-party plugins to apply via --with <package>@<version>.
+   */
+  plugins: string[];
   /**
    * Module options from flags such as --auth none. Any flag that is not one of the CLI's own
    * options names a module; the Starter's manifest validates modules and options later.
@@ -72,6 +77,7 @@ const OPTIONS = {
   framework: { type: "string" },
   ref: { type: "string" },
   "template-dir": { type: "string" },
+  with: { type: "string", multiple: true },
   install: { type: "boolean", default: true },
   git: { type: "boolean", default: true },
   yes: { type: "boolean", short: "y", default: false },
@@ -185,10 +191,18 @@ export function parseCliArgs(argv: string[]): CliArgs {
     throw new UsageError("Use either --ref or --template-dir, not both.");
   }
 
+  const rawPlugins = (values["with"] as string[] | undefined) ?? [];
+  if (command.name !== "create" && rawPlugins.length > 0) {
+    throw new UsageError("--with only applies when creating a project.");
+  }
+  const plugins = rawPlugins.map(validatePluginSpec);
+  assertDistinctPlugins(plugins);
+
   return {
     command,
     projectDirectory: command.name === "create" ? positionals[0] : undefined,
     framework: values.framework?.trim(),
+    plugins,
     modules,
     ref: values.ref,
     templateDir: values["template-dir"],
@@ -208,6 +222,12 @@ export function parseCliArgs(argv: string[]): CliArgs {
     help: values.help,
     version: values.version,
   };
+}
+
+function assertDistinctPlugins(specs: string[]) {
+  const names = specs.map((spec) => spec.slice(0, spec.lastIndexOf("@")));
+  const repeated = names.find((name, index) => names.indexOf(name) !== index);
+  if (repeated) throw new UsageError(`The plugin "${repeated}" is specified more than once.`);
 }
 
 function assertDistinct(modules: string[]) {

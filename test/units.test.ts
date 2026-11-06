@@ -24,6 +24,7 @@ describe("parseCliArgs", () => {
       command: { name: "create" },
       projectDirectory: "my-app",
       framework: undefined,
+      plugins: [],
       modules: {},
       ref: undefined,
       templateDir: undefined,

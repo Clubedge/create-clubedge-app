@@ -218,6 +218,7 @@ Options:
   --shell <id>            A mobile app that packages a frontend, such as capacitor
   --mobile <id>           A native mobile app that calls the API, such as expo
   --<module> <option>     A module option, such as --auth none; the Starter lists its modules
+  --with <pkg@version>    Apply a plugin pinned to an exact version (repeatable)
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
                           (upgrade: the Starter to upgrade to)
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
@@ -236,6 +237,9 @@ The target directory must be empty or not exist, and its name can't be one Windo
 # Preview the files and edits without writing anything
 pnpm dlx @clubedge/create-clubedge-app my-app --dry-run
 
+# Apply a third-party plugin pinned to an exact version
+pnpm dlx @clubedge/create-clubedge-app my-app --with @scope/plugin@1.2.3
+
 # Non-interactive, for scripts and CI
 pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstack-start
 
@@ -249,6 +253,27 @@ pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 # Test local Starter changes before releasing them
 pnpm dlx @clubedge/create-clubedge-app my-app --template-dir ../clubedge-starter
 ```
+
+### Plugins (experimental)
+
+Third parties can extend a generated project with opt-in plugins:
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app my-app --with @scope/plugin@1.2.3
+```
+
+- **Experimental:** Plugins are an experimental extension point.
+- **Runs once at creation:** Plugins run once, during initial project creation. Subsequent commands (`add`, `remove`, and `upgrade`) treat plugin changes as the project's own files.
+- **Exact version pinning:** Every plugin must be pinned to an exact semver (ranges and `latest` are rejected), ensuring reproducible scaffolding.
+- **Contract & Sandboxing:** A plugin package declares `"clubedge": { "plugin": "./plugin.mjs", "pluginApi": 1 }` in its `package.json`. Plugins run inside a Node permission sandbox with a scoped project API (`api.read`, `api.write`, `api.updateJson`, `api.addDependency`, `api.addScript`, `api.addEnv`):
+  ```js
+  export async function apply(api, context) {
+    api.write("custom.txt", "hello");
+    api.addDependency("lodash", "^4.17.21");
+  }
+  ```
+- **Integrity & Provenance:** Recorded under `package.json#clubedge.plugins` as `{ name, version, integrity }` taken from the install's lockfile.
+- Without `--with`, scaffolding behavior remains completely unchanged.
 
 ## Change an existing project
 

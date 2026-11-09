@@ -107,8 +107,8 @@ describe("try inside a project", () => {
 
 describe("opening the preview", () => {
   it("uses each platform's opener", () => {
-    expect(openCommand("https://x.dev", "darwin")).toEqual(["open", ["https://x.dev"]]);
-    expect(openCommand("https://x.dev", "linux")).toEqual(["xdg-open", ["https://x.dev"]]);
+    expect(openCommand("https://x.dev", "darwin")).toEqual(["open", ["--", "https://x.dev"]]);
+    expect(openCommand("https://x.dev", "linux")).toEqual(["xdg-open", ["--", "https://x.dev"]]);
     expect(openCommand("https://x.dev", "win32")[0]).toBe("rundll32");
   });
 

@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { spawn } from "node:child_process";
+import { describe, expect, it, vi } from "vitest";
 import { assertWebUrl, openCommand, openUrl } from "../src/utils/open.js";
+
+vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 describe("safe browser opener", () => {
   it("allows HTTP and HTTPS URLs on each platform", () => {
@@ -30,7 +33,9 @@ describe("safe browser opener", () => {
     for (const platform of ["win32", "darwin", "linux"] as const) {
       expect(() => openCommand(url, platform)).toThrow();
     }
-    // Reject before trying to spawn an OS process.
+    // Rejected targets must never launch an OS process, even on a failure path.
+    vi.mocked(spawn).mockClear();
     await expect(openUrl(url)).resolves.toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
   });
 });

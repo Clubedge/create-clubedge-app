@@ -48,6 +48,8 @@ cwd = "D:/path/to/workspace"
 
 The MCP server is included in the same package and uses the CLI's bundled Starter and compatibility rules. Its create tool only writes beneath the configured working directory and refuses a non-empty destination.
 
+With `install_dependencies`, `create_project` answers once `pnpm install` and each app's own install, such as `uv sync` for a FastAPI API, have finished, which can take minutes. A client that sends a progress token with the call (`_meta.progressToken`) gets a `notifications/progress` message when each install starts, every 5 seconds while it runs, and when it ends or fails, such as `pnpm install: running for 40s`. Clients that reset their request timeout on progress, as the MCP TypeScript SDK does with `resetTimeoutOnProgress`, then wait for as long as the installs take. `progress` counts the notifications sent and there is no `total`, since how far along an install is isn't known. Without a token nothing is sent, and the result is the same either way.
+
 ### Agent skill
 
 The npm package includes the Agent Skill at [`skills/clubedge-starter/SKILL.md`](skills/clubedge-starter/SKILL.md). Download and extract the package in PowerShell:

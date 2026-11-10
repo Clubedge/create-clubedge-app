@@ -2,6 +2,24 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.47.0
+
+- **Starter v0.31.0** by default (#183). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.0) cover:
+  - deploying React + Vite and its API to Cloudflare (`--deploy cloudflare`), which has not yet run on an account with Workers Paid;
+  - downloads by byte range from storage, which browsers ask for to play audio and video;
+  - Supabase sessions that the Hono API verifies itself;
+  - fixes to the APIs' CORS and to SMTP sends that never answer;
+  - browser tests in Chromium, Firefox, and WebKit.
+- **On Windows, an argument can no longer run a second command or expand a variable** (#176). The CLI ran commands through cmd.exe as one line, where `%VAR%` is expanded inside quotes, a line break ends the command, and a quote inside an argument can leave `&` and `|` outside the quotes. No argument from outside reached these commands, so this closes the gap before one does:
+  - A program (`.exe`, `.com`) now starts directly, with no shell, so `git`, `node`, `docker`, and `uv` no longer go through cmd.exe.
+  - A batch file (`.cmd`, `.bat`), such as the npm shims for `pnpm` and `npx`, still needs cmd.exe. Each argument is quoted the way Windows programs split their command line, then escaped for both of cmd.exe's readings. An argument with a line break is refused.
+- **Windows device names are refused as project directories** (#169, #171): `CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, and `LPT1` to `LPT9`, with or without an extension, which on Windows could create a folder that can't be deleted. The CLI checks the project's own name and each parent folder it would create, in the prompt and in the MCP server's `create_project` too. Folders that already exist are left alone.
+- **The browser opens web addresses only** (#175). Commands that open a page, such as `deploy`, `neon`, and `try`, hand the system's opener only an `http://` or `https://` address with a host, and open nothing otherwise.
+- **`create_project` reports progress over MCP** (#178) while it installs dependencies. A client that sends a progress token gets a notification when each install starts, every 5 seconds while it runs, and when it ends or fails, so a client that resets its timeout on progress keeps waiting. A client that sends none gets the same result as before.
+- **Sponsors** (#181, #182): the README has a Sponsors section. [Neon](https://neon.com) supports Clubedge Starter through its Open Source Program.
+- CI runs generated projects' browser checks in Chromium, by name (#180), since the Starter now has three browser projects.
+- `@modelcontextprotocol/server` 2.4.0 or newer (#173), vitest 5.1.0 (#174), and astral-sh/setup-uv 10.3.3 in CI (#172).
+
 ## 0.46.1
 
 - **Starter v0.30.1** by default (#167). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.30.1) cover:

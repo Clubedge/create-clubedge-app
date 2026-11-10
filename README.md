@@ -415,7 +415,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.46.1
+create-clubedge-app v0.47.0
         |
         v
 Clubedge Starter v0.31.0
@@ -426,7 +426,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.46.1` | `clubedge-starter@v0.31.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.47.0` | `clubedge-starter@v0.31.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -547,6 +547,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.44.0 | v0.28.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
 | 0.45.0 | v0.29.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
 | 0.46.0 | v0.30.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
+| 0.47.0 | v0.31.0 | Starter v0.31.0: deploying to Cloudflare (`--deploy cloudflare`), downloads by byte range, and browser tests in three engines; on Windows, arguments that can't start a second command and device names refused as project directories; install progress over MCP |
 
 ## Sponsors
 

@@ -1,23 +1,105 @@
 import { spawn, type ChildProcess, type SpawnOptions, type StdioOptions } from "node:child_process";
+import { statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 // Package manager shims on Windows are .cmd files, which need a shell to start.
 const useShell = process.platform === "win32";
 
-/** An argument as one word for cmd.exe: plain words as they are, anything else in double quotes. */
-export function quoteForCmd(argument: string): string {
-  return /^[\w@+=:,./\\-]+$/.test(argument) ? argument : `"${argument.replaceAll('"', '""')}"`;
+/** An environment variable by name, whatever its case: Windows keeps Path as it was written. */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+  return key === undefined ? undefined : env[key];
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Starts a command, through the shell on Windows. There it passes one quoted command line, not an
- * argument list: Node warns (DEP0190) when arguments are only concatenated for a shell.
+ * The file cmd.exe runs for a command: the path as given when it names a folder, else the first
+ * match in the current folder and then PATH's folders, each with PATHEXT's extensions in order
+ * unless the command already ends with one. Null when there is none.
+ */
+export function resolveForCmd(command: string, env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string | null {
+  const extensions = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
+  const named = extensions.some((extension) => command.toLowerCase().endsWith(extension.toLowerCase()));
+  const candidates = (base: string) => (named ? [base] : extensions.map((extension) => base + extension));
+  if (/[\\/:]/.test(command)) return candidates(resolve(cwd, command)).find(isFile) ?? null;
+  // A folder in PATH may be written in quotes.
+  const path = (envValue(env, "PATH") ?? "").split(delimiter).map((folder) => folder.replace(/^"(.*)"$/, "$1"));
+  const folders = [cwd, ...path.filter(Boolean)];
+  for (const folder of folders) {
+    const found = candidates(join(isAbsolute(folder) ? folder : resolve(cwd, folder), command)).find(isFile);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The characters cmd.exe gives a meaning to. A caret before one makes cmd.exe read it as text. */
+const cmdSpecial = /[()\][%!^"`<>&|;, *?]/g;
+const caret = (text: string) => text.replace(cmdSpecial, "^$&");
+
+/**
+ * An argument as one word of a command line that cmd.exe runs, so the program receives exactly
+ * the argument: plain words as they are, and anything else quoted the way Windows programs split
+ * their command line (CommandLineToArgvW: backslashes before a quote doubled, the quote escaped),
+ * then with a caret before each character cmd.exe would act on. That covers quotes, so cmd.exe
+ * never reads the argument as its own quoted text, and `%`, which breaks up `%VAR%`. A batch file
+ * such as an npm shim passes its arguments on in a line cmd.exe reads again, so for one the carets
+ * are added twice (`passes`). The method is https://qntm.org/cmd, as cross-spawn applies it.
+ *
+ * A line break ends the command for cmd.exe whatever surrounds it, so it's refused.
+ */
+export function quoteForCmd(argument: string, passes = 1): string {
+  if (/[\r\n]/.test(argument)) {
+    throw new Error(`An argument with a line break can't be passed to a command through cmd.exe: ${JSON.stringify(argument)}`);
+  }
+  if (/^[\w@+=:,./\\-]+$/.test(argument)) return argument;
+  let quoted = '"';
+  let backslashes = 0;
+  for (const character of argument) {
+    if (character === "\\") {
+      backslashes++;
+      continue;
+    }
+    quoted += character === '"' ? "\\".repeat(backslashes * 2 + 1) + '"' : "\\".repeat(backslashes) + character;
+    backslashes = 0;
+  }
+  quoted += "\\".repeat(backslashes * 2) + '"';
+  for (let pass = 0; pass < passes; pass++) quoted = caret(quoted);
+  return quoted;
+}
+
+/**
+ * The command line for cmd.exe: the command with a caret before each special character (a path
+ * with spaces stays one word), then its arguments, escaped twice for a batch file.
+ */
+export function cmdLine(command: string, args: string[], batch: boolean): string {
+  if (/[\r\n]/.test(command)) throw new Error(`A command with a line break can't run through cmd.exe: ${JSON.stringify(command)}`);
+  return [caret(command), ...args.map((argument) => quoteForCmd(argument, batch ? 2 : 1))].join(" ");
+}
+
+/**
+ * Starts a command. On Windows, with `shell`, it finds the file cmd.exe would run:
+ * - a program (.exe, .com) starts directly, with no shell, so nothing reads its arguments but it;
+ * - a batch file (.cmd, .bat), such as an npm shim, can only start through cmd.exe, and gets one
+ *   command line with every argument escaped for it (Node warns, DEP0190, when arguments are only
+ *   concatenated for a shell);
+ * - anything else goes to cmd.exe too, which runs it or reports that it's missing.
  */
 export function spawnCommand(command: string, args: string[], options: SpawnOptions, shell = useShell): ChildProcess {
   if (!shell) return spawn(command, args, options);
-  return spawn([command, ...args].map(quoteForCmd).join(" "), { ...options, shell: true });
+  const cwd = options.cwd === undefined ? process.cwd() : typeof options.cwd === "string" ? options.cwd : fileURLToPath(options.cwd);
+  const file = resolveForCmd(command, options.env ?? process.env, cwd);
+  if (file && /\.(exe|com)$/i.test(file)) return spawn(file, args, options);
+  return spawn(cmdLine(file ?? command, args, file !== null && /\.(cmd|bat)$/i.test(file)), { ...options, shell: true });
 }
 
 /** Runs a command with inherited output. Rejects on a non-zero exit. */

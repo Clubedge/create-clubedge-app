@@ -559,7 +559,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
   </a>
 </p>
 
-[Neon](https://neon.com) supports Clubedge through its Open Source Program.
+[Neon](https://neon.com) supports Clubedge Starter through its Open Source Program.
 
 ## Community
 

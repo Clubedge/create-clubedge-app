@@ -9,8 +9,8 @@ describe("safe browser opener", () => {
     for (const url of ["http://localhost:3000/", "https://example.org/path?a=1"]) {
       expect(assertWebUrl(url).href).toBe(url);
       expect(openCommand(url, "win32")).toEqual(["rundll32", ["url.dll,FileProtocolHandler", url]]);
-      expect(openCommand(url, "darwin")).toEqual(["open", ["--", url]]);
-      expect(openCommand(url, "linux")).toEqual(["xdg-open", ["--", url]]);
+      expect(openCommand(url, "darwin")).toEqual(["open", [url]]);
+      expect(openCommand(url, "linux")).toEqual(["xdg-open", [url]]);
     }
   });
 

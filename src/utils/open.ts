@@ -19,8 +19,8 @@ export function assertWebUrl(url: string): URL {
 export function openCommand(url: string, platform = process.platform): [string, string[]] {
   assertWebUrl(url);
   if (platform === "win32") return ["rundll32", ["url.dll,FileProtocolHandler", url]];
-  if (platform === "darwin") return ["open", ["--", url]];
-  return ["xdg-open", ["--", url]];
+  if (platform === "darwin") return ["open", [url]];
+  return ["xdg-open", [url]];
 }
 
 /** Opens a URL in the default browser. Best effort: returns false when nothing could open it. */

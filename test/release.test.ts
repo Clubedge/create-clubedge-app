@@ -6,6 +6,7 @@ import {
   changelogEntry,
   changelogLine,
   changelogSection,
+  contributors,
   insertChangelog,
   mergedPullRequests,
   releaseSummary,
@@ -129,6 +130,75 @@ describe("changelog draft", () => {
     expect(changelog.indexOf(`## ${next}`)).toBeLessThan(changelog.indexOf(`## ${pkg.version}`));
     expect(changelogSection(changelog, next)).toContain("(#47)");
     expect(changelogSection(changelog, "9.9.9")).toBe("");
+  });
+
+  // GitHub's generated release notes, as `releases/generate-notes` returns them.
+  const notes = [
+    "## What's Changed",
+    "* fix(merge): keep CRLF in incoming files by @ada in https://github.com/Clubedge/create-clubedge-app/pull/47",
+    "* feat: share a try preview by claiming the VM by @maintainer in https://github.com/Clubedge/create-clubedge-app/pull/48",
+    "* chore(deps): bump vitest from 5.0.3 to 5.0.5 by @dependabot[bot] in https://github.com/Clubedge/create-clubedge-app/pull/49",
+    "* deploy: use your own databases, as asked by @someone in an issue by @Grace-H in https://github.com/Clubedge/create-clubedge-app/pull/51",
+    "",
+    "## New Contributors",
+    "* @ada made their first contribution in https://github.com/Clubedge/create-clubedge-app/pull/47",
+    "* @dependabot[bot] made their first contribution in https://github.com/Clubedge/create-clubedge-app/pull/49",
+    "",
+    "**Full Changelog**: https://github.com/Clubedge/create-clubedge-app/compare/v0.20.0...v0.21.0",
+  ].join("\n");
+
+  it("reads who wrote each pull request, and whose first one it is, from GitHub's notes", () => {
+    expect(contributors(notes)).toEqual({
+      authors: { 47: "ada", 48: "maintainer", 49: "dependabot[bot]", 51: "Grace-H" },
+      firstTime: [
+        { login: "ada", number: 47 },
+        { login: "dependabot[bot]", number: 49 },
+      ],
+    });
+    expect(contributors("")).toEqual({ authors: {}, firstTime: [] });
+  });
+
+  it("credits who wrote each pull request, names first contributions, and thanks everyone", () => {
+    const { authors, firstTime } = contributors(notes);
+    const pullRequests = [...mergedPullRequests(log), { number: 49, title: "chore(deps): bump vitest from 5.0.3 to 5.0.5" }].map((pr) => ({
+      ...pr,
+      author: authors[pr.number],
+    }));
+    const entry = changelogEntry("0.21.0", pullRequests, "v0.15.0", false, { own: ["Maintainer"], firstTime });
+    expect(entry).toBe(
+      [
+        "## 0.21.0",
+        "",
+        "- Keep CRLF in incoming files (#47, by @ada).",
+        "- Share a try preview by claiming the VM (#48).",
+        "- Use your own databases (#51, by @Grace-H).",
+        "- Bump vitest from 5.0.3 to 5.0.5 (#49).",
+        "- Still on Starter `v0.15.0`.",
+        "",
+        "### New contributors",
+        "",
+        "- @ada made their first contribution in #47.",
+        "",
+        "Thanks to everyone who contributed to this release: @ada, @Grace-H, and @maintainer.",
+        "",
+      ].join("\n"),
+    );
+
+    // The credits stay inside the entry: the release page is everything up to the next "## ".
+    const next = bumpVersion(pkg.version, "major");
+    const section = changelogSection(insertChangelog(file("CHANGELOG.md"), entry.replace("## 0.21.0", `## ${next}`)), next);
+    expect(section).toContain("### New contributors");
+    expect(section.endsWith("@ada, @Grace-H, and @maintainer.")).toBe(true);
+  });
+
+  it("credits no one when maintainers and bots wrote everything", () => {
+    const pullRequests = [
+      { number: 48, title: "feat: share a try preview by claiming the VM", author: "maintainer" },
+      { number: 49, title: "chore(deps): bump vitest from 5.0.3 to 5.0.5", author: "dependabot[bot]" },
+    ];
+    expect(changelogEntry("0.21.0", pullRequests, "v0.15.0", false, { own: ["maintainer"], firstTime: [{ login: "dependabot[bot]", number: 49 }] })).toBe(
+      "## 0.21.0\n\n- Share a try preview by claiming the VM (#48).\n- Bump vitest from 5.0.3 to 5.0.5 (#49).\n- Still on Starter `v0.15.0`.\n",
+    );
   });
 });
 

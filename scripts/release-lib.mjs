@@ -91,18 +91,58 @@ export function releaseSummary(pullRequests) {
   return features.map((pr) => changelogLine(pr.title)).join("; ");
 }
 
-/** The draft entry for a release: one line per pull request, then the Starter it uses. */
-export function changelogEntry(version, pullRequests, starterRef, pinChanged) {
+/**
+ * Who wrote each pull request, and whose first one it is, from the release notes GitHub generates
+ * (`POST /repos/{owner}/{repo}/releases/generate-notes`): "* <title> by @<login> in <pull request>"
+ * lines, then "* @<login> made their first contribution in <pull request>" ones.
+ */
+export function contributors(notes) {
+  const authors = {};
+  const firstTime = [];
+  for (const line of notes.split("\n")) {
+    const first = /^\* @(\S+) made their first contribution in \S*\/pull\/(\d+)\s*$/.exec(line);
+    const written = first ? null : /^\* .* by @(\S+) in \S*\/pull\/(\d+)\s*$/.exec(line);
+    if (first) firstTime.push({ login: first[1], number: Number(first[2]) });
+    if (written) authors[Number(written[2])] = written[1];
+  }
+  return { authors, firstTime };
+}
+
+const isBot = (login) => login.endsWith("[bot]");
+/** "a", "a and b", "a, b, and c". */
+const sentenceList = (items) => (items.length < 3 ? items.join(" and ") : `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`);
+
+/**
+ * The draft entry for a release: one line per pull request, then the Starter it uses. A line names
+ * who wrote the pull request when that is neither a maintainer (`credits.own`, their logins) nor a
+ * bot. When someone outside wrote any of it, the entry ends with the first contributions
+ * (`credits.firstTime`) and thanks everyone by name. A "###" heading keeps them inside the entry,
+ * which ends at the next "## ".
+ */
+export function changelogEntry(version, pullRequests, starterRef, pinChanged, credits = {}) {
+  const own = new Set((credits.own ?? []).map((login) => login.toLowerCase()));
+  const outside = (login) => Boolean(login) && !isBot(login) && !own.has(login.toLowerCase());
   // The Starter pin pull request ("feat: default to Starter vX") already says what the pin line would.
   const pinRequest = (pr) => pinChanged && /\bdefault to starter\b/i.test(pr.title) && pr.title.includes(starterRef);
   const lines = pullRequests.map((pr) => {
     const line = changelogLine(pr.title);
-    return `- ${pinRequest(pr) ? line.replace(starterRef, `\`${starterRef}\``) : line} (#${pr.number}).`;
+    const by = outside(pr.author) ? `, by @${pr.author}` : "";
+    return `- ${pinRequest(pr) ? line.replace(starterRef, `\`${starterRef}\``) : line} (#${pr.number}${by}).`;
   });
   if (!pullRequests.some(pinRequest)) {
     lines.push(pinChanged ? `- Default to Starter \`${starterRef}\`.` : `- Still on Starter \`${starterRef}\`.`);
   }
-  return `## ${version}\n\n${lines.join("\n")}\n`;
+  const blocks = [lines.join("\n")];
+  const firstTime = (credits.firstTime ?? []).filter(({ login }) => outside(login));
+  if (firstTime.length) {
+    blocks.push(`### New contributors\n\n${firstTime.map(({ login, number }) => `- @${login} made their first contribution in #${number}.`).join("\n")}`);
+  }
+  const people = [...pullRequests.map((pr) => pr.author), ...firstTime.map(({ login }) => login)].filter((login) => login && !isBot(login));
+  if (people.some(outside)) {
+    const names = [...new Set(people)].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1));
+    blocks.push(`Thanks to everyone who contributed to this release: ${sentenceList(names.map((login) => `@${login}`))}.`);
+  }
+  return `## ${version}\n\n${blocks.join("\n\n")}\n`;
 }
 
 /** Puts an entry above the newest one in CHANGELOG.md. */

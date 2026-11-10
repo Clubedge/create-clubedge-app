@@ -10,6 +10,7 @@ import { isOptionalSlot, readTemplateManifest } from "./core/manifest.js";
 import { neonSetupStep } from "./core/neon.js";
 import { createPlan, describePlan } from "./core/plan.js";
 import { resolveTemplateSource } from "./core/source.js";
+import { stepProgress } from "./mcp-progress.js";
 import { cliVersion, cliUrl, siteUrl } from "./package-info.js";
 import { initializeGit } from "./steps/git.js";
 import { detectPnpm, installDependencies } from "./steps/install.js";
@@ -237,7 +238,7 @@ function createServer() {
         install_dependencies: z.boolean().default(false).describe("Run pnpm install and declared secondary toolchain installs after generating files."),
       }),
     },
-    async ({ directory, initialize_git, install_dependencies, ...options }) => withTemplate(async (source) => {
+    async ({ directory, initialize_git, install_dependencies, ...options }, ctx) => withTemplate(async (source) => {
       const target = await workspaceDestination(directory);
       const plan = await planProject(source, options, target, { git: initialize_git, install: install_dependencies });
       await executePlan(plan, source);
@@ -262,8 +263,11 @@ function createServer() {
               : "Project created, but pnpm was not found. Install pnpm and run it in the project directory.",
           );
         } else {
+          // Installs can outlast a client's request timeout. A client that sent a progress token
+          // hears from each one while it runs, and can keep waiting.
+          const progress = stepProgress(ctx.mcpReq);
           try {
-            await installDependencies(target, pnpm, [], mcpStdio);
+            await progress.step([...pnpm, "install"].join(" "), () => installDependencies(target, pnpm, [], mcpStdio));
             for (const { directory: appDirectory, app, toolchain } of plan.toolchains) {
               const [check, ...checkArgs] = toolchain.check;
               if (!(await commandSucceeds(check!, checkArgs))) {
@@ -272,7 +276,9 @@ function createServer() {
               }
               const [command, ...args] = toolchain.install;
               try {
-                await run(command!, args, resolve(target, appDirectory), mcpStdio);
+                await progress.step(`${toolchain.install.join(" ")} in ${appDirectory}`, () =>
+                  run(command!, args, resolve(target, appDirectory), mcpStdio),
+                );
               } catch (error) {
                 warnings.push(`${app} dependencies did not install: ${error instanceof Error ? error.message : String(error)}`);
               }

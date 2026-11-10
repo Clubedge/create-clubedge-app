@@ -51,6 +51,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 42 | 0.44.0 | Starter v0.28.0: the native app with Expo (`--mobile expo`, template schema 6); projects without a website (`--framework none`), with template rules; audit exceptions per stack |
 | 43 | 0.45.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
 | 44 | 0.46.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
+| 45 | 0.47.0 | Starter v0.31.0: deploying to Cloudflare (`--deploy cloudflare`), downloads by byte range, and browser tests in three engines; on Windows, arguments that can't start a second command and device names refused as project directories; install progress over MCP |
 
 ## CLI improvements
 

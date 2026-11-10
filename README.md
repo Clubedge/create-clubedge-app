@@ -546,6 +546,21 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.45.0 | v0.29.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
 | 0.46.0 | v0.30.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
 
+## Sponsors
+
+<!-- To add a sponsor: put its light and dark logos in .github/assets/sponsors/ and copy the entry below. -->
+
+<p>
+  <a href="https://neon.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Clubedge/create-clubedge-app/main/.github/assets/sponsors/neon-dark.svg">
+      <img src="https://raw.githubusercontent.com/Clubedge/create-clubedge-app/main/.github/assets/sponsors/neon-light.svg" alt="Neon" height="36">
+    </picture>
+  </a>
+</p>
+
+[Neon](https://neon.com) supports Clubedge through its Open Source Program.
+
 ## Community
 
 - **[Issues](https://github.com/Clubedge/create-clubedge-app/issues)** for problems creating, changing, or upgrading a project.

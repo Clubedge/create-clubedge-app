@@ -6,7 +6,8 @@
 //   pnpm release pin <tag> [--commit <sha>]      move the Starter pin (the starter-pin workflow runs this)
 //
 // The release pull request bumps the version, updates the docs that name it, and drafts the
-// changelog entry from the pull requests merged since the last tag. Edit the draft before merging.
+// changelog entry from the pull requests merged since the last tag, crediting who wrote them.
+// Edit the draft before merging, and keep its credits.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,6 +17,7 @@ import {
   bumpVersion,
   changelogEntry,
   changelogSection,
+  contributors,
   insertChangelog,
   mergedPullRequests,
   releaseSummary,
@@ -67,6 +69,25 @@ function packageJson() {
   return JSON.parse(load("package.json"));
 }
 
+/**
+ * Who to credit in the draft: who wrote each pull request since the last release and whose first
+ * one it is, as GitHub's generated release notes list them (nothing is created), and the
+ * maintainer cutting the release, whose own pull requests carry no "by". Without an answer the
+ * draft credits no one, and says so.
+ */
+function releaseCredits(tag, previousTag) {
+  try {
+    const fields = ["-f", `tag_name=${tag}`, "-f", "target_commitish=main"];
+    if (previousTag) fields.push("-f", `previous_tag_name=${previousTag}`);
+    const notes = run("gh", ["api", "repos/{owner}/{repo}/releases/generate-notes", ...fields, "--jq", ".body"]);
+    return { ...contributors(notes), own: [run("gh", ["api", "user", "--jq", ".login"])] };
+  } catch (error) {
+    const reason = String(error.stderr || error.message).trim();
+    console.warn(`Warning: GitHub did not say who wrote the pull requests, so the draft credits no one. Add the credits by hand.\n${reason}\n`);
+    return { authors: {}, firstTime: [], own: [] };
+  }
+}
+
 /** Opens the release pull request: version, docs, and a changelog draft. */
 function prepare(kind) {
   assertCleanMain();
@@ -77,9 +98,11 @@ function prepare(kind) {
   if (git("tag", "--list", tag)) fail(`${tag} already exists.`);
 
   const previousTag = `v${current}`;
-  const range = git("tag", "--list", previousTag) ? `${previousTag}..HEAD` : "HEAD";
-  const pullRequests = mergedPullRequests(git("log", range, "--first-parent", "--format=%s%x1f%b%x1e"));
-  if (!pullRequests.length) fail(`Nothing merged since ${previousTag}.`);
+  const released = Boolean(git("tag", "--list", previousTag));
+  const merged = mergedPullRequests(git("log", released ? `${previousTag}..HEAD` : "HEAD", "--first-parent", "--format=%s%x1f%b%x1e"));
+  if (!merged.length) fail(`Nothing merged since ${previousTag}.`);
+  const credits = releaseCredits(tag, released ? previousTag : "");
+  const pullRequests = merged.map((pr) => ({ ...pr, author: credits.authors[pr.number] }));
 
   const starterRef = pkg.clubedge.starterRef;
   let pinChanged = false;
@@ -100,7 +123,7 @@ function prepare(kind) {
     save("ROADMAP.md", rows.roadmap);
   }
   save("README.md", readme);
-  const entry = changelogEntry(next, pullRequests, starterRef, pinChanged);
+  const entry = changelogEntry(next, pullRequests, starterRef, pinChanged, credits);
   save("CHANGELOG.md", insertChangelog(load("CHANGELOG.md"), entry));
 
   console.log(`${current} -> ${next} (${kind}), Starter ${starterRef}\n\n${entry}`);

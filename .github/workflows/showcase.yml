@@ -85,7 +85,7 @@ jobs:
           E2E_MAIL_API: http://127.0.0.1:54324
         run: |
           pnpm exec playwright install --with-deps chromium
-          pnpm test:e2e e2e/auth-flow.spec.ts e2e/password-reset.spec.ts e2e/ready.spec.ts e2e/settings.spec.ts
+          pnpm test:e2e --project=chromium e2e/auth-flow.spec.ts e2e/password-reset.spec.ts e2e/ready.spec.ts e2e/settings.spec.ts
       - name: Production build
         working-directory: ${{ env.APP }}
         env:

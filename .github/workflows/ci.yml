@@ -270,9 +270,11 @@ jobs:
       - name: Install Playwright browser
         working-directory: ${{ runner.temp }}/generated-app
         run: pnpm exec playwright install --with-deps chromium
+      # One browser: these jobs check what the CLI generates. The Starter runs its suite in every
+      # browser engine itself, and a Starter with a single engine names it chromium too.
       - name: Run generated project browser checks
         working-directory: ${{ runner.temp }}/generated-app
-        run: pnpm test:e2e
+        run: pnpm test:e2e --project=chromium
       - name: Build generated project
         working-directory: ${{ runner.temp }}/generated-app
         run: pnpm build

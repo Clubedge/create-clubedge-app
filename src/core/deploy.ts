@@ -166,9 +166,15 @@ export function planVariables(input: {
   Object.assign(set, external);
   const direct = directDatabaseUrl(external.DATABASE_URL, envFile.DATABASE_URL_DIRECT);
   if (direct) set.DATABASE_URL_DIRECT = direct;
-  // A direct URL left from an earlier database would send migrations there: point it at the
-  // database the app now uses, or blank it (blank counts as unset).
-  else if (existing.DATABASE_URL_DIRECT) set.DATABASE_URL_DIRECT = set.DATABASE_URL ?? "";
+  // A direct URL left from an earlier database would send migrations there. When this deploy
+  // decides the database (it sets DATABASE_URL, or the platform attaches its own), or no
+  // DATABASE_URL is left for the direct URL to belong to, point it at the database the app now
+  // uses, or blank it (blank counts as unset). A deploy that keeps the database the platform
+  // already has, such as one with no env file, leaves its direct URL as it is.
+  else if (existing.DATABASE_URL_DIRECT) {
+    const decided = set.DATABASE_URL !== undefined || attached.includes("DATABASE_URL");
+    if (decided || !existing.DATABASE_URL) set.DATABASE_URL_DIRECT = set.DATABASE_URL ?? "";
+  }
   // Optional: without a direct URL, migrations and the jobs worker use DATABASE_URL, and the
   // client-address settings have safe defaults.
   const optional = ["DATABASE_URL_DIRECT", ...clientAddressKeys];

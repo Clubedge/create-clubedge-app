@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
-import { directDatabaseUrl, planVariables, railwayEnvironmentNames, vercelPreviewEnvBody } from "../src/core/deploy.js";
+import { directDatabaseUrl, planVariables, railwayEnvironmentNames, railwayReferences, vercelPreviewEnvBody } from "../src/core/deploy.js";
 import { checkDatabaseUrls } from "../src/core/health.js";
 import {
   addNeonDatabase,
@@ -270,6 +270,38 @@ describe("deploy's direct database URL", () => {
     expect(plan.set.DATABASE_URL).toBe("${{Postgres.DATABASE_URL}}");
     expect(plan.set.DATABASE_URL_DIRECT).toBeUndefined();
     expect(plan.unset).toEqual([]);
+  });
+
+  it("leaves the direct URL alone when a deploy with no env file keeps the platform's database", () => {
+    const existing = { DATABASE_URL: pooled, DATABASE_URL_DIRECT: direct };
+    // Vercel, Netlify, Render and Fly pass no databases of their own.
+    const kept = planVariables({ ...base, existing, envFile: {} });
+    expect(kept.set).not.toHaveProperty("DATABASE_URL");
+    expect(kept.set).not.toHaveProperty("DATABASE_URL_DIRECT");
+    expect(kept.unset).toEqual([]);
+    // Railway, with a database it keeps from the service's variables: no reference to its own.
+    const onRailway = planVariables({ ...base, existing, envFile: {}, databases: railwayReferences([]) });
+    expect(onRailway.set).not.toHaveProperty("DATABASE_URL_DIRECT");
+    // Values the platform hides read as set, and count the same.
+    const hidden = planVariables({ ...base, existing: { DATABASE_URL: "(set)", DATABASE_URL_DIRECT: "(set)" }, envFile: {} });
+    expect(hidden.set).not.toHaveProperty("DATABASE_URL_DIRECT");
+  });
+
+  it("points a direct URL left from an earlier database at the one this deploy chooses, or blanks it", () => {
+    const existing = { DATABASE_URL: pooled, DATABASE_URL_DIRECT: direct };
+    // Moving to the platform's own database.
+    const moved = planVariables({ ...base, existing, envFile: {}, databases: undefined });
+    expect(moved.set).toMatchObject({ DATABASE_URL: "${{Postgres.DATABASE_URL}}", DATABASE_URL_DIRECT: "${{Postgres.DATABASE_URL}}" });
+    // Another database from the env file, with no direct URL of its own.
+    const other = "postgresql://u:p@db.example.com:5432/app";
+    expect(planVariables({ ...base, existing, envFile: { DATABASE_URL: other } }).set).toMatchObject({ DATABASE_URL: other, DATABASE_URL_DIRECT: other });
+    // A database the platform attaches itself, as Fly does.
+    const attached = planVariables({ ...base, existing: { DATABASE_URL_DIRECT: direct }, envFile: {}, attached: ["DATABASE_URL"] });
+    expect(attached.set.DATABASE_URL_DIRECT).toBe("");
+    // A direct URL with no DATABASE_URL left for it to belong to.
+    const orphan = planVariables({ ...base, existing: { DATABASE_URL_DIRECT: direct }, envFile: {} });
+    expect(orphan.set.DATABASE_URL_DIRECT).toBe("");
+    expect(orphan.unset).toEqual(["DATABASE_URL"]);
   });
 
   it("skips a local or missing direct URL", () => {

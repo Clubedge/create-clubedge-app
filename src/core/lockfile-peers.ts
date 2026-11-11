@@ -5,6 +5,16 @@
 
 type Dependency = { name: string; ref: string };
 
+/**
+ * Changes a lockfile's text with LF line endings and gives it back in the original's. The Starter's
+ * .gitattributes checks pnpm-lock.yaml out with LF everywhere, but a copy made outside Git, such as
+ * one given to --template-dir, can have CRLF, and every line would then end in a stray \r.
+ */
+export function keepLineEndings(source: string, change: (text: string) => string): string {
+  if (!source.includes("\r\n")) return change(source);
+  return change(source.replace(/\r\n/g, "\n")).replace(/\n/g, "\r\n");
+}
+
 function unquote(text: string) {
   return text.replace(/^(['"])(.*)\1$/, "$2");
 }
@@ -30,7 +40,7 @@ function parse(source: string): ParsedLockfile {
   let group = "";
   let entry = "";
 
-  for (const line of source.split("\n")) {
+  for (const line of source.split(/\r?\n/)) {
     if (/^\S/.test(line)) {
       section = line.replace(/:.*$/, "");
       continue;
@@ -127,9 +137,13 @@ function removeSuffixSegments(text: string, peer: string) {
 /**
  * Drops optional-peer links to packages nothing else installs (see findUnneededOptionalPeers),
  * so `pnpm install --frozen-lockfile` no longer installs them. Snapshot entries that become
- * identical are merged.
+ * identical are merged. The lockfile keeps its line endings.
  */
 export function pruneOptionalPeers(source: string): string {
+  return keepLineEndings(source, pruneLines);
+}
+
+function pruneLines(source: string): string {
   const peers = findUnneededOptionalPeers(source);
   if (!peers.length) return source;
 

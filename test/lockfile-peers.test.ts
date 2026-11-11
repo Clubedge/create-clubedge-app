@@ -134,6 +134,15 @@ describe("pruneOptionalPeers", () => {
     expect(result).not.toContain("{} {}");
   });
 
+  it("reads and writes a lockfile with CRLF line endings as one with LF, and keeps them", () => {
+    const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+    expect(findUnneededOptionalPeers(crlf(lockfile))).toEqual(["@electric-sql/pglite@0.5.8"]);
+    expect(pruneOptionalPeers(crlf(lockfile))).toBe(crlf(pruneOptionalPeers(lockfile)));
+    // Nothing to prune: the text comes back exactly as it was.
+    const clean = crlf(pruneOptionalPeers(lockfile));
+    expect(pruneOptionalPeers(clean)).toBe(clean);
+  });
+
   it("leaves a lockfile without unneeded optional peers unchanged", () => {
     const clean = pruneOptionalPeers(lockfile);
     expect(pruneOptionalPeers(clean)).toBe(clean);

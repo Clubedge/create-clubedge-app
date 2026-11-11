@@ -1,6 +1,6 @@
 // Pure text transforms applied to template files. Keeping them free of I/O makes each one easy
 // to test and lets --dry-run describe them without touching the disk.
-import { pruneOptionalPeers } from "./lockfile-peers.js";
+import { keepLineEndings, pruneOptionalPeers } from "./lockfile-peers.js";
 import { FRAMEWORK_SLOT } from "./manifest-fields.js";
 import type { ProjectService } from "./manifest.js";
 
@@ -188,12 +188,13 @@ export interface LockfileChanges {
  * works. Importers are keyed by workspace path at two-space indentation; package entries that
  * are no longer used are harmless, and pnpm prunes them on the next lockfile update. Optional
  * peer links to packages that only left-out importers installed are removed, so those packages
- * are not installed either.
+ * are not installed either. The lockfile keeps its line endings.
  */
-export function customizeLockfile(
-  source: string,
-  { remove, rename = [], removeDependencies = [] }: LockfileChanges,
-): string {
+export function customizeLockfile(source: string, changes: LockfileChanges): string {
+  return keepLineEndings(source, (text) => customizeImporters(text, changes));
+}
+
+function customizeImporters(source: string, { remove, rename = [], removeDependencies = [] }: LockfileChanges): string {
   const output: string[] = [];
   let inImporters = false;
   let skippingImporter = false;

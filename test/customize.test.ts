@@ -143,6 +143,14 @@ packages:
 `);
   });
 
+  it("reads and writes a lockfile with CRLF line endings as one with LF, and keeps them", () => {
+    const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+    const changes = { remove: ["apps/web"], rename: [{ from: "apps/start", to: "apps/web" }] };
+    const result = customizeLockfile(crlf(lockfile), changes);
+    expect(result).toBe(crlf(customizeLockfile(lockfile, changes)));
+    expect(result).not.toMatch(/[^\r]\n/);
+  });
+
   it("only touches importers, never package entries", () => {
     const result = customizeLockfile(lockfile, { remove: ["apps/start", "next@16.1.0"] });
     expect(result).not.toContain("apps/start:");
@@ -340,6 +348,16 @@ packages:
   next@16.1.0:
     resolution: {integrity: sha512-x}
 `);
+  });
+
+  it("drops them from a lockfile with CRLF line endings too", () => {
+    const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+    const changes = {
+      remove: ["apps/web", "packages/auth-supabase", "packages/storage-s3", "packages/storage-supabase"],
+      rename: [{ from: "apps/start", to: "apps/web" }],
+      removeDependencies: ["@clubedge/auth-supabase", "@clubedge/storage-s3", "@clubedge/storage-supabase"],
+    };
+    expect(customizeLockfile(crlf(modulesLockfile), changes)).toBe(crlf(customizeLockfile(modulesLockfile, changes)));
   });
 
   it("drops a dependency group whose entries were all removed", () => {

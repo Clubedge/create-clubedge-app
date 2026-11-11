@@ -109,6 +109,14 @@ describe("deploy plan", () => {
     });
   });
 
+  it("drops comments on empty variables, and keeps unquoted # without whitespace", () => {
+    expect(parseEnvFile("DATABASE_URL= # leave blank\nREDIS_URL=# optional\nPASSWORD=secret#hash\n")).toEqual({
+      DATABASE_URL: "",
+      REDIS_URL: "",
+      PASSWORD: "secret#hash",
+    });
+  });
+
   const base = {
     modules: { auth: "better-auth", cache: "redis" },
     keys: ["NODE_ENV", "NEXT_PUBLIC_APP_URL", "DATABASE_URL", "BETTER_AUTH_SECRET", "REDIS_URL", "SMTP_URL", "STRIPE_SECRET_KEY"],

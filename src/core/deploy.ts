@@ -111,7 +111,7 @@ export function parseEnvFile(text: string): Record<string, string> {
     const raw = match[2]!.trim();
     // A quoted value keeps everything inside the quotes, and may still have a comment after them.
     const quoted = /^(["'])(.*?)\1\s*(?:#.*)?$/.exec(raw);
-    values[match[1]!] = quoted ? quoted[2]! : raw.replace(/\s+#.*$/, "");
+    values[match[1]!] = quoted ? quoted[2]! : raw.replace(/(?:^|\s+)#.*$/, "");
   }
   return values;
 }

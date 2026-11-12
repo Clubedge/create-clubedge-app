@@ -28,6 +28,7 @@ import { describeNewDatabase, projectDatabaseEnv, provisionNeonDatabase } from "
 import { detectPnpm, installDependencies } from "./steps/install.js";
 import { listTemplateFiles, pathExists } from "./utils/fs.js";
 import { commandSucceeds, runCapture } from "./utils/process.js";
+import { findConflictedFiles } from "./inspect.js";
 
 type ChangeCommand = Extract<CliArgs["command"], { name: "add" | "remove" | "upgrade" }>;
 /**
@@ -100,11 +101,18 @@ function asRecorded(source: TemplateSource, project: Project): UpdateSide["sourc
 }
 
 /**
- * Refuses to change a project whose changes Git cannot show and undo, unless --force: a Git
- * repository must have no uncommitted changes, and a folder without Git needs confirmation.
+ * Refuses to change a project whose changes Git cannot show and undo, or which has unresolved
+ * conflicts from an earlier change, unless --force: a Git repository must have no uncommitted
+ * changes, and a folder without Git needs confirmation.
  */
 async function assertSafeToChange(project: Project, args: CliArgs, interactive: boolean) {
   if (args.force) return;
+  const conflicts = await findConflictedFiles(project.root);
+  if (conflicts.length) {
+    throw new UsageError(
+      `The project has unresolved conflict markers in ${conflicts.map((c) => c.path).join(", ")}. Resolve them first, or pass --force.`,
+    );
+  }
   const isRepository = await commandSucceeds("git", ["-C", project.root, "rev-parse", "--is-inside-work-tree"]);
   if (isRepository) {
     const status = await runCapture("git", ["-C", project.root, "status", "--porcelain"]);

@@ -286,3 +286,77 @@ describe("early exit on no-op changes", () => {
   });
 });
 
+describe("refusing a change with unresolved conflicts", () => {
+  it("refuses when markers are in a file the change touches", async () => {
+    const project = await generatedProject();
+    spawnSync("git", ["init", "-q"], { cwd: project.root });
+    spawnSync("git", ["config", "user.email", "ci@example.com"], { cwd: project.root });
+    spawnSync("git", ["config", "user.name", "CI"], { cwd: project.root });
+    spawnSync("git", ["add", "-A"], { cwd: project.root });
+    spawnSync("git", ["commit", "-qm", "Initial commit"], { cwd: project.root });
+
+    const manifest = await project.read("apps/web/package.json");
+    await project.write("apps/web/package.json", `<<<<<<< yours\n${manifest}=======\n${manifest}>>>>>>> clubedge\n`);
+    spawnSync("git", ["commit", "-qam", "Add conflict markers"], { cwd: project.root });
+
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+    await expect(
+      changeProject(parseCliArgs(["add", "auth", "none", "--template-dir", project.source.root, "--yes"])),
+    ).rejects.toThrow("The project has unresolved conflict markers in apps/web/package.json. Resolve them first, or pass --force.");
+  });
+
+  it("refuses when markers are in a file the change does not touch", async () => {
+    const project = await generatedProject();
+    spawnSync("git", ["init", "-q"], { cwd: project.root });
+    spawnSync("git", ["config", "user.email", "ci@example.com"], { cwd: project.root });
+    spawnSync("git", ["config", "user.name", "CI"], { cwd: project.root });
+    spawnSync("git", ["add", "-A"], { cwd: project.root });
+    spawnSync("git", ["commit", "-qm", "Initial commit"], { cwd: project.root });
+
+    await project.write("README.md", "<<<<<<< yours\n# Mine\n=======\n# Starter\n>>>>>>> clubedge\n");
+    spawnSync("git", ["commit", "-qam", "Add conflict in README"], { cwd: project.root });
+
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+    await expect(
+      changeProject(parseCliArgs(["add", "auth", "none", "--template-dir", project.source.root, "--yes"])),
+    ).rejects.toThrow("The project has unresolved conflict markers in README.md. Resolve them first, or pass --force.");
+  });
+
+  it("proceeds with --force despite unresolved conflict markers", async () => {
+    const project = await generatedProject();
+    spawnSync("git", ["init", "-q"], { cwd: project.root });
+    spawnSync("git", ["config", "user.email", "ci@example.com"], { cwd: project.root });
+    spawnSync("git", ["config", "user.name", "CI"], { cwd: project.root });
+    spawnSync("git", ["add", "-A"], { cwd: project.root });
+    spawnSync("git", ["commit", "-qm", "Initial commit"], { cwd: project.root });
+
+    await project.write("README.md", "<<<<<<< yours\n# Mine\n=======\n# Starter\n>>>>>>> clubedge\n");
+    spawnSync("git", ["commit", "-qam", "Add conflict in README"], { cwd: project.root });
+
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+    const outcome = await changeProject(
+      parseCliArgs(["add", "auth", "none", "--template-dir", project.source.root, "--force", "--yes"]),
+    );
+    expect(outcome).toBe("changed");
+  });
+
+  it("proceeds once conflict markers are resolved", async () => {
+    const project = await generatedProject();
+    spawnSync("git", ["init", "-q"], { cwd: project.root });
+    spawnSync("git", ["config", "user.email", "ci@example.com"], { cwd: project.root });
+    spawnSync("git", ["config", "user.name", "CI"], { cwd: project.root });
+    spawnSync("git", ["add", "-A"], { cwd: project.root });
+    spawnSync("git", ["commit", "-qm", "Initial commit"], { cwd: project.root });
+
+    await project.write("README.md", "<<<<<<< yours\n# Mine\n=======\n# Starter\n>>>>>>> clubedge\n");
+    await project.write("README.md", "# Mine\n");
+    spawnSync("git", ["commit", "-qam", "Resolve conflict in README"], { cwd: project.root });
+
+    vi.spyOn(process, "cwd").mockReturnValue(project.root);
+    const outcome = await changeProject(
+      parseCliArgs(["add", "auth", "none", "--template-dir", project.source.root, "--yes"]),
+    );
+    expect(outcome).toBe("changed");
+  });
+});
+

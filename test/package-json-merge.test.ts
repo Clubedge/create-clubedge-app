@@ -44,14 +44,15 @@ describe("merging package.json by key", () => {
   it("wraps only the lines of a key both sides changed differently", () => {
     const deps = (next: string) => ({ name: "web", dependencies: { "@clubedge/core": "workspace:*", next, react: "^19.2.0" } });
 
-    expect(merge(json(deps("^16.4.3")), json(deps("^16.4.0")), json(deps("^16.5.0")))).toEqual({
+    // An exact version stays a conflict with a range (see "versions both sides raised").
+    expect(merge(json(deps("16.4.3")), json(deps("^16.4.0")), json(deps("^16.5.0")))).toEqual({
       text: [
         "{",
         '  "name": "web",',
         '  "dependencies": {',
         '    "@clubedge/core": "workspace:*",',
         "<<<<<<< yours",
-        '    "next": "^16.4.3",',
+        '    "next": "16.4.3",',
         "=======",
         '    "next": "^16.5.0",',
         ">>>>>>> clubedge",
@@ -65,13 +66,94 @@ describe("merging package.json by key", () => {
   });
 
   it("takes a value both sides changed the same way, and keeps the commas right on both sides of a conflict", () => {
-    const base = { name: "web", version: "0.1.0", dependencies: { next: "^16.4.0", react: "^19.1.0" } };
-    const yours = { name: "web", version: "0.1.0", dependencies: { next: "^16.5.0", react: "^19.2.0" } };
-    const theirs = { name: "web", version: "0.1.0", dependencies: { next: "^16.5.0", react: "^19.3.0" } };
+    const base = { name: "web", version: "0.1.0", dependencies: { next: "^16.4.0", react: "19.1.0" } };
+    const yours = { name: "web", version: "0.1.0", dependencies: { next: "^16.5.0", react: "19.2.0" } };
+    const theirs = { name: "web", version: "0.1.0", dependencies: { next: "^16.5.0", react: "19.3.0" } };
 
     const { text, conflict } = merge(json(yours), json(base), json(theirs))!;
     expect(conflict).toBe(true);
-    expect(text).toContain('    "next": "^16.5.0",\n<<<<<<< yours\n    "react": "^19.2.0"\n=======\n    "react": "^19.3.0"\n>>>>>>> clubedge\n  }');
+    expect(text).toContain('    "next": "^16.5.0",\n<<<<<<< yours\n    "react": "19.2.0"\n=======\n    "react": "19.3.0"\n>>>>>>> clubedge\n  }');
+  });
+
+  describe("versions both sides raised", () => {
+    /** The merged text and whether it conflicts, for one dependency each side set. */
+    const raised = (yours: string, base: string | undefined, theirs: string, key = "dependencies") => {
+      const file = (version: string | undefined) => json({ name: "web", [key]: { ...(version === undefined ? {} : { pkg: version }), zod: "^4.1.0" } });
+      return merge(file(yours), file(base), file(theirs))!;
+    };
+    const version = (result: { text: string }, key = "dependencies") => JSON.parse(result.text)[key].pkg;
+
+    it("keeps your version when you raised it past the Starter's in the same major, as pnpm up does", () => {
+      // The conflicts four of thirty upgrades from v0.26.0 stopped at, after pnpm up -r.
+      for (const [yours, base, theirs] of [
+        ["^10.5.0", "^10.0.3", "^10.1.4"], // nodemailer
+        ["^1.7.21", "^1.7.4", "^1.7.13"], // better-auth, in two workspace packages
+      ] as const) {
+        const result = raised(yours, base, theirs);
+        expect(result.conflict).toBe(false);
+        expect(version(result)).toBe(yours);
+      }
+    });
+
+    it("takes the Starter's when it raised the version past yours", () => {
+      const result = raised("^16.2.0", "^16.1.0", "^16.4.3");
+      expect(result).toEqual({ text: json({ name: "web", dependencies: { pkg: "^16.4.3", zod: "^4.1.0" } }), conflict: false });
+    });
+
+    it("applies to devDependencies, peerDependencies, optionalDependencies, pnpm overrides, and a dependency both sides added", () => {
+      for (const key of ["devDependencies", "peerDependencies", "optionalDependencies"]) {
+        expect(version(raised("^5.9.3", "^5.9.0", "^5.9.2", key), key)).toBe("^5.9.3");
+      }
+      const overrides = (esbuild: string) => json({ name: "my-app", pnpm: { overrides: { esbuild } } });
+      const result = merge(overrides("^0.25.9"), overrides("^0.25.0"), overrides("^0.25.5"))!;
+      expect(result.conflict).toBe(false);
+      expect(JSON.parse(result.text).pnpm.overrides.esbuild).toBe("^0.25.9");
+      // Without a base: both sides added the same dependency.
+      expect(version(raised("^4.2.1", undefined, "^4.3.0"))).toBe("^4.3.0");
+    });
+
+    it("takes the higher ~ range within the same minor", () => {
+      expect(version(raised("~58.0.25", "~58.0.20", "~58.0.24"))).toBe("~58.0.25");
+      expect(raised("~58.0.25", "~58.0.20", "~58.1.2").conflict).toBe(true);
+    });
+
+    it("keeps the minor for ^0.x and the whole version for ^0.0.x, as their ranges do", () => {
+      expect(version(raised("^0.25.9", "^0.25.0", "^0.25.5"))).toBe("^0.25.9");
+      expect(raised("^0.25.9", "^0.25.0", "^0.26.1").conflict).toBe(true);
+      expect(raised("^0.0.7", "^0.0.5", "^0.0.6").conflict).toBe(true);
+    });
+
+    it("stays a conflict for anything else", () => {
+      for (const [yours, theirs] of [
+        ["^17.0.0", "^16.5.0"], // a different major
+        ["0.83.4", "0.83.2"], // exact versions, as Expo pins react-native
+        ["^1.7.21", "~1.7.25"], // different operators
+        ["^1.8.0-beta.1", "^1.7.21"], // a prerelease
+        [">=1.7.0", "^1.7.21"],
+        ["workspace:^", "workspace:*"],
+        ["npm:pkg-fork@^1.2.0", "^1.1.0"],
+        ["github:acme/pkg#v1.2.0", "^1.1.0"],
+      ] as const) {
+        expect(raised(yours, "^1.0.0", theirs).conflict, `${yours} and ${theirs}`).toBe(true);
+      }
+    });
+
+    it("only takes the higher version where package.json keeps versions", () => {
+      const engines = (node: string) => json({ name: "web", engines: { node }, scripts: { build: node } });
+      const result = merge(engines("^22.14.0"), engines("^22.12.0"), engines("^22.13.0"))!;
+      expect(result.conflict).toBe(true);
+      expect(result.text.match(/^<<<<<<< yours$/gm)).toHaveLength(2);
+    });
+
+    it("leaves the merged file to install: no markers in a workspace package.json both raised", () => {
+      const pkg = (betterAuth: string, more: Record<string, string> = {}) =>
+        json({ name: "@clubedge/auth-better-auth", dependencies: { "better-auth": betterAuth, ...more } });
+      // The Starter adds a dependency too, so the merge changes the file.
+      expect(planned(pkg("^1.7.21"), pkg("^1.7.4"), pkg("^1.7.13", { zod: "^4.3.0" }), "packages/auth-better-auth/package.json")).toMatchObject({
+        kind: "merge",
+        content: Buffer.from(pkg("^1.7.21", { zod: "^4.3.0" })),
+      });
+    });
   });
 
   describe("removals", () => {

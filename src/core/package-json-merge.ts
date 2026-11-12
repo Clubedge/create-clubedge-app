@@ -1,8 +1,9 @@
 // package.json files merge by key instead of by line (#142), so edits to different keys never
 // conflict: a script the project adds after the Starter's, or an override next to one the
-// Starter adds. A key both sides changed to different values is a conflict. The merged file is
-// written twice, with your value for each such key and with the Starter's, and merge.ts puts
-// conflict markers around the lines where the two differ, which are that key's.
+// Starter adds. A key both sides changed to different values is a conflict, except a dependency
+// both raised within its range (see higherRange). The merged file is written twice, with your
+// value for each conflict and with the Starter's, and merge.ts puts conflict markers around the
+// lines where the two differ, which are that key's.
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type JsonObject = { [key: string]: Json };
@@ -41,22 +42,59 @@ function same(a: Json | undefined, b: Json | undefined): boolean {
   return false;
 }
 
+/** The objects whose values are version ranges: a package's dependencies, and pnpm's overrides. */
+const RANGE_OBJECTS = [["dependencies"], ["devDependencies"], ["peerDependencies"], ["optionalDependencies"], ["pnpm", "overrides"]];
+
+const holdsRanges = (path: readonly string[]) =>
+  RANGE_OBJECTS.some((object) => object.length === path.length && object.every((key, i) => key === path[i]));
+
+/** A ^ or ~ range on a full version, without a prerelease: ^1.7.21, ~58.0.24. */
+const SIMPLE_RANGE = /^([\^~])(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
 /**
- * One key's value: whoever changed it, or a conflict when both did, differently. Objects both
- * changed merge key by key; arrays and scalars are single values. Undefined is a removed key.
+ * Of two ^ ranges, or two ~ ranges, the one with the higher minimum, when every version it
+ * allows the other allows too: the same major for ^ (the same minor for ^0.x, the same version
+ * for ^0.0.x), the same minor for ~. Then the higher one satisfies both sides, as `pnpm up` raising
+ * a project's version within its range does. Undefined for anything else, which stays a conflict:
+ * exact versions (Expo pins some), different operators or majors, prereleases, workspace:, npm:
+ * aliases and URLs.
  */
-function merge(base: Json | undefined, yours: Json | undefined, theirs: Json | undefined): Merged | undefined {
+function higherRange(a: string, b: string): string | undefined {
+  const first = SIMPLE_RANGE.exec(a);
+  const second = SIMPLE_RANGE.exec(b);
+  if (!first || !second || first[1] !== second[1]) return undefined;
+  const x = first.slice(2).map(Number);
+  const y = second.slice(2).map(Number);
+  // How many numbers a range keeps fixed: ~ the major and minor, ^ up to its first one that is not 0.
+  const fixed = (version: number[]) => (first[1] === "~" ? 2 : version.findIndex((n) => n !== 0) + 1 || 3);
+  const kept = fixed(x);
+  if (kept !== fixed(y) || x.slice(0, kept).some((n, i) => n !== y[i])) return undefined;
+  for (const [i, n] of x.entries()) if (n !== y[i]) return n > (y[i] ?? 0) ? a : b;
+  return a;
+}
+
+/**
+ * One key's value, at `path` from the file's root: whoever changed it, or a conflict when both
+ * did, differently. Objects both changed merge key by key; arrays and scalars are single values.
+ * Undefined is a removed key. A dependency both raised within its range takes the higher range.
+ */
+function merge(base: Json | undefined, yours: Json | undefined, theirs: Json | undefined, path: string[]): Merged | undefined {
   if (same(yours, theirs) || same(base, theirs)) return yours;
   if (same(base, yours)) return theirs;
-  if (isObject(yours) && isObject(theirs)) return mergeObjects(isObject(base) ? base : {}, yours, theirs);
+  if (isObject(yours) && isObject(theirs)) return mergeObjects(isObject(base) ? base : {}, yours, theirs, path);
+  if (typeof yours === "string" && typeof theirs === "string" && holdsRanges(path.slice(0, -1))) {
+    const higher = higherRange(yours, theirs);
+    if (higher !== undefined) return higher;
+  }
   return new Conflict(yours, theirs);
 }
 
 /**
  * Your keys in your order; a key only the Starter has goes after the key it follows in the
  * Starter's file, or first. At the root, `clubedge` (the provenance) is always the Starter's.
+ * `path` is the object's, from the file's root.
  */
-function mergeObjects(base: JsonObject, yours: JsonObject, theirs: JsonObject, root = false): MergedObject {
+function mergeObjects(base: JsonObject, yours: JsonObject, theirs: JsonObject, path: string[] = []): MergedObject {
   const order = Object.keys(yours);
   let previous: string | undefined;
   for (const key of Object.keys(theirs)) {
@@ -65,7 +103,8 @@ function mergeObjects(base: JsonObject, yours: JsonObject, theirs: JsonObject, r
   }
   const result: MergedObject = {};
   for (const key of order) {
-    const value = root && key === "clubedge" ? own(theirs, key) : merge(own(base, key), own(yours, key), own(theirs, key));
+    const value =
+      path.length === 0 && key === "clubedge" ? own(theirs, key) : merge(own(base, key), own(yours, key), own(theirs, key), [...path, key]);
     if (value !== undefined) set(result, key, value);
   }
   return result;
@@ -105,7 +144,7 @@ export function mergePackageJson(current: string, base: string, target: string):
   }
   const [yours, before, theirs] = parsed;
   if (!isObject(yours) || !isObject(before) || !isObject(theirs)) return null;
-  const merged = mergeObjects(before, yours, theirs, true);
+  const merged = mergeObjects(before, yours, theirs);
   const write = (side: "yours" | "theirs") =>
     JSON.stringify(resolve(merged, side), null, indentation(current)) + (current.endsWith("\n") ? "\n" : "");
   return { yours: write("yours"), theirs: write("theirs") };

@@ -114,16 +114,19 @@ describe("merging package.json by key", () => {
 
     it("takes the higher ~ range within the same minor", () => {
       expect(version(raised("~58.0.25", "~58.0.20", "~58.0.24"))).toBe("~58.0.25");
-      expect(raised("~58.0.25", "~58.0.20", "~58.1.2").conflict).toBe(true);
+      // A new minor is outside your ~ range, which you only raised: the Starter's (see "versions you only raised").
+      expect(version(raised("~58.0.25", "~58.0.20", "~58.1.2"))).toBe("~58.1.2");
     });
 
     it("keeps the minor for ^0.x and the whole version for ^0.0.x, as their ranges do", () => {
       expect(version(raised("^0.25.9", "^0.25.0", "^0.25.5"))).toBe("^0.25.9");
-      expect(raised("^0.25.9", "^0.25.0", "^0.26.1").conflict).toBe(true);
+      // ^0.26.1 is a new range for ^0.x, and you only raised yours within ^0.25: the Starter's.
+      expect(version(raised("^0.25.9", "^0.25.0", "^0.26.1"))).toBe("^0.26.1");
       expect(raised("^0.0.7", "^0.0.5", "^0.0.6").conflict).toBe(true);
     });
 
     it("stays a conflict for anything else", () => {
+      // From an exact version, which neither side only raised (see "versions you only raised").
       for (const [yours, theirs] of [
         ["^17.0.0", "^16.5.0"], // a different major
         ["0.83.4", "0.83.2"], // exact versions, as Expo pins react-native
@@ -134,7 +137,7 @@ describe("merging package.json by key", () => {
         ["npm:pkg-fork@^1.2.0", "^1.1.0"],
         ["github:acme/pkg#v1.2.0", "^1.1.0"],
       ] as const) {
-        expect(raised(yours, "^1.0.0", theirs).conflict, `${yours} and ${theirs}`).toBe(true);
+        expect(raised(yours, "1.0.0", theirs).conflict, `${yours} and ${theirs}`).toBe(true);
       }
     });
 
@@ -153,6 +156,40 @@ describe("merging package.json by key", () => {
         kind: "merge",
         content: Buffer.from(pkg("^1.7.21", { zod: "^4.3.0" })),
       });
+    });
+  });
+
+  describe("versions you only raised within their range", () => {
+    /** The merged dependencies, and whether they conflict, for one dependency each side set or removed. */
+    const merged = (yours: string | undefined, base: string, theirs: string | undefined) => {
+      const file = (version: string | undefined) => json({ name: "web", dependencies: { ...(version === undefined ? {} : { pkg: version }), zod: "^4.1.0" } });
+      const result = merge(file(yours), file(base), file(theirs))!;
+      return { dependencies: result.conflict ? undefined : JSON.parse(result.text).dependencies, conflict: result.conflict };
+    };
+
+    it("takes the Starter's new major over your raise within the old one, as after pnpm up -r", () => {
+      // redis: Starter v0.31.1 moved to 6, and pnpm up -r had raised the project's 5.
+      expect(merged("^5.12.2", "^5.8.0", "^6.3.1")).toEqual({ dependencies: { pkg: "^6.3.1", zod: "^4.1.0" }, conflict: false });
+    });
+
+    it("takes the Starter's removal of a dependency you only raised", () => {
+      // @supabase/supabase-js, which the Starter moved from packages/auth to packages/auth-supabase.
+      expect(merged("^2.119.0", "^2.45.0", undefined)).toEqual({ dependencies: { zod: "^4.1.0" }, conflict: false });
+    });
+
+    it("keeps your change when the Starter only raised the version within its range, and yours asks for at least that", () => {
+      expect(merged("^6.0.0", "^5.8.0", "^5.10.0").dependencies.pkg).toBe("^6.0.0");
+      expect(merged("5.11.0", "^5.8.0", "^5.10.0").dependencies.pkg).toBe("5.11.0");
+      expect(merged(undefined, "^5.8.0", "^5.10.0")).toEqual({ dependencies: { zod: "^4.1.0" }, conflict: false });
+    });
+
+    it("stays a conflict when the other change asks for less than the raised version, or both changed it otherwise", () => {
+      // Your pin is below the version the Starter's code now asks for, and the other way round.
+      expect(merged("5.9.1", "^5.8.0", "^5.10.0").conflict).toBe(true);
+      expect(merged("^5.12.2", "^5.8.0", "5.9.0").conflict).toBe(true);
+      expect(merged("^7.0.0", "^5.8.0", "^6.3.1").conflict).toBe(true);
+      expect(merged("5.9.1", "^5.8.0", undefined).conflict).toBe(true);
+      expect(merged("npm:pkg-fork@^5.9.0", "^5.8.0", "^5.10.0").conflict).toBe(true);
     });
   });
 

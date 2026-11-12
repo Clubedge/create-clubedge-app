@@ -398,6 +398,18 @@ function describe(plan: UpdatePlan): string {
   return lines.join("\n");
 }
 
+/**
+ * How many files a change writes, as its list shows them: the files it changes, the lockfile it
+ * replaces, and the env files it adds to or creates. The files left for you to check are not.
+ */
+function writtenFiles(plan: UpdatePlan): number {
+  return (
+    plan.actions.filter((action) => action.kind !== "keep").length +
+    (plan.lockfile.kind === "replace" ? 1 : 0) +
+    plan.envs.filter((env) => env.create || (env.update && env.changed)).length
+  );
+}
+
 const conflictsOf = (plan: UpdatePlan) =>
   plan.actions.filter((action): action is Extract<MergeAction, { kind: "conflict" }> => action.kind === "conflict");
 
@@ -722,7 +734,8 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     }
 
     await applyUpdate(plan);
-    log.success(`Updated ${plan.actions.filter((action) => action.kind !== "keep").length} files`);
+    const written = writtenFiles(plan);
+    log.success(`Updated ${written} ${written === 1 ? "file" : "files"}`);
 
     // The files are written now, so what is left to resolve is reported even when the install fails.
     let installError: unknown;

@@ -110,6 +110,17 @@ describe("changeProject after the files are written", () => {
     expect(warnings()).toEqual([]);
   });
 
+  it("counts every file it writes, as its list shows them: the lockfile and env files too", async () => {
+    const project = await generatedProject();
+    await project.run(["remove", "storage"]);
+    const [list] = vi.mocked(log.message).mock.calls.at(-1)!;
+    const written = String(list)
+      .split("\n")
+      .filter((line) => /^(update|add|merge|delete|conflict) /.test(line));
+    expect(written).toContainEqual(expect.stringMatching(/^update +pnpm-lock\.yaml$/));
+    expect(log.success).toHaveBeenCalledWith(`Updated ${written.length} files`);
+  });
+
   it("merges a dependency the project added next to one the change removes, and installs", async () => {
     const project = await generatedProject();
     const manifest = await project.read("apps/web/package.json");

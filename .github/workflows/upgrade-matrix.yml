@@ -1,0 +1,258 @@
+name: Upgrade matrix
+
+# Upgrades projects generated from older Starter releases to the Starter a CLI pins: from the
+# oldest release of each template schema and from the release before the pin, with no edits,
+# after `pnpm up -r`, with a `pnpm patch`, and with feature edits, plus add/remove round trips
+# (scripts/upgrade-matrix.mjs). A pull request that moves the pin runs it with that commit's CLI,
+# as a gate. Weekly and after each release, it runs the published CLI and puts the results,
+# upgrade-matrix.json, on the upgrade-matrix release, where starter.clubedge.live reads them for
+# its Upgrades page.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      cli:
+        description: "CLI to test: a published version such as latest or 0.48.1, or packed for this commit"
+        default: latest
+  pull_request:
+    paths:
+      - package.json
+      - scripts/upgrade-matrix.mjs
+      - .github/workflows/upgrade-matrix.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upgrade-matrix-${{ github.event_name == 'pull_request' && github.ref || 'published' }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      cli: ${{ steps.decide.outputs.cli }}
+      publish: ${{ steps.decide.outputs.publish }}
+      starts: ${{ steps.plan.outputs.starts }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - name: Decide what to test
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          REQUESTED: ${{ inputs.cli }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            cli=packed
+            pin() { node -e 'const c = JSON.parse(require("fs").readFileSync(0, "utf8")).clubedge; console.log(`${c.starterRef} ${c.starterCommit}`)'; }
+            before="$(git show "$BASE:package.json" | pin)"
+            after="$(pin < package.json)"
+            matrix_changed="$(git diff --name-only "$BASE" HEAD -- scripts/upgrade-matrix.mjs .github/workflows/upgrade-matrix.yml)"
+            if [ "$before" = "$after" ] && [ -z "$matrix_changed" ]; then
+              echo "The pull request leaves the Starter pin at $after and the matrix as it is."
+              run=false
+            fi
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            cli="${REQUESTED:-latest}"
+          else
+            cli=latest
+          fi
+          if [ "$cli" != packed ]; then
+            cli="$(npm view "@clubedge/create-clubedge-app@$cli" version)"
+          fi
+          publish=false
+          if [ "$cli" != packed ] && [ "$GITHUB_REF" = refs/heads/main ]; then publish=true; fi
+          {
+            echo "run=$run"
+            echo "cli=$cli"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "CLI: $cli, run: $run, publish: $publish"
+      - name: Plan the starting releases
+        id: plan
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CLI: ${{ steps.decide.outputs.cli }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The Starter the tested CLI pins: this commit's, or the published version's.
+          if [ "$CLI" = packed ]; then
+            pin="$(node -p 'JSON.stringify(require("./package.json").clubedge)')"
+          else
+            pin="$(npm view "@clubedge/create-clubedge-app@$CLI" clubedge --json)"
+          fi
+          repo="$(node -p 'JSON.parse(process.argv[1]).starterRepository' "$pin")"
+          target="$(node -p 'JSON.parse(process.argv[1]).starterRef' "$pin")"
+          node scripts/upgrade-matrix.mjs plan --repo "$repo" --target "$target" > "$RUNNER_TEMP/plan.json"
+          echo "starts=$(node -p 'JSON.stringify(require(process.argv[1]).starts)' "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+          node -p 'const p = require(process.argv[1]); `To ${p.target} (schema ${p.targetSchema}) from ${p.starts.map((s) => s.id).join(", ")}`' "$RUNNER_TEMP/plan.json"
+      - uses: actions/upload-artifact@v7
+        if: steps.decide.outputs.run == 'true'
+        with:
+          name: upgrade-matrix-plan
+          path: ${{ runner.temp }}/plan.json
+
+  upgrade:
+    name: upgrade (${{ matrix.id }})
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.starts) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - name: The CLI to test
+        env:
+          CLI_SOURCE: ${{ needs.plan.outputs.cli }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CLI_SOURCE" = packed ]; then
+            pnpm install --frozen-lockfile
+            pnpm build
+            pnpm bundle-template
+            npm pack --pack-destination "$RUNNER_TEMP"
+            mkdir -p "$RUNNER_TEMP/cli"
+            tar -xzf "$RUNNER_TEMP"/clubedge-create-clubedge-app-*.tgz -C "$RUNNER_TEMP/cli"
+            npm install --prefix "$RUNNER_TEMP/cli/package" --omit=dev --ignore-scripts
+            echo "CLI=node $RUNNER_TEMP/cli/package/bin/create.mjs" >> "$GITHUB_ENV"
+          else
+            npm install --prefix "$RUNNER_TEMP/cli" "@clubedge/create-clubedge-app@$CLI_SOURCE"
+            echo "CLI=node $RUNNER_TEMP/cli/node_modules/@clubedge/create-clubedge-app/bin/create.mjs" >> "$GITHUB_ENV"
+          fi
+          git config --global init.defaultBranch main
+      - name: Upgrade from ${{ matrix.ref }} (${{ matrix.stack }})
+        run: >-
+          node scripts/upgrade-matrix.mjs run --cli "$CLI" --start ${{ matrix.ref }} --schema ${{ matrix.schema }}
+          --stack ${{ matrix.stack }} --out "$RUNNER_TEMP/result-${{ matrix.id }}.json" --work "$RUNNER_TEMP/matrix"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: upgrade-matrix-result-${{ matrix.id }}
+          path: ${{ runner.temp }}/result-${{ matrix.id }}.json
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: upgrade-matrix-logs-${{ matrix.id }}
+          path: ${{ runner.temp }}/matrix/logs
+          retention-days: 14
+          if-no-files-found: ignore
+
+  results:
+    needs: [plan, upgrade]
+    if: always() && needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - uses: actions/download-artifact@v7
+        with:
+          name: upgrade-matrix-plan
+          path: ${{ runner.temp }}/in
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: upgrade-matrix-result-*
+          path: ${{ runner.temp }}/in
+          merge-multiple: true
+      - name: Merge the results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLI: ${{ needs.plan.outputs.cli }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$(node -p 'require(process.argv[1]).repo' "$RUNNER_TEMP/in/plan.json")"
+          # The Starter's release notes give each release a headline on the site.
+          gh api "repos/$repo/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          version="$CLI"
+          if [ "$CLI" = packed ]; then version="$(node -p 'require("./package.json").version')+${GITHUB_SHA::7}"; fi
+          node scripts/upgrade-matrix.mjs merge --plan "$RUNNER_TEMP/in/plan.json" --out "$RUNNER_TEMP/upgrade-matrix.json" \
+            --releases "$RUNNER_TEMP/releases.json" --run-url "$RUN_URL" --cli-version "$version" "$RUNNER_TEMP"/in/result-*.json
+      - name: Summarize
+        id: summary
+        shell: bash
+        run: |
+          set -uo pipefail
+          node scripts/upgrade-matrix.mjs summary "$RUNNER_TEMP/upgrade-matrix.json" > "$RUNNER_TEMP/summary.md"
+          echo "failed=$?" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upgrade-matrix
+          path: ${{ runner.temp }}/upgrade-matrix.json
+      # The results go out even with failures: the Upgrades page shows them as they are.
+      - name: Publish the results on the upgrade-matrix release
+        if: needs.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="Results of the upgrade matrix for starter.clubedge.live's Upgrades page, updated weekly and after each release. Latest: $RUN_URL"
+          if ! gh release view upgrade-matrix --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # Never "Latest": that stays the CLI's own release.
+            gh release create upgrade-matrix --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "Upgrade matrix" --notes "$notes"
+          fi
+          gh release upload upgrade-matrix "$RUNNER_TEMP/upgrade-matrix.json" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit upgrade-matrix --repo "$GITHUB_REPOSITORY" --notes "$notes"
+      # The site reads the results when it builds, so a rebuild puts them on its Upgrades page.
+      - name: Trigger a site rebuild
+        if: needs.plan.outputs.publish == 'true'
+        env:
+          SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
+        shell: bash
+        run: |
+          if [ -z "$SITE_DEPLOY_HOOK" ]; then
+            echo "SITE_DEPLOY_HOOK is not configured; the site shows the results at its next build."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            status=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --request POST "$SITE_DEPLOY_HOOK") || status="no response"
+            case "$status" in
+              2??)
+                echo "Site rebuild triggered."
+                exit 0
+                ;;
+            esac
+            echo "Attempt $attempt: the deploy hook answered $status."
+            [ "$attempt" -lt 3 ] && sleep 30
+          done
+          echo "::warning::The deploy hook kept failing; the site shows the results at its next build."
+      - name: Fail on failures
+        if: steps.summary.outputs.failed != '0'
+        run: |
+          echo "The upgrade matrix has failures; the job summary lists them."
+          exit 1

@@ -486,6 +486,8 @@ Without a bundled template, a local build downloads the pinned Starter release f
 
 CI packs the CLI with `npm pack`, scaffolds clean projects from the packed tarball, installs their dependencies, runs linting, typechecking, unit tests, browser checks, and a production build, then starts each generated app and checks the landing page, sign-up page, dashboard, health endpoint, logo, and favicon. It also adds and removes modules in an existing project and upgrades a project from an older Starter. A scheduled, non-blocking compatibility job checks Starter `main`.
 
+The upgrade matrix (`.github/workflows/upgrade-matrix.yml`, `scripts/upgrade-matrix.mjs`) goes further: it generates projects from the oldest Starter release of each template schema and from the release before the pin, then upgrades each one with no edits, after `pnpm up -r`, with a `pnpm patch`, and with feature edits, and runs add and remove there and back. A pull request that moves the pin runs it as a gate. Weekly and after each release, it runs the published CLI and puts the results, `upgrade-matrix.json`, on the `upgrade-matrix` release, from which [starter.clubedge.live/upgrades](https://starter.clubedge.live/upgrades) is built.
+
 ## Release workflow
 
 ### Starter maintainers

@@ -73,7 +73,9 @@ jobs:
           Opened by the Starter pin workflow.
           EOF
           )"
-          # Pull requests opened with the default token start no workflows; start CI on the branch.
+          # Pull requests opened with the default token start no workflows; start CI and the upgrade
+          # matrix, with the branch's own CLI, on the branch.
           if [ "$OWN_TOKEN" != "true" ]; then
             gh workflow run ci.yml --ref "$branch"
+            gh workflow run upgrade-matrix.yml --ref "$branch" -f cli=packed
           fi

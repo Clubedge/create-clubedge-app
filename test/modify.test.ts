@@ -221,14 +221,15 @@ describe("changeProject after the files are written", () => {
   });
 });
 
-describe("a project with conflict markers left by an earlier change", () => {
+// Each test makes a Git repository and commits, and Git is slow to start on Windows.
+describe("a project with conflict markers left by an earlier change", { timeout: 20_000 }, () => {
   const marked = "export const provider = 'supabase';\n<<<<<<< yours\nexport const mine = 1;\n=======\nexport const theirs = 1;\n>>>>>>> clubedge\n";
 
   /** The project with these files written, all committed to Git, as a change expects. */
   async function committed(files: Record<string, string>) {
     const project = await generatedProject();
     for (const [path, content] of Object.entries(files)) await project.write(path, content);
-    for (const args of [["init", "-q"], ["config", "user.email", "ci@example.com"], ["config", "user.name", "CI"], ["add", "-A"], ["commit", "-qm", "Committed"]]) {
+    for (const args of [["init", "-q"], ["add", "-A"], ["-c", "user.email=ci@example.com", "-c", "user.name=CI", "commit", "-qm", "Committed"]]) {
       spawnSync("git", args, { cwd: project.root });
     }
     return project;

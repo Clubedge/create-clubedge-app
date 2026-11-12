@@ -373,6 +373,13 @@ export function changedModules(manifest: TemplateManifest, project: Project, com
 }
 
 /**
+ * What Starters before v0.5.0 built in: Supabase Auth, S3 storage, and a Redis cache. v0.5.0 made
+ * them its first modules, with these options as defaults. Projects from those Starters record no
+ * modules, and an upgrade keeps these rather than taking them out as modules the project predates.
+ */
+export const BUILT_IN_BEFORE_MODULES: Readonly<Record<string, string>> = { auth: "supabase", storage: "s3", cache: "redis" };
+
+/**
  * The project's selection in a newer Starter. Modules the project predates get their "none"
  * option where there is one, so an upgrade never adds a service on its own.
  */
@@ -566,8 +573,20 @@ async function planChange(
   }
   if (target.commit && target.commit === project.starterCommit) return null;
   const targetManifest = await readTemplateManifest(target.root);
-  const { modules, introduced, dropped } = upgradedModules(targetManifest, project, cli);
+  // A Starter before modules built in what became the first ones, and its project keeps them.
+  const builtIn = !Object.keys(baseManifest.modules).length && Object.keys(targetManifest.modules).length > 0;
+  const keptModules = Object.fromEntries(Object.entries(BUILT_IN_BEFORE_MODULES).filter(([id]) => targetManifest.modules[id]));
+  const recorded = builtIn ? { ...project, modules: keptModules } : project;
+  const { modules, introduced, dropped } = upgradedModules(targetManifest, recorded, cli);
   const notes = dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`);
+  if (builtIn && Object.keys(keptModules).length) {
+    const kept = Object.entries(keptModules).map(
+      ([id, option]) => `${targetManifest.modules[id]!.name}: ${targetManifest.modules[id]!.options[option]?.name ?? option}`,
+    );
+    notes.unshift(
+      `Starter ${project.starterRef} had no modules yet, but built in what became the first ones, so the project keeps them: ${kept.join(", ")}. Switch one with: ${cli} add <module> <option>`,
+    );
+  }
   if (/^v\d/.test(target.ref)) {
     notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
   }
@@ -730,6 +749,22 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     spinning = false;
 
     const cli = await cliCommand(project);
+    // Every project records the Starter's modules when it has any, so none recorded against a
+    // Starter with modules means package.json lost them, and the project's files can't be told apart.
+    const starterModules = Object.keys(baseManifest.modules);
+    if (!Object.keys(project.modules).length && starterModules.length) {
+      throw new UsageError(
+        `package.json does not record this project's modules, which Starter ${project.starterRef} has, so the CLI cannot tell which of their files the project has. ` +
+          `Add them to its "clubedge" field, as "modules": { "${starterModules[0]}": "<option>", ... } with one entry for each of ${starterModules.join(", ")}, then run this again.`,
+      );
+    }
+    // Starters before v0.5.0 have no modules or apps to change; their projects upgrade first.
+    if (!upgrading && !starterModules.length && !appSlots(baseManifest).length) {
+      throw new UsageError(
+        `Starter ${project.starterRef}, which this project comes from, has no modules or apps to ${command.name}: they came in later releases. ` +
+          `Upgrade the project first with \`${cli} upgrade\`, then ${command.name} them.`,
+      );
+    }
     const complete =
       command.name === "upgrade" ? command : await completeCommand(baseManifest, project, command, interactive);
     if (!complete) {

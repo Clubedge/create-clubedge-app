@@ -70,11 +70,18 @@ describe("readProject", () => {
     expect(await readProject(root)).toMatchObject({ stacks: { api: "fastapi" }, modules: { auth: "none" } });
   });
 
-  it("refuses projects that predate recorded modules", async () => {
+  it("reads a project from a Starter without modules, which records none", async () => {
     const root = await temporaryDirectory();
-    const clubedge = { cliVersion: "0.4.0", starterRepository: "r", starterRef: "v0.4.0", framework: "next" };
+    const clubedge = { cliVersion: "0.48.0", starterRepository: "r", starterRef: "v0.4.0", framework: "next" };
     await writeFiles(root, { "package.json": JSON.stringify({ name: "my-product", clubedge }) });
-    await expect(readProject(root)).rejects.toThrow("before create-clubedge-app 0.5.0");
+    expect(await readProject(root)).toMatchObject({ starterRef: "v0.4.0", stacks: { framework: "next" }, modules: {} });
+  });
+
+  it("reads a project from a Starter without a choice of framework, which records neither", async () => {
+    const root = await temporaryDirectory();
+    const clubedge = { cliVersion: "0.4.0", starterRepository: "r", starterRef: "v0.3.0" };
+    await writeFiles(root, { "package.json": JSON.stringify({ name: "my-product", clubedge }) });
+    expect(await readProject(root)).toMatchObject({ starterRef: "v0.3.0", stacks: {}, modules: {} });
   });
 
   it("explains when there is no generated project", async () => {

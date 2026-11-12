@@ -18,17 +18,17 @@ import {
   nextStep,
   updateState,
   type CheckResult,
-  type ConflictedFile,
   type GitState,
 } from "./core/health.js";
-import { countConflicts, INCOMING_DIR } from "./core/merge.js";
+import { INCOMING_DIR } from "./core/merge.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { neonDatabaseState } from "./core/neon.js";
 import { databaseEnvFile, projectEnvFiles, readProject } from "./core/project.js";
+import { findConflictedFiles } from "./core/update.js";
 import { savedDatabaseForUrl } from "./neon.js";
 import { cliCommand } from "./modify.js";
 import { resolvePnpm } from "./steps/install.js";
-import { listTemplateFiles, pathExists } from "./utils/fs.js";
+import { pathExists } from "./utils/fs.js";
 import { commandSucceeds, run, runCapture } from "./utils/process.js";
 
 async function readText(path: string): Promise<string | null> {
@@ -103,18 +103,6 @@ function print(result: CheckResult) {
   if (result.status === "ok") log.success(line);
   else if (result.status === "warn") log.warn(line);
   else log.error(line);
-}
-
-export async function findConflictedFiles(root: string): Promise<ConflictedFile[]> {
-  const files = await listTemplateFiles(root);
-  const conflicts: ConflictedFile[] = [];
-  for (const file of files) {
-    const content = await readFile(join(root, file)).catch(() => null);
-    if (!content) continue;
-    const blocks = countConflicts(content);
-    if (blocks > 0) conflicts.push({ path: file, blocks });
-  }
-  return conflicts;
 }
 
 export async function runDoctor(args: CliArgs): Promise<void> {

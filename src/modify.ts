@@ -10,7 +10,7 @@ import { UsageError, type CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
 import { runsServer } from "./core/manifest-fields.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
-import { compareVersions } from "./core/health.js";
+import { compareVersions, type ConflictedFile } from "./core/health.js";
 import { countConflicts, type MergeAction } from "./core/merge.js";
 import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
 import { moduleChoices, NO_STACK, selectModules, selectStacks, slotChoices, stacksIn } from "./core/plan.js";
@@ -21,7 +21,7 @@ import {
   resolveTemplateSource,
   type TemplateSource,
 } from "./core/source.js";
-import { applyUpdate, INCOMING_DIR, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
+import { applyUpdate, findConflictedFiles, INCOMING_DIR, planUpdate, type UpdatePlan, type UpdateSide } from "./core/update.js";
 import { cliVersion, starterPin } from "./package-info.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { describeNewDatabase, projectDatabaseEnv, provisionNeonDatabase } from "./neon.js";
@@ -100,11 +100,35 @@ function asRecorded(source: TemplateSource, project: Project): UpdateSide["sourc
 }
 
 /**
- * Refuses to change a project whose changes Git cannot show and undo, unless --force: a Git
- * repository must have no uncommitted changes, and a folder without Git needs confirmation.
+ * Why a project with conflict markers left by an earlier change cannot change yet: the new merge
+ * would run over them, and once wrote its own markers inside the old ones, and otherwise carried
+ * the old ones on, with exit code 0 when it added none.
+ */
+export function unresolvedConflictsError(conflicts: ConflictedFile[]): string {
+  const total = conflicts.reduce((sum, c) => sum + c.blocks, 0);
+  const files = conflicts
+    .slice(0, 5)
+    .map((c) => `\n  ${c.path} (${c.blocks} ${c.blocks === 1 ? "block" : "blocks"})`)
+    .join("");
+  const more = conflicts.length > 5 ? `\n  ... and ${conflicts.length - 5} more files` : "";
+  return (
+    `${conflicts.length === 1 ? "A file still has" : `${conflicts.length} files still have`} conflict markers from an earlier change ` +
+    `(${total} ${total === 1 ? "block" : "blocks"}):${files}${more}\n` +
+    "This change would merge into them. Resolve them first: keep your lines, the Starter's, or a mix, and delete the markers. " +
+    "Pass --force to change the project anyway."
+  );
+}
+
+/**
+ * Refuses to change a project, unless --force, that still has conflict markers from an earlier
+ * change, or whose changes Git cannot show and undo: a Git repository must have no uncommitted
+ * changes, and a folder without Git needs confirmation.
  */
 async function assertSafeToChange(project: Project, args: CliArgs, interactive: boolean) {
   if (args.force) return;
+  // First: committing the markers would clear the uncommitted changes, not the conflicts.
+  const conflicts = await findConflictedFiles(project.root);
+  if (conflicts.length) throw new UsageError(unresolvedConflictsError(conflicts));
   const isRepository = await commandSucceeds("git", ["-C", project.root, "rev-parse", "--is-inside-work-tree"]);
   if (isRepository) {
     const status = await runCapture("git", ["-C", project.root, "status", "--porcelain"]);

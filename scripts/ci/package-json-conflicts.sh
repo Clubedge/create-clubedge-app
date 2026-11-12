@@ -11,8 +11,8 @@
 #      only.
 # Each change runs with pnpm install on. A conflict must skip the install and say why, list the
 # file, exit with 2 under --detailed-exit-code (0 without it), and so must a dry run, save a valid
-# Starter version in .clubedge/incoming, fail doctor, be listed by status, and be named by a later
-# command instead of a parse error.
+# Starter version in .clubedge/incoming, fail doctor, be listed by status, stop a later change,
+# and be named by a later command instead of a parse error.
 #
 # Usage: bash package-json-conflicts.sh <path to bin/create.mjs> <work folder> <older Starter tag>
 set -euo pipefail
@@ -141,6 +141,10 @@ expect "git diff --no-index package.json ../../.clubedge/incoming/apps/web/packa
 cli_in "$work/c" 0 status
 expect "Conflicts  1 conflict in 1 file: apps/web/package.json (1 block); the Starter's versions are in .clubedge/incoming"
 expect "Resolve the conflicts first"
+# A later change refuses to merge into the markers, and names the file.
+cli_in "$work/c" 1 add infra local
+expect "A file still has conflict markers from an earlier change (1 block):"
+expect "apps/web/package.json (1 block)"
 # Without --detailed-exit-code, conflicts exit with 0, as the upgrade workflow in existing projects expects.
 git -C "$work/c" checkout -q -- .
 git -C "$work/c" clean -fdq

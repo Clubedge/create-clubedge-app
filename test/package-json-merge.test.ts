@@ -146,10 +146,12 @@ describe("merging package.json by key", () => {
     });
 
     it("leaves the merged file to install: no markers in a workspace package.json both raised", () => {
-      const pkg = (betterAuth: string) => json({ name: "@clubedge/auth-better-auth", dependencies: { "better-auth": betterAuth } });
-      expect(planned(pkg("^1.7.21"), pkg("^1.7.4"), pkg("^1.7.13"), "packages/auth-better-auth/package.json")).toMatchObject({
+      const pkg = (betterAuth: string, more: Record<string, string> = {}) =>
+        json({ name: "@clubedge/auth-better-auth", dependencies: { "better-auth": betterAuth, ...more } });
+      // The Starter adds a dependency too, so the merge changes the file.
+      expect(planned(pkg("^1.7.21"), pkg("^1.7.4"), pkg("^1.7.13", { zod: "^4.3.0" }), "packages/auth-better-auth/package.json")).toMatchObject({
         kind: "merge",
-        content: Buffer.from(pkg("^1.7.21")),
+        content: Buffer.from(pkg("^1.7.21", { zod: "^4.3.0" })),
       });
     });
   });

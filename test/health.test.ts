@@ -6,6 +6,7 @@ import {
   checkNode,
   checkPnpm,
   compareVersions,
+  describeConflicts,
   fetchLatestRelease,
   nextStep,
   updateState,
@@ -69,6 +70,32 @@ describe("updateState and nextStep", () => {
     expect(updateState("v0.13.1", null)).toEqual({ kind: "unknown" });
     expect(nextStep({ kind: "clean" }, { kind: "current" }, "pnpm clubedge")).toContain("pnpm clubedge doctor");
     expect(nextStep({ kind: "none" }, { kind: "unknown" }, "pnpm clubedge")).toMatch(/^Could not check/);
+  });
+});
+
+describe("conflicts in status", () => {
+  const conflicts = [
+    { path: "README.md", blocks: 2 },
+    { path: "apps/web/package.json", blocks: 1 },
+  ];
+
+  it("lists the files with markers, and the Starter's versions to compare with", () => {
+    expect(describeConflicts(conflicts, true)).toBe(
+      "3 conflicts in 2 files: README.md (2 blocks), apps/web/package.json (1 block); the Starter's versions are in .clubedge/incoming",
+    );
+    const many = ["a", "b", "c", "d"].map((path) => ({ path, blocks: 1 }));
+    expect(describeConflicts(many, false)).toBe("4 conflicts in 4 files: a (1 block), b (1 block), c (1 block), ...");
+  });
+
+  it("says when .clubedge/incoming is left without markers, and none when neither is", () => {
+    expect(describeConflicts([], true)).toMatch(/^none, but \.clubedge\/incoming still holds the Starter's versions/);
+    expect(describeConflicts([], false)).toBe("none");
+  });
+
+  it("puts resolving them before the next step, an upgrade included", () => {
+    const update = { kind: "available" as const, cliVersion: "0.14.1", starterRef: "v0.13.1" };
+    expect(nextStep({ kind: "clean" }, update, "pnpm clubedge", conflicts)).toMatch(/^Resolve the conflicts first/);
+    expect(nextStep({ kind: "clean" }, update, "pnpm clubedge", [])).toMatch(/^Run `pnpm clubedge upgrade`/);
   });
 });
 

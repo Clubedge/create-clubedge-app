@@ -13,6 +13,7 @@ import {
   checkLockfile,
   checkNode,
   checkPnpm,
+  describeConflicts,
   fetchLatestRelease,
   nextStep,
   updateState,
@@ -20,7 +21,7 @@ import {
   type ConflictedFile,
   type GitState,
 } from "./core/health.js";
-import { countConflicts } from "./core/merge.js";
+import { countConflicts, INCOMING_DIR } from "./core/merge.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { neonDatabaseState } from "./core/neon.js";
 import { databaseEnvFile, projectEnvFiles, readProject } from "./core/project.js";
@@ -54,7 +55,13 @@ const describeGit = (git: GitState) =>
 
 export async function showStatus(_args: CliArgs): Promise<void> {
   const project = await readProject(process.cwd());
-  const [git, latest, cli] = await Promise.all([gitState(project.root), fetchLatestRelease(), cliCommand(project)]);
+  const [git, latest, cli, conflicts, incomingLeft] = await Promise.all([
+    gitState(project.root),
+    fetchLatestRelease(),
+    cliCommand(project),
+    findConflictedFiles(project.root),
+    pathExists(join(project.root, INCOMING_DIR)),
+  ]);
   const update = updateState(project.starterRef, latest);
 
   const commit = project.starterCommit ? ` ${dim(`(commit ${project.starterCommit.slice(0, 7)})`)}` : "";
@@ -73,10 +80,11 @@ export async function showStatus(_args: CliArgs): Promise<void> {
     ...Object.entries(project.stacks).map(([slot, stack]): [string, string] => [slot[0]!.toUpperCase() + slot.slice(1), stack]),
     ["Modules", modules],
     ["Git", describeGit(git)],
+    ["Conflicts", describeConflicts(conflicts, incomingLeft)],
     ["Updates", updates],
   ];
   log.message(rows.map(([label, value]) => `${label.padEnd(10)} ${value}`).join("\n"));
-  outro(nextStep(git, update, cli));
+  outro(nextStep(git, update, cli, conflicts));
 }
 
 /** Runs `pnpm install --frozen-lockfile --lockfile-only` offline; resolves its error or null. */

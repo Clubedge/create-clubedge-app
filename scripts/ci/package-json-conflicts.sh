@@ -8,8 +8,9 @@
 #   C. the web app set its own `next` range, and the upgrade bumps it (the web app's own version,
 #      set too, is kept: workspace apps own it): a conflict on that key's line only.
 # Each change runs with pnpm install on. A conflict must skip the install and say why, list the
-# file, exit with 2 under --detailed-exit-code (0 without it), save a valid Starter version in
-# .clubedge/incoming, fail doctor, and be named by a later command instead of a parse error.
+# file, exit with 2 under --detailed-exit-code (0 without it), and so must a dry run, save a valid
+# Starter version in .clubedge/incoming, fail doctor, be listed by status, and be named by a later
+# command instead of a parse error.
 #
 # Usage: bash package-json-conflicts.sh <path to bin/create.mjs> <work folder> <older Starter tag>
 set -euo pipefail
@@ -127,9 +128,17 @@ expect "apps/web/package.json (1 block)"
 cli_in "$work/c/apps/web" 1 status
 expect "package.json has 1 unresolved conflict from an earlier add, remove, or upgrade"
 expect "git diff --no-index package.json ../../.clubedge/incoming/apps/web/package.json"
+# From the project's root, status lists it, and puts resolving it first.
+cli_in "$work/c" 0 status
+expect "Conflicts  1 conflict in 1 file: apps/web/package.json (1 block); the Starter's versions are in .clubedge/incoming"
+expect "Resolve the conflicts first"
 # Without --detailed-exit-code, conflicts exit with 0, as the upgrade workflow in existing projects expects.
 git -C "$work/c" checkout -q -- .
 git -C "$work/c" clean -fdq
+# A dry run counts the conflict it would leave, and exits as the real run does, writing nothing.
+cli_in "$work/c" 2 upgrade --dry-run --detailed-exit-code
+expect "The change would leave 1 conflict in 1 file to resolve"
+[ -z "$(git -C "$work/c" status --porcelain)" ] || fail "The dry run changed the project."
 cli_in "$work/c" 0 upgrade
 check_conflict "$work/c" apps/web/package.json
 echo "::endgroup::"

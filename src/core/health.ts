@@ -64,8 +64,14 @@ export function latestCliCommand(cli: string): string {
   return cli === "pnpm clubedge" ? cli : "pnpm dlx @clubedge/create-clubedge-app@latest";
 }
 
-/** What to do next, given the working tree and whether a newer Starter exists. */
-export function nextStep(git: GitState, update: UpdateState, cli: string): string {
+/**
+ * What to do next, given the working tree, whether a newer Starter exists, and the files an
+ * earlier change left with conflict markers, which come first.
+ */
+export function nextStep(git: GitState, update: UpdateState, cli: string, conflicts: ConflictedFile[] = []): string {
+  if (conflicts.length) {
+    return "Resolve the conflicts first: keep your lines, the Starter's, or a mix in each block, then delete the markers and .clubedge/incoming.";
+  }
   if (update.kind === "available") {
     const upgrade = `${latestCliCommand(cli)} upgrade`;
     return git.kind === "dirty"
@@ -250,6 +256,27 @@ export function checkDatabaseUrls(input: {
 export interface ConflictedFile {
   path: string;
   blocks: number;
+}
+
+/**
+ * The conflicts line of `status`: the files an earlier change left with conflict markers, and
+ * the Starter's versions it left to compare with in .clubedge/incoming.
+ */
+export function describeConflicts(conflicts: ConflictedFile[], incomingLeft: boolean): string {
+  if (!conflicts.length) {
+    return incomingLeft
+      ? "none, but .clubedge/incoming still holds the Starter's versions from the last change: delete it when you are done comparing"
+      : "none";
+  }
+  const total = conflicts.reduce((sum, c) => sum + c.blocks, 0);
+  const files = conflicts
+    .slice(0, 3)
+    .map((c) => `${c.path} (${c.blocks} ${c.blocks === 1 ? "block" : "blocks"})`)
+    .join(", ");
+  return (
+    `${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}: ` +
+    `${files}${conflicts.length > 3 ? ", ..." : ""}${incomingLeft ? "; the Starter's versions are in .clubedge/incoming" : ""}`
+  );
 }
 
 export function checkConflicts(conflicts: ConflictedFile[]): CheckResult {

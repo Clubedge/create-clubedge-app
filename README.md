@@ -323,11 +323,11 @@ Claiming keeps the data but resets the password: copy the pooled and direct conn
 Two read-only commands help you keep a project healthy:
 
 ```sh
-pnpm clubedge status    # Starter release, modules, Git state, and whether a newer Starter exists
+pnpm clubedge status    # Starter release, modules, Git state, conflicts left, and whether a newer Starter exists
 pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and pnpm check:services
 ```
 
-`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that each app's local env file has every variable in its example (`apps/web/.env.local` and `.env.example`, and `apps/api/.env.local` and `apps/api/.env.example` with a separate API), then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
+`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. It lists the files an earlier change left with conflict markers, and a `.clubedge/incoming/` left behind, and then says to resolve the conflicts first. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that each app's local env file has every variable in its example (`apps/web/.env.local` and `.env.example`, and `apps/api/.env.local` and `apps/api/.env.example` with a separate API), then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
 
 ## Try it on a Railway VM (experimental)
 

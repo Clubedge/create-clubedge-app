@@ -74,14 +74,57 @@ function higherRange(a: string, b: string): string | undefined {
 }
 
 /**
+ * Whether `range` raises `base` within the versions `base` already allowed, as `pnpm up` does:
+ * ^5.8.0 to ^5.12.2. A raise like that only takes newer releases, so it is no edit of its own.
+ */
+const raisedWithin = (base: Json | undefined, range: Json | undefined) =>
+  typeof base === "string" && typeof range === "string" && range !== base && higherRange(base, range) === range;
+
+/** Whether a dependency map has the base's dependencies, each the same or only raised within its range. */
+const onlyRaised = (base: Json | undefined, map: Json | undefined) =>
+  isObject(base) &&
+  isObject(map) &&
+  Object.keys(map).length === Object.keys(base).length &&
+  Object.entries(map).every(([key, range]) => Object.hasOwn(base, key) && (same(base[key], range) || raisedWithin(base[key], range)));
+
+/** The lowest version a ^ or ~ range, or an exact version, allows; undefined for anything else. */
+function minimum(range: Json | undefined): number[] | undefined {
+  if (typeof range !== "string") return undefined;
+  const match = SIMPLE_RANGE.exec(range) ?? /^()(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(range);
+  return match ? match.slice(2).map(Number) : undefined;
+}
+
+/** Whether `range` asks for at least the lowest version `than` allows: ^6.3.1 than ^5.12.2. */
+function atLeast(range: Json | undefined, than: Json | undefined) {
+  const [a, b] = [minimum(range), minimum(than)];
+  if (!a || !b) return false;
+  const differs = a.findIndex((n, i) => n !== b[i]);
+  return differs === -1 || a[differs]! > b[differs]!;
+}
+
+/**
  * One key's value, at `path` from the file's root: whoever changed it, or a conflict when both
  * did, differently. Objects both changed merge key by key; arrays and scalars are single values.
  * Undefined is a removed key. A dependency both raised within its range takes the higher range.
+ * One that a side only raised within its range, as `pnpm up` does, takes the other side's change
+ * when that removes it or asks for at least the raised version: the Starter's removal of a
+ * dependency, or its new major, over the project's `pnpm up`, and the other way round.
  */
 function merge(base: Json | undefined, yours: Json | undefined, theirs: Json | undefined, path: string[]): Merged | undefined {
   if (same(yours, theirs) || same(base, theirs)) return yours;
   if (same(base, yours)) return theirs;
   if (isObject(yours) && isObject(theirs)) return mergeObjects(isObject(base) ? base : {}, yours, theirs, path);
+  if (holdsRanges(path.slice(0, -1))) {
+    const yoursRaised = raisedWithin(base, yours);
+    if (yoursRaised !== raisedWithin(base, theirs)) {
+      const [raised, other] = yoursRaised ? [yours, theirs] : [theirs, yours];
+      if (other === undefined || atLeast(other, raised)) return other;
+    }
+  }
+  // A whole dependency map one side only raised within its ranges, removed by the other side.
+  if (holdsRanges(path) && ((theirs === undefined && onlyRaised(base, yours)) || (yours === undefined && onlyRaised(base, theirs)))) {
+    return undefined;
+  }
   if (typeof yours === "string" && typeof theirs === "string" && holdsRanges(path.slice(0, -1))) {
     const higher = higherRange(yours, theirs);
     if (higher !== undefined) return higher;

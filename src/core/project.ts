@@ -78,12 +78,8 @@ export async function readProject(directory: string): Promise<Project> {
       }
       const origin = manifest.clubedge;
       if (origin?.starterRef) {
-        // Projects record the framework only when the Starter offered a choice, but always their modules.
-        if (!origin.modules) {
-          throw new ProjectError(
-            "This project was created before create-clubedge-app 0.5.0 and does not record its modules, so it cannot be changed automatically.",
-          );
-        }
+        // Projects record the framework only when the Starter offered a choice, and their modules
+        // when it had any: a project from Starter v0.4.0 or earlier records none.
         return {
           root: current,
           identity: {
@@ -96,7 +92,7 @@ export async function readProject(directory: string): Promise<Project> {
           starterRef: origin.starterRef,
           starterCommit: origin.starterCommit,
           stacks: recordedStacks(origin),
-          modules: origin.modules,
+          modules: origin.modules && typeof origin.modules === "object" ? origin.modules : {},
           services: origin.services && typeof origin.services === "object" ? origin.services : {},
         };
       }

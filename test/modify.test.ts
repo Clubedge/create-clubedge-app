@@ -15,7 +15,7 @@ import { main } from "../src/index.js";
 import { changeProject } from "../src/modify.js";
 import { starterPin } from "../src/package-info.js";
 import { detectPnpm, installDependencies } from "../src/steps/install.js";
-import { moduleStarterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
+import { moduleStarterFiles, starterFiles, temporaryDirectory, writeFiles } from "./helpers.js";
 
 vi.mock("../src/steps/install.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/steps/install.js")>()),
@@ -474,6 +474,85 @@ describe("what an upgrade reports", () => {
     await project.upgrade();
     expect(infos()).toContainEqual(
       expect.stringMatching(/^Could not list the Starter releases in this upgrade: .*rate limit.* https:\/\/github\.com\/Clubedge\/clubedge-starter\/releases\.$/),
+    );
+  });
+});
+
+describe("a project from a Starter without modules", () => {
+  const repository = "Clubedge/clubedge-starter";
+
+  /**
+   * A project on Starter v0.4.0, a schema 1 Starter with neither modules nor a choice of
+   * framework, as before v0.5.0, which records none in package.json; v1.0.0 has modules.
+   */
+  async function projectOnV04() {
+    const starter = async (ref: string, files: Record<string, string>) => {
+      const folder = await temporaryDirectory();
+      await writeFiles(folder, files);
+      return { ...(await readDirectoryTemplate(folder)), kind: "github" as const, ref, commit: ref.slice(1, 2).repeat(40), repository };
+    };
+    const v04 = await starter("v0.4.0", starterFiles());
+    const v1 = await starter("v1.0.0", moduleStarterFiles());
+    // Fetched by tag for the upgrade, and by commit for the project's own Starter.
+    vi.mocked(downloadGitHubTemplate).mockImplementation(async (ref: string) => ([v1.ref, v1.commit].includes(ref) ? v1 : v04));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json([]));
+
+    const root = join(await temporaryDirectory(), "my-product");
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "my-product", displayName: "My Product" },
+        source: v04,
+        manifest: await readTemplateManifest(v04.root),
+        stacks: {},
+        modules: {},
+        cliVersion: "0.48.0",
+        git: false,
+        install: false,
+      }),
+      v04,
+    );
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    const read = async () => JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    return {
+      root,
+      read,
+      change: (...command: string[]) => changeProject(parseCliArgs([...command, "--force", "--yes", "--no-install"])),
+    };
+  }
+
+  it("records no modules when it is generated", async () => {
+    const project = await projectOnV04();
+    expect((await project.read()).clubedge).not.toHaveProperty("modules");
+  });
+
+  it("upgrades to a Starter with modules, keeping what the old one built in", async () => {
+    const project = await projectOnV04();
+    expect(await project.change("upgrade", "--ref", "v1.0.0")).toBe("changed");
+    const { clubedge } = await project.read();
+    // Supabase Auth and S3 storage, which Starters before v0.5.0 built in, not "none".
+    expect(clubedge).toMatchObject({ starterRef: "v1.0.0", modules: { auth: "supabase", storage: "s3" } });
+    expect(vi.mocked(log.info).mock.calls.map(([message]) => message)).toContainEqual(
+      expect.stringMatching(/^Starter v0\.4\.0 had no modules yet, but built in what became the first ones, so the project keeps them: Authentication: .+, File storage: .+\. Switch one with: .+ add <module> <option>$/),
+    );
+  });
+
+  it("says to upgrade first when add or remove has nothing to change", async () => {
+    const project = await projectOnV04();
+    await expect(project.change("add", "cache", "memory")).rejects.toThrow(
+      /^Starter v0\.4\.0, which this project comes from, has no modules or apps to add: they came in later releases\. Upgrade the project first with `.+ upgrade`, then add them\.$/,
+    );
+    await expect(project.change("remove", "storage")).rejects.toThrow(/has no modules or apps to remove/);
+  });
+
+  it("refuses a project whose package.json lost the modules its Starter has, and names them", async () => {
+    const project = await projectOnV04();
+    await project.change("upgrade", "--ref", "v1.0.0");
+    const manifest = await project.read();
+    delete manifest.clubedge.modules;
+    await writeFile(join(project.root, "package.json"), JSON.stringify(manifest, null, 2));
+    await expect(project.change("add", "auth", "none")).rejects.toThrow(
+      /^package\.json does not record this project's modules, which Starter v1\.0\.0 has, .+ one entry for each of auth, storage/,
     );
   });
 });

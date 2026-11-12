@@ -289,7 +289,7 @@ Since CLI 0.46.0, `add` and `remove` also take the apps that run on phones rathe
 - An app implements the modules it uses, such as the native app's sign-in. When the project's option is one it lacks, switch it in the same command: `add mobile expo auth better-auth`.
 - Removing an app deletes the Starter's files and leaves what was never the Starter's, such as its env file, its `node_modules`, and the shell's `android/` and `ios/` projects. The CLI lists them, to delete once you no longer need them.
 
-The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
+The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm typecheck` and your tests, since files that merge without conflicts can still break the code, and `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 
 pnpm cannot read a `package.json` with conflict markers, so a change that leaves conflicts in one skips `pnpm install` and says so: resolve them, then run `pnpm install`. Until then, `pnpm clubedge` does not start either, and the CLI's own commands (`pnpm dlx @clubedge/create-clubedge-app status`, for example) stop with a message that names the file and the command that compares it with the Starter's version in `.clubedge/incoming/`. When the install fails for another reason, the CLI still lists what is left to resolve, then exits with an error.
 

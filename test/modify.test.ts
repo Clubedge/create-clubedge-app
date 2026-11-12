@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { log } from "@clack/prompts";
+import { log, outro } from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import { executePlan } from "../src/core/execute.js";
@@ -173,6 +173,30 @@ describe("changeProject after the files are written", () => {
     );
     expect(warnings()).toEqual([expect.stringContaining("Resolve 1 conflict in 1 file.")]);
     expect(warnings()[0]).toContain("apps/web/src/server/auth.ts");
+  });
+
+  it("ends by asking for a typecheck, since files that merged cleanly can still break the code", async () => {
+    const project = await generatedProject();
+    await project.run(["remove", "storage"]);
+    expect(outro).toHaveBeenLastCalledWith(
+      "Review the changes with `git diff`, and run `pnpm typecheck` and your tests: files that merged cleanly can still break the code. " +
+        "Run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.",
+    );
+  });
+
+  it("ends by saying to resolve the conflicts first, and to install when pnpm could not", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    await project.run(["remove", "storage"]);
+    expect(outro).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Resolve the conflicts first, then run `pnpm install`\. Then review the changes with `git diff`, and run `pnpm typecheck`/),
+    );
+
+    // A conflict outside package.json leaves pnpm working, and the install done.
+    const other = await generatedProject();
+    await other.write("apps/web/src/server/auth.ts", "export const provider = 'supabase'; // mine\n");
+    await other.run(["remove", "auth", "storage"]);
+    expect(outro).toHaveBeenLastCalledWith(expect.stringMatching(/^Resolve the conflicts first\. Then review the changes/));
   });
 
   it("reports a pnpm that is installed but did not run, instead of a missing one", async () => {
@@ -374,6 +398,19 @@ describe("what an upgrade reports", () => {
       expect.stringMatching(/^Cache is new since Starter v1\.0\.0; the project uses "none"\. Choose another option with: .+ add cache <option>$/),
     );
     expect(infos().join("\n")).not.toContain("adds Cache");
+  });
+
+  it("leaves the CLI's commands until package.json conflicts are resolved, since pnpm cannot run them before", async () => {
+    const project = await projectOnV1();
+    await writeFile(
+      join(project.root, "packages/auth-supabase/package.json"),
+      '{\n<<<<<<< yours\n  "name": "auth"\n=======\n  "name": "@clubedge/auth-supabase"\n>>>>>>> clubedge\n}\n',
+    );
+    await project.upgrade();
+    expect(infos()).toContainEqual(
+      expect.stringMatching(/the project uses "none"\. Once the package\.json conflicts are resolved, choose another option with: .+ add cache <option>$/),
+    );
+    expect(outro).toHaveBeenLastCalledWith(expect.stringMatching(/^Resolve the conflicts first, then run `pnpm install`\./));
   });
 
   it("lists the Starter releases the upgrade crosses", async () => {

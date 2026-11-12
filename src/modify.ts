@@ -563,13 +563,29 @@ async function planChange(
  * the target is not always the one that added it (push notifications came in v0.30.0, and an
  * upgrade from v0.26.0 to v0.31.0 said v0.31.0 added them).
  */
-function introducedNotes(project: Project, change: Change, cli: string): string[] {
+function introducedNotes(project: Project, change: Change, cli: string, pnpmBlocked = false): string[] {
   const { manifest, modules } = change.target;
+  // While a package.json has conflict markers, pnpm cannot run the CLI's script.
+  const choose = pnpmBlocked ? "Once the package.json conflicts are resolved, choose another option with" : "Choose another option with";
   return change.introduced.map(
     (id) =>
       `${manifest.modules[id]!.name} is new since Starter ${project.starterRef}; the project uses "${modules[id]}". ` +
-      `Choose another option with: ${cli} add ${id} <option>`,
+      `${choose}: ${cli} add ${id} <option>`,
   );
+}
+
+/**
+ * What to run after a change. A typecheck always: files that merged without conflicts can still
+ * break the code, as when an upgrade gave Chess two copies of one function, outside any marker.
+ * With conflicts, resolving them comes first, then the install pnpm could not run.
+ */
+function closingLine(upgrading: boolean, conflicts: boolean, installSkipped: boolean): string {
+  const review = "review the changes with `git diff`, and run `pnpm typecheck` and your tests: files that merged cleanly can still break the code";
+  const next = upgrading
+    ? "Run `pnpm db:migrate` for new migrations."
+    : "Run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.";
+  if (!conflicts) return `R${review.slice(1)}. ${next}`;
+  return `Resolve the conflicts first${installSkipped ? ", then run `pnpm install`" : ""}. Then ${review}. ${next}`;
 }
 
 /**
@@ -733,7 +749,8 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
 
     report(plan);
     await reportApps(project, change);
-    for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
+    const pnpmBlocked = manifests.length > 0;
+    for (const note of [...introducedNotes(project, change, cli, pnpmBlocked), ...change.notes]) log.info(note);
     if (installError) {
       const reason = installError instanceof Error ? installError.message : String(installError);
       throw new Error(
@@ -741,11 +758,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
       );
     }
     if (change.target.modules.infra === "neon" && project.modules.infra !== "neon") await addNeonDatabase(project, args, cli);
-    outro(
-      upgrading
-        ? "Review the changes with `git diff`, then run `pnpm db:migrate` for new migrations and your tests."
-        : "Review the changes with `git diff`, then run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.",
-    );
+    outro(closingLine(upgrading, conflictsOf(plan).length > 0 || pnpmBlocked, pnpmBlocked));
     return conflictsOf(plan).length ? "conflicts" : "changed";
   } catch (error) {
     if (spinning) progress.stop("Could not prepare the Starter");

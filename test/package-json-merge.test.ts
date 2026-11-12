@@ -183,6 +183,14 @@ describe("merging package.json by key", () => {
       expect(merged(undefined, "^5.8.0", "^5.10.0")).toEqual({ dependencies: { zod: "^4.1.0" }, conflict: false });
     });
 
+    it("takes the Starter's removal of a whole dependency map you only raised, and keeps a conflict when you added to it", () => {
+      // packages/cache from v0.4.0: redis moved to packages/cache-redis, and the map went with it.
+      const cache = (dependencies?: Record<string, string>) =>
+        json({ name: "@clubedge/cache", ...(dependencies ? { dependencies } : {}), devDependencies: { typescript: "^5.9.2" } });
+      expect(merge(cache({ redis: "^5.12.2" }), cache({ redis: "^5.8.0" }), cache())).toEqual({ text: cache(), conflict: false });
+      expect(merge(cache({ redis: "^5.12.2", ioredis: "^5.4.0" }), cache({ redis: "^5.8.0" }), cache())!.conflict).toBe(true);
+    });
+
     it("stays a conflict when the other change asks for less than the raised version, or both changed it otherwise", () => {
       // Your pin is below the version the Starter's code now asks for, and the other way round.
       expect(merged("5.9.1", "^5.8.0", "^5.10.0").conflict).toBe(true);

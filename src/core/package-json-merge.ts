@@ -80,6 +80,13 @@ function higherRange(a: string, b: string): string | undefined {
 const raisedWithin = (base: Json | undefined, range: Json | undefined) =>
   typeof base === "string" && typeof range === "string" && range !== base && higherRange(base, range) === range;
 
+/** Whether a dependency map has the base's dependencies, each the same or only raised within its range. */
+const onlyRaised = (base: Json | undefined, map: Json | undefined) =>
+  isObject(base) &&
+  isObject(map) &&
+  Object.keys(map).length === Object.keys(base).length &&
+  Object.entries(map).every(([key, range]) => Object.hasOwn(base, key) && (same(base[key], range) || raisedWithin(base[key], range)));
+
 /** The lowest version a ^ or ~ range, or an exact version, allows; undefined for anything else. */
 function minimum(range: Json | undefined): number[] | undefined {
   if (typeof range !== "string") return undefined;
@@ -113,6 +120,10 @@ function merge(base: Json | undefined, yours: Json | undefined, theirs: Json | u
       const [raised, other] = yoursRaised ? [yours, theirs] : [theirs, yours];
       if (other === undefined || atLeast(other, raised)) return other;
     }
+  }
+  // A whole dependency map one side only raised within its ranges, removed by the other side.
+  if (holdsRanges(path) && ((theirs === undefined && onlyRaised(base, yours)) || (yours === undefined && onlyRaised(base, theirs)))) {
+    return undefined;
   }
   if (typeof yours === "string" && typeof theirs === "string" && holdsRanges(path.slice(0, -1))) {
     const higher = higherRange(yours, theirs);

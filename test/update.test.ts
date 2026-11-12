@@ -441,6 +441,54 @@ describe("upgrading to a newer Starter", () => {
     expect(await readFile(join(root, INCOMING_DIR, "README.md"), "utf8")).toContain("# Custom Readme Product");
   });
 
+  it("merges a README generated without the Generated from section, as React + Vite's was before v0.30.0", async () => {
+    // v1's README has no title for the section to follow, so the generated README has none.
+    const starter = async (readme: string) => {
+      const folder = await temporaryDirectory();
+      await writeFiles(folder, { ...moduleStarterFiles(), "README.md": readme });
+      return readDirectoryTemplate(folder);
+    };
+    const v1 = await starter("## Features\n\nIntro.\n\n## Setup\n\nSteps.\n");
+    const v2 = await starter("# Clubedge Starter\n\n## Features\n\nIntro.\n\n## Setup\n\nNew steps.\n");
+    const manifest = await readTemplateManifest(v1.root);
+    const root = join(await temporaryDirectory(), "vite-product");
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "vite-product", displayName: "Vite Product" },
+        source: { ...v1, ref: "v1.0.0", commit: "1".repeat(40) },
+        manifest,
+        stacks: { framework: "next" },
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+    const readme = () => readFile(join(root, "README.md"), "utf8");
+    expect(await readme()).not.toContain("## Generated from");
+    const readmeAction = async () => {
+      const project = await readProject(root);
+      const plan = await planUpdate(
+        project,
+        { source: { ...v1, ref: project.starterRef, commit: project.starterCommit }, manifest, modules: project.modules, cliVersion: project.cliVersion },
+        { source: { ...v2, ref: "v2.0.0", commit: "2".repeat(40) }, manifest, modules: project.modules, cliVersion: "2.0.0" },
+      );
+      const action = plan.actions.find((item) => item.path === "README.md");
+      return action && { kind: action.kind, content: "content" in action ? action.content.toString() : undefined };
+    };
+
+    // As generated: the new README replaces it, with the section, instead of "You replaced the generated README".
+    expect(await readmeAction()).toEqual({ kind: "update", content: expect.stringContaining("## Generated from") });
+
+    // Edited: the edit and the Starter's change merge.
+    await writeFile(join(root, "README.md"), `${await readme()}\nOur notes.\n`);
+    const edited = await readmeAction();
+    expect(edited?.kind).toBe("merge");
+    expect(edited?.content).toContain("# Vite Product\n\n## Generated from");
+    expect(edited?.content).toContain("New steps.\n\nOur notes.\n");
+  });
+
   it("refuses an option the new Starter no longer offers", async () => {
     const { v2 } = await twoRevisions();
     const manifest = await readTemplateManifest(v2.root);

@@ -475,7 +475,7 @@ interface Change {
   /** upgrade: the modules the new Starter has and the project's did not, which the project leaves off. */
   introduced: string[];
   notes: string[];
-  /** upgrade: one line per Starter release it crosses, when GitHub could be reached. */
+  /** upgrade: the Starter releases it crosses, one line each, or why GitHub could not list them. */
   releases?: string;
   /** add and remove: the app slots the change fills or empties. */
   apps: string[];
@@ -532,7 +532,12 @@ async function planChange(
   if (compareVersions(project.starterRef, target.ref) !== null) {
     const published = await fetchReleases(target.repository);
     const crossed = published ? releasesBetween(published, project.starterRef, target.ref) : [];
-    if (crossed.length) releases = describeReleases(crossed);
+    if (crossed.length) releases = `Starter releases in this upgrade:\n${describeReleases(crossed)}`;
+    else if (!published) {
+      releases =
+        "Could not list the Starter releases in this upgrade: GitHub could not be reached, or refused, as it does past its rate limit " +
+        `(GITHUB_TOKEN raises it). They are at https://github.com/${target.repository}/releases.`;
+    }
   }
   return {
     base: baseSide,
@@ -676,7 +681,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     }
     const plan = await planUpdate(project, change.base, change.target);
 
-    if (change.releases) log.info(`Starter releases in this upgrade:\n${change.releases}`);
+    if (change.releases) log.info(change.releases);
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
     if (args.dryRun) {
       for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);

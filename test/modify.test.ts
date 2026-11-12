@@ -353,4 +353,19 @@ describe("what an upgrade reports", () => {
     );
     expect(infos().join("\n")).not.toContain("adds Cache");
   });
+
+  it("lists the Starter releases the upgrade crosses", async () => {
+    const project = await projectOnV1();
+    await project.upgrade();
+    expect(infos()).toContain("Starter releases in this upgrade:\nv2.0.0  Cache");
+  });
+
+  it("says when GitHub could not list the releases, as past its rate limit, instead of leaving them out", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("API rate limit exceeded", { status: 403 }));
+    const project = await projectOnV1();
+    await project.upgrade();
+    expect(infos()).toContainEqual(
+      expect.stringMatching(/^Could not list the Starter releases in this upgrade: .*rate limit.* https:\/\/github\.com\/Clubedge\/clubedge-starter\/releases\.$/),
+    );
+  });
 });

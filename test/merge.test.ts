@@ -135,3 +135,56 @@ describe("mergeText", () => {
     expect(result).toEqual({ text: "a\nX\nc\n", conflict: false });
   });
 });
+
+describe("conflict blocks", () => {
+  const lines = (...items: string[]) => `${items.join("\n")}\n`;
+  /** Merges base -> theirs into yours, each given as lines. */
+  const merge = (yours: string[], base: string[], theirs: string[]) =>
+    mergeText(Buffer.from(lines(...yours)), Buffer.from(lines(...base)), Buffer.from(lines(...theirs)))!;
+  const block = (yours: string[], theirs: string[]) => ["<<<<<<< yours", ...yours, "=======", ...theirs, ">>>>>>> clubedge"];
+
+  it("leave out the lines both sides share at their start and end, as Git does", () => {
+    const shared = ["import { db } from './db';", "", "export async function load() {"];
+    const result = merge(["a", ...shared, "  return db.mine();", "}", "z"], ["a", "b", "z"], ["a", ...shared, "  return db.theirs();", "}", "z"]);
+    expect(result).toEqual({
+      text: lines("a", ...shared, ...block(["  return db.mine();"], ["  return db.theirs();"]), "}", "z"),
+      conflict: true,
+    });
+  });
+
+  it("split where more than three shared lines with words separate the differences", () => {
+    const shared = ["const first = 1;", "const second = 2;", "const third = 3;", "const fourth = 4;"];
+    const result = merge(["a", "mine one", ...shared, "mine two", "z"], ["a", "b", "z"], ["a", "theirs one", ...shared, "theirs two", "z"]);
+    expect(result.text).toBe(lines("a", ...block(["mine one"], ["theirs one"]), ...shared, ...block(["mine two"], ["theirs two"]), "z"));
+  });
+
+  it("stay one block across three shared lines or fewer, or shared lines without a letter or digit", () => {
+    const close = merge(["a", "mine one", "x = 1", "y = 2", "mine two", "z"], ["a", "b", "z"], ["a", "theirs one", "x = 1", "y = 2", "theirs two", "z"]);
+    expect(close.text).toBe(lines("a", ...block(["mine one", "x = 1", "y = 2", "mine two"], ["theirs one", "x = 1", "y = 2", "theirs two"]), "z"));
+
+    const braces = ["  }", "", "}", "", ");"];
+    const punctuation = merge(["a", "mine one", ...braces, "mine two", "z"], ["a", "b", "z"], ["a", "theirs one", ...braces, "theirs two", "z"]);
+    expect(punctuation.text.match(/^<<<<<<< yours$/gm)).toHaveLength(1);
+  });
+
+  it("hold only a blank line when the sides differ only in blank lines", () => {
+    const result = merge(["a", "one", "", "two", "z"], ["a", "b", "z"], ["a", "one", "two", "z"]);
+    expect(result.text).toBe(lines("a", "one", ...block([""], []), "two", "z"));
+  });
+
+  it("keep a side that is empty whole", () => {
+    const result = merge(["a", "z"], ["a", "b", "z"], ["a", "c", "d", "z"]);
+    expect(result.text).toBe(lines("a", ...block([], ["c", "d"]), "z"));
+  });
+
+  it("split a file both sides added, and keep CRLF", () => {
+    const yours = lines("# Notes", "", "Ours.", "", "## Shared section", "One.", "Two.", "Three.", "Four.");
+    const theirs = lines("# Notes", "", "Theirs.", "", "## Shared section", "One.", "Two.", "Three.", "Four.");
+    const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+    const [action] = planMerge(files({}), files({ "NOTES.md": theirs }), files({ "NOTES.md": crlf(yours) }));
+    expect(action?.kind).toBe("conflict");
+    expect(action?.kind === "conflict" && action.content.toString()).toBe(
+      crlf(lines("# Notes", "", ...block(["Ours."], ["Theirs."]), "", "## Shared section", "One.", "Two.", "Three.", "Four.")),
+    );
+  });
+});

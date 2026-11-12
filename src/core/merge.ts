@@ -84,6 +84,51 @@ function withMarkers(regions: Region[]): { text: string; conflict: boolean } {
   return { text: lines.join("\n"), conflict };
 }
 
+const hasLetterOrDigit = (lines: string[]) => lines.some((line) => /[\p{L}\p{N}]/u.test(line));
+
+/**
+ * The regions with each conflict split where your lines and the Starter's are the same, so a
+ * block holds only what differs, as Git writes conflicts. Apps built alongside the Starter share
+ * many lines in their conflicts: 44% of those in Chess's and 39% in Chat App's.
+ */
+function refine(regions: Region[]): Region[] {
+  return regions.flatMap((region): Region[] =>
+    "ok" in region || !region.yours.length || !region.theirs.length
+      ? [region]
+      : diffComm(region.yours, region.theirs).map((part): Region =>
+          part.common ? { ok: part.common } : { yours: part.buffer1, theirs: part.buffer2 },
+        ),
+  );
+}
+
+/**
+ * Joins conflicts with few shared lines between them back into one block, as Git does: three
+ * lines or fewer, or lines without a letter or digit, such as closing braces and blank lines,
+ * read better inside one block than as the edges of two.
+ */
+function joinClose(regions: Region[]): Region[] {
+  const joined: Region[] = [];
+  for (const region of regions) {
+    const last = joined.at(-1);
+    // Consecutive regions of one kind are one region.
+    if (last && "ok" in last && "ok" in region) {
+      joined[joined.length - 1] = { ok: [...last.ok, ...region.ok] };
+      continue;
+    }
+    if (last && !("ok" in last) && !("ok" in region)) {
+      joined[joined.length - 1] = { yours: [...last.yours, ...region.yours], theirs: [...last.theirs, ...region.theirs] };
+      continue;
+    }
+    const before = joined.at(-2);
+    if (!("ok" in region) && last && "ok" in last && before && !("ok" in before) && (last.ok.length <= 3 || !hasLetterOrDigit(last.ok))) {
+      joined.splice(-2, 2, { yours: [...before.yours, ...last.ok, ...region.yours], theirs: [...before.theirs, ...last.ok, ...region.theirs] });
+      continue;
+    }
+    joined.push(region);
+  }
+  return joined;
+}
+
 /** Merges base -> target into current. Resolves null for binary files, which cannot be merged. */
 export function mergeText(
   current: Buffer,
@@ -94,8 +139,12 @@ export function mergeText(
   const split = (content: Buffer) => normalize(content).split("\n");
   const regions = diff3Merge(split(current), split(base), split(target), { excludeFalseConflicts: true });
   return withMarkers(
-    regions.flatMap((region): Region[] =>
-      region.ok ? [{ ok: region.ok }] : region.conflict ? [{ yours: region.conflict.a, theirs: region.conflict.b }] : [],
+    joinClose(
+      refine(
+        regions.flatMap((region): Region[] =>
+          region.ok ? [{ ok: region.ok }] : region.conflict ? [{ yours: region.conflict.a, theirs: region.conflict.b }] : [],
+        ),
+      ),
     ),
   );
 }

@@ -425,20 +425,27 @@ function conflictedManifestWarning(paths: string[], install: boolean): string {
   );
 }
 
+/** "3 conflicts in 2 files", and a line per file with its blocks. */
+function describeConflicts(conflicts: Array<Extract<MergeAction, { kind: "conflict" }>>) {
+  const blocks = conflicts.map((action) => countConflicts(action.content));
+  const total = blocks.reduce((sum, count) => sum + count, 0);
+  return {
+    amount: `${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}`,
+    files: conflicts.map((action, i) => `  ${action.path} ${dim(`(${blocks[i]} ${blocks[i] === 1 ? "block" : "blocks"})`)}`).join("\n"),
+  };
+}
+
 function report(plan: UpdatePlan) {
   const conflicts = conflictsOf(plan);
   const kept = plan.actions.filter((action): action is Extract<MergeAction, { kind: "keep" }> => action.kind === "keep");
   const incoming = (path: string) => `${INCOMING_DIR}/${path}`;
   if (conflicts.length) {
-    const blocks = conflicts.map((action) => countConflicts(action.content));
-    const total = blocks.reduce((sum, count) => sum + count, 0);
+    const { amount, files } = describeConflicts(conflicts);
     const first = conflicts[0]!.path;
     log.warn(
-      `Resolve ${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}. ` +
+      `Resolve ${amount}. ` +
         "Each is marked <<<<<<< yours ... ======= ... >>>>>>> clubedge: keep your lines, the Starter's, or a mix, then delete the markers.\n" +
-        conflicts
-          .map((action, i) => `  ${action.path} ${dim(`(${blocks[i]} ${blocks[i] === 1 ? "block" : "blocks"})`)}`)
-          .join("\n") +
+        files +
         `\n\nThe Starter's whole new version of each is in ${INCOMING_DIR}/, to compare with yours:\n` +
         `  git diff --no-index ${first} ${incoming(first)}\n` +
         dim(`Git ignores ${INCOMING_DIR.split("/")[0]}/; delete it when you are done.`),
@@ -614,7 +621,10 @@ async function reportApps(project: Project, change: Change) {
   }
 }
 
-/** What add, remove, or upgrade did: "conflicts" when it wrote conflict markers to resolve. */
+/**
+ * What add, remove, or upgrade did: "conflicts" when it wrote conflict markers to resolve, or a
+ * dry run found it would.
+ */
 export type ChangeOutcome = "unchanged" | "changed" | "conflicts";
 
 export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
@@ -685,8 +695,14 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
     if (args.dryRun) {
       for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
+      // Counted as the real run counts them, and reported with the same exit code.
+      const conflicts = conflictsOf(plan);
+      if (conflicts.length) {
+        const { amount, files } = describeConflicts(conflicts);
+        log.warn(`The change would leave ${amount} to resolve, where your lines and the Starter's differ:\n${files}`);
+      }
       outro("Dry run: nothing was changed. Run again without --dry-run to apply.");
-      return "unchanged";
+      return conflicts.length ? "conflicts" : "unchanged";
     }
 
     await applyUpdate(plan);

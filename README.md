@@ -293,7 +293,7 @@ The project must be a Git repository without uncommitted changes, so you can rev
 
 pnpm cannot read a `package.json` with conflict markers, so a change that leaves conflicts in one skips `pnpm install` and says so: resolve them, then run `pnpm install`. Until then, `pnpm clubedge` does not start either, and the CLI's own commands (`pnpm dlx @clubedge/create-clubedge-app status`, for example) stop with a message that names the file and the command that compares it with the Starter's version in `.clubedge/incoming/`. When the install fails for another reason, the CLI still lists what is left to resolve, then exits with an error.
 
-A change that leaves conflicts exits with 0, like a clean one. For scripts that need to tell them apart, add `--detailed-exit-code`: the CLI then exits with 2 when the change was written with conflicts to resolve, 0 when it was clean or there was nothing to change, and 1 when it failed.
+A change that leaves conflicts exits with 0, like a clean one. For scripts that need to tell them apart, add `--detailed-exit-code`: the CLI then exits with 2 when the change was written with conflicts to resolve, 0 when it was clean or there was nothing to change, and 1 when it failed. With `--dry-run`, it counts the conflicts the change would leave, and exits with 2 when there are any, so a script can check before changing anything.
 
 ## A hosted database with Neon
 

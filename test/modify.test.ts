@@ -205,6 +205,28 @@ describe("the exit code of a change", () => {
     await project.main(["remove", "storage", "--no-install", "--detailed-exit-code"]);
     expect(process.exitCode).toBeUndefined();
   });
+
+  it("is 2 for a dry run that would leave conflicts, which it counts without writing anything", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    const before = await project.read("apps/web/package.json");
+
+    await project.main(["remove", "storage", "--dry-run", "--detailed-exit-code"]);
+
+    expect(process.exitCode).toBe(2);
+    expect(await project.read("apps/web/package.json")).toBe(before);
+    expect(warnings()).toEqual([expect.stringMatching(/^The change would leave 1 conflict in 1 file to resolve/)]);
+    expect(warnings()[0]).toContain("apps/web/package.json");
+  });
+
+  it("is 0 for a dry run without conflicts, and for one with conflicts without --detailed-exit-code", async () => {
+    const project = await generatedProject();
+    await project.main(["remove", "storage", "--dry-run", "--detailed-exit-code"]);
+    expect(process.exitCode).toBeUndefined();
+    await changeStorageDependency(project);
+    await project.main(["remove", "storage", "--dry-run"]);
+    expect(process.exitCode).toBeUndefined();
+  });
 });
 
 describe("early exit on no-op changes", () => {

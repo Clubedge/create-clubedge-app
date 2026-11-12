@@ -523,6 +523,9 @@ jobs:
               modules: --auth better-auth,
               final: --auth better-auth --infra none --email none,
             }
+          # v0.4.0 predates modules but built in Supabase Auth, S3 storage, and Redis, the defaults,
+          # which the upgrade keeps; email and infra come after, so the upgrade adds them as none.
+          - { name: next-from-v0.4.0, framework: next, from: v0.4.0, modules: "", final: --email none --infra none }
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6

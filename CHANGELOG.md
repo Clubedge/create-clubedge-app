@@ -2,6 +2,32 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.48.0
+
+- **Starter v0.31.1** by default (#202). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.1) cover:
+  - Expo SDK 58's latest patch versions, without which the native app's CI job fails in projects generated from v0.31.0;
+  - version 6 of the `redis` client for the Redis cache, still speaking RESP2;
+  - `pnpm typecheck` checking the browser tests too.
+- **`add`, `remove`, and `upgrade` refuse to change a project that still has conflict markers from an earlier change** (#198; issue #195). Merging into those files could leave old and new markers interleaved, or carry them forward with exit code 0. The CLI now lists each file with its number of conflict blocks and asks to resolve them first. `--force` changes the project anyway.
+- **Conflict blocks hold only the lines that differ** (#199; issue #196), as Git writes them. Lines your version and the Starter's share inside a conflict stay outside the markers, unless what separates two blocks is three lines or fewer, or lines without a letter or digit, such as closing braces and blank lines: those blocks stay one. In two apps built alongside the Starter, 44% and 39% of the lines inside markers were shared.
+- **A dependency both sides raised merges to the higher version** (#193; issue #191). When the project and the Starter both raised a dependency's `^` or `~` range and both ranges keep the same major (the same minor for `~` and for `^0.x`), the merge keeps the higher range, where it left a conflict in `package.json` that pnpm can't read. Other changes to the same dependency, such as exact versions or a new major, still conflict. This stopped 4 of 30 test upgrades.
+- **`add`, `remove`, `upgrade`, and `status` report what happened, and what to run next** (#194; issue #192):
+  - `status` has a Conflicts row with the files left with conflict markers, and its next step is to resolve them.
+  - A change ends by saying to resolve any conflicts first, then to review the diff and run `pnpm typecheck` and the tests: files that merged cleanly can still break the code.
+  - `--dry-run` says how many conflicts the change would leave, in how many files, and exits 2 with `--detailed-exit-code`, as the change itself would.
+  - When GitHub can't list the Starter releases an upgrade crosses, such as past its rate limit, the upgrade says so and links the releases page, instead of leaving the list out.
+  - A module new since the project's Starter release names that release, where it named the target.
+  - A README generated without its "Generated from" section, as React + Vite projects from older releases are, is no longer called replaced.
+  - A file whose merge changes nothing is left out of the change.
+- **"Updated N files" counts every file the change writes** (#200; issue #197), the lockfile and env files included.
+- **A failed scaffold keeps the files that were already in the directory** (#165 and issue #153, both by @ahmed-husssain). Rolling back a failed run in an existing directory emptied it; it now removes only the files the run wrote, and the folders that leaves empty.
+- **A lockfile with CRLF line endings is customized like one with LF** (#189; issue #186, reported by @ahmed-husssain). With CRLF, the apps and packages a project leaves out stayed in its lockfile, and no optional peer was pruned. The Starter checks the lockfile out with LF, so this concerned copies made outside Git, such as one given to `--template-dir`.
+- **`deploy` keeps the platform's direct database URL when the database doesn't change** (#188; issue #187, reported by @ahmed-husssain). A deploy with no env file, after one that supplied a pooled Neon URL, set `DATABASE_URL_DIRECT` to nothing, and migrations and the jobs worker fell back to the pooled URL.
+- **An empty variable with an inline comment is empty** (#190, by @ahmed-husssain). `DATABASE_URL= # leave blank to use platform Postgres` read as the comment, so `deploy` took it for a hosted database, created none on the platform, and the app failed at startup. A `#` inside a value, as in `PASSWORD=secret#123`, stays part of it.
+- `pnpm release` drafts name who wrote each pull request and list first-time contributors (#185).
+
+Thanks to everyone who contributed to this release: @ahmed-husssain and @yassine-ahmed.
+
 ## 0.47.0
 
 - **Starter v0.31.0** by default (#183). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.0) cover:

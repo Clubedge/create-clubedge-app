@@ -52,6 +52,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 43 | 0.45.0 | Starter v0.29.0: an update policy for installed apps, a new design for the native app, and clean splash screens; `package.json` merged by key |
 | 44 | 0.46.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
 | 45 | 0.47.0 | Starter v0.31.0: deploying to Cloudflare (`--deploy cloudflare`), downloads by byte range, and browser tests in three engines; on Windows, arguments that can't start a second command and device names refused as project directories; install progress over MCP |
+| 46 | 0.48.0 | Starter v0.31.1: Expo SDK 58's latest patch versions; `add`, `remove`, and `upgrade` refuse to merge into unresolved conflicts, conflict blocks hold only the lines that differ, a dependency both sides raised merges to the higher version, and reports say what to run next |
 
 ## CLI improvements
 

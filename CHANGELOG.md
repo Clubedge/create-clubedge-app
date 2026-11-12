@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.48.1
+
+- **Projects from Starter releases before v0.5.0 upgrade** (#206; issue #205). They record no modules, since those releases had none, and the CLI refused them as "created before create-clubedge-app 0.5.0", though 0.48.0 had created them. An upgrade now keeps Supabase Auth, S3 storage, and the Redis cache, which those releases built in and v0.5.0 made its first modules, and a note says so; modules that came later start as `none`. `add` and `remove` on such a project say to upgrade first.
+- **A dependency you only raised within its range, as `pnpm up` does, takes the Starter's new major or its removal** (#208; issue #207). After `pnpm up -r`, every upgrade to Starter v0.31.1 left a `package.json` conflict pnpm cannot read, such as `redis` `^5.12.2` against the Starter's `^6.3.1`, or a dependency the Starter moved to another package. A change that asks for less than your raise, such as a pin below it, still conflicts, and a range both sides raised still takes the higher one.
+- **A `pnpm patch` the change leaves unused is named before it stops `pnpm install`** (#210; issue #209). A patch made on a version the change moves away from stops the install with `ERR_PNPM_UNUSED_PATCH`. The CLI names it, with the range that leaves it out, skips the install, and says how to keep it: keyed by the package alone, pnpm applies it to whichever version it installs.
+- CI upgrades a project from Starter v0.4.0 and matches it against a fresh one (#206), and the tests that commit to Git have more time on Windows (#210).
+
 ## 0.48.0
 
 - **Starter v0.31.1** by default (#202). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.1) cover:

@@ -418,7 +418,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.48.0
+create-clubedge-app v0.48.1
         |
         v
 Clubedge Starter v0.31.1
@@ -429,7 +429,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.48.0` | `clubedge-starter@v0.31.1` | The CLI's required, tested default |
+| `create-clubedge-app@0.48.1` | `clubedge-starter@v0.31.1` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 

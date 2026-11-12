@@ -472,6 +472,8 @@ interface Change {
   target: UpdateSide;
   /** One line describing the change, such as "Starter v0.6.0 -> v0.7.0". */
   summary: string;
+  /** upgrade: the modules the new Starter has and the project's did not, which the project leaves off. */
+  introduced: string[];
   notes: string[];
   /** upgrade: one line per Starter release it crosses, when GitHub could be reached. */
   releases?: string;
@@ -509,6 +511,7 @@ async function planChange(
         ...changedApps.map((id) => `${baseManifest.slots[id]!.name}: ${stackName(stackIn(project, id))} -> ${stackName(stackIn({ stacks }, id))}`),
         ...changed.map((id) => `${baseManifest.modules[id]!.name}: ${project.modules[id]} -> ${modules[id]}`),
       ].join(", "),
+      introduced: [],
       notes: [],
       apps: changedApps,
     };
@@ -521,13 +524,7 @@ async function planChange(
   if (target.commit && target.commit === project.starterCommit) return null;
   const targetManifest = await readTemplateManifest(target.root);
   const { modules, introduced, dropped } = upgradedModules(targetManifest, project, cli);
-  const notes = [
-    ...introduced.map((id) => {
-      const module = targetManifest.modules[id]!;
-      return `Starter ${target.ref} adds ${module.name}; the project uses "${modules[id]}". Choose another option with: ${cli} add ${id} <option>`;
-    }),
-    ...dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`),
-  ];
+  const notes = dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`);
   if (/^v\d/.test(target.ref)) {
     notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
   }
@@ -541,10 +538,26 @@ async function planChange(
     base: baseSide,
     target: { source: target, manifest: targetManifest, stacks: project.stacks, modules, cliVersion },
     summary: `Starter ${project.starterRef} -> ${target.ref}`,
+    introduced,
     notes,
     releases,
     apps: [],
   };
+}
+
+/**
+ * A note for each module the upgrade brings that the project leaves off. It names the project's
+ * own Starter release, which did not have the module: an upgrade can cross several releases, and
+ * the target is not always the one that added it (push notifications came in v0.30.0, and an
+ * upgrade from v0.26.0 to v0.31.0 said v0.31.0 added them).
+ */
+function introducedNotes(project: Project, change: Change, cli: string): string[] {
+  const { manifest, modules } = change.target;
+  return change.introduced.map(
+    (id) =>
+      `${manifest.modules[id]!.name} is new since Starter ${project.starterRef}; the project uses "${modules[id]}". ` +
+      `Choose another option with: ${cli} add ${id} <option>`,
+  );
 }
 
 /**
@@ -666,7 +679,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     if (change.releases) log.info(`Starter releases in this upgrade:\n${change.releases}`);
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
     if (args.dryRun) {
-      for (const note of change.notes) log.info(note);
+      for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
       outro("Dry run: nothing was changed. Run again without --dry-run to apply.");
       return "unchanged";
     }
@@ -699,7 +712,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
 
     report(plan);
     await reportApps(project, change);
-    for (const note of change.notes) log.info(note);
+    for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
     if (installError) {
       const reason = installError instanceof Error ? installError.message : String(installError);
       throw new Error(

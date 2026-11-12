@@ -286,3 +286,71 @@ describe("early exit on no-op changes", () => {
   });
 });
 
+
+describe("what an upgrade reports", () => {
+  const repository = "Clubedge/clubedge-starter";
+
+  /**
+   * A project on Starter v1.0.0, the modules fixture, and the upgrade to v2.0.0, which adds a
+   * cache module. Both revisions come from the mocked GitHub download.
+   */
+  async function projectOnV1() {
+    const starter = async (ref: string, files: Record<string, string>) => {
+      const folder = await temporaryDirectory();
+      await writeFiles(folder, files);
+      return { ...(await readDirectoryTemplate(folder)), kind: "github" as const, ref, commit: ref.slice(1, 2).repeat(40), repository };
+    };
+    const files = moduleStarterFiles();
+    const manifest = JSON.parse(files["clubedge.template.json"]!);
+    const cache = { name: "Cache", default: "redis", options: { redis: { name: "Redis", files: ["apps/web/src/server/cache.ts"] }, none: { name: "None" } } };
+    const v1 = await starter("v1.0.0", files);
+    const v2 = await starter("v2.0.0", {
+      ...files,
+      "clubedge.template.json": JSON.stringify({ ...manifest, modules: { ...manifest.modules, cache } }),
+      "apps/web/src/server/cache.ts": "export const cache = 'redis';\n",
+      "apps/web/src/server/health.ts": "export const healthy = true;\n",
+    });
+    vi.mocked(downloadGitHubTemplate).mockImplementation(async (ref: string) => (ref === "v2.0.0" ? v2 : v1));
+
+    const root = join(await temporaryDirectory(), "my-product");
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "my-product", displayName: "My Product" },
+        source: v1,
+        manifest: await readTemplateManifest(v1.root),
+        stacks: { framework: "next" },
+        modules: {},
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    return {
+      root,
+      upgrade: (...flags: string[]) => changeProject(parseCliArgs(["upgrade", "--ref", "v2.0.0", "--force", "--yes", "--no-install", ...flags])),
+    };
+  }
+
+  const infos = () => vi.mocked(log.info).mock.calls.map(([message]) => message);
+
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json([
+        { tag_name: "v2.0.0", name: "v2.0.0", body: "## Cache\n" },
+        { tag_name: "v1.0.0", name: "v1.0.0", body: "## First\n" },
+      ]),
+    );
+  });
+
+  it("names the project's Starter as the one without a new module, not the target as the one that added it", async () => {
+    const project = await projectOnV1();
+    expect(await project.upgrade()).toBe("changed");
+    expect(infos()).toContainEqual(
+      expect.stringMatching(/^Cache is new since Starter v1\.0\.0; the project uses "none"\. Choose another option with: .+ add cache <option>$/),
+    );
+    expect(infos().join("\n")).not.toContain("adds Cache");
+  });
+});

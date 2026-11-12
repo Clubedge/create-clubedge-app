@@ -221,14 +221,15 @@ describe("changeProject after the files are written", () => {
   });
 });
 
-describe("a project with conflict markers left by an earlier change", () => {
+// Each test makes a Git repository and commits, and Git is slow to start on Windows.
+describe("a project with conflict markers left by an earlier change", { timeout: 20_000 }, () => {
   const marked = "export const provider = 'supabase';\n<<<<<<< yours\nexport const mine = 1;\n=======\nexport const theirs = 1;\n>>>>>>> clubedge\n";
 
   /** The project with these files written, all committed to Git, as a change expects. */
   async function committed(files: Record<string, string>) {
     const project = await generatedProject();
     for (const [path, content] of Object.entries(files)) await project.write(path, content);
-    for (const args of [["init", "-q"], ["config", "user.email", "ci@example.com"], ["config", "user.name", "CI"], ["add", "-A"], ["commit", "-qm", "Committed"]]) {
+    for (const args of [["init", "-q"], ["add", "-A"], ["-c", "user.email=ci@example.com", "-c", "user.name=CI", "commit", "-qm", "Committed"]]) {
       spawnSync("git", args, { cwd: project.root });
     }
     return project;
@@ -553,5 +554,63 @@ describe("a project from a Starter without modules", () => {
     await expect(project.change("add", "auth", "none")).rejects.toThrow(
       /^package\.json does not record this project's modules, which Starter v1\.0\.0 has, .+ one entry for each of auth, storage/,
     );
+  });
+});
+
+describe("an upgrade that moves a patched dependency", () => {
+  const repository = "Clubedge/clubedge-starter";
+
+  /** A project on v1.0.0 with a patch on zod 4.6.5, whose web app asks for zod `v1` then `v2`. */
+  async function patchedProject(v1Zod: string, v2Zod: string) {
+    const starter = async (ref: string, zod: string) => {
+      const folder = await temporaryDirectory();
+      const files = moduleStarterFiles();
+      const web = JSON.parse(files["apps/web/package.json"]!);
+      await writeFiles(folder, { ...files, "apps/web/package.json": JSON.stringify({ ...web, dependencies: { ...web.dependencies, zod } }) });
+      return { ...(await readDirectoryTemplate(folder)), kind: "github" as const, ref, commit: ref.slice(1, 2).repeat(40), repository };
+    };
+    const v1 = await starter("v1.0.0", v1Zod);
+    const v2 = await starter("v2.0.0", v2Zod);
+    vi.mocked(downloadGitHubTemplate).mockImplementation(async (ref: string) => ([v2.ref, v2.commit].includes(ref) ? v2 : v1));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json([]));
+    const root = join(await temporaryDirectory(), "my-product");
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "my-product", displayName: "My Product" },
+        source: v1,
+        manifest: await readTemplateManifest(v1.root),
+        stacks: { framework: "next" },
+        modules: {},
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+    // What `pnpm patch zod@4.6.5` and `pnpm patch-commit` leave in a project with a pnpm field.
+    const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    manifest.pnpm = { ...manifest.pnpm, patchedDependencies: { "zod@4.6.5": "patches/zod@4.6.5.patch" } };
+    await writeFiles(root, { "package.json": JSON.stringify(manifest, null, 2), "patches/zod@4.6.5.patch": "diff\n" });
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    return { upgrade: () => changeProject(parseCliArgs(["upgrade", "--ref", "v2.0.0", "--force", "--yes"])) };
+  }
+
+  it("names the patch pnpm would not use, and leaves the install until it is fixed", async () => {
+    const project = await patchedProject("^4.6.0", "^4.6.7");
+    expect(await project.upgrade()).toBe("changed");
+    expect(installDependencies).not.toHaveBeenCalled();
+    expect(warnings()).toContainEqual(
+      expect.stringMatching(
+        /^Skipped `pnpm install`: it would stop on a patch .+\n {2}zod@4\.6\.5 \(patches\/zod@4\.6\.5\.patch, in package\.json\): the project now asks for zod \^4\.6\.7\nTo try it on the new version, key it by the package alone in package\.json/,
+      ),
+    );
+  });
+
+  it("installs as usual when the project's range still allows the patched version", async () => {
+    const project = await patchedProject("^4.6.0", "^4.6.2");
+    await project.upgrade();
+    expect(installDependencies).toHaveBeenCalled();
+    expect(warnings().join("\n")).not.toContain("ERR_PNPM_UNUSED_PATCH");
   });
 });

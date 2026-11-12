@@ -12,6 +12,7 @@ import { runsServer } from "./core/manifest-fields.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { compareVersions, type ConflictedFile } from "./core/health.js";
 import { countConflicts, type MergeAction } from "./core/merge.js";
+import { unusedPatches, unusedPatchWarning } from "./core/patches.js";
 import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
 import { moduleChoices, NO_STACK, selectModules, selectStacks, slotChoices, stacksIn } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
@@ -799,8 +800,12 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     // The files are written now, so what is left to resolve is reported even when the install fails.
     let installError: unknown;
     const manifests = await conflictedManifests(project.root);
+    // A patch pnpm would not use stops the install, so it is reported, and the install left until it is fixed.
+    const unused = manifests.length ? [] : await unusedPatches(project.root);
     if (manifests.length) {
       log.warn(conflictedManifestWarning(manifests, args.install));
+    } else if (unused.length) {
+      log.warn(unusedPatchWarning(unused, args.install));
     } else if (args.install) {
       const { pnpm, problem } = await detectPnpm();
       if (pnpm) {

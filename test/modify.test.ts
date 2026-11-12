@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { log } from "@clack/prompts";
+import { log, outro } from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import { executePlan } from "../src/core/execute.js";
@@ -175,6 +175,30 @@ describe("changeProject after the files are written", () => {
     expect(warnings()[0]).toContain("apps/web/src/server/auth.ts");
   });
 
+  it("ends by asking for a typecheck, since files that merged cleanly can still break the code", async () => {
+    const project = await generatedProject();
+    await project.run(["remove", "storage"]);
+    expect(outro).toHaveBeenLastCalledWith(
+      "Review the changes with `git diff`, and run `pnpm typecheck` and your tests: files that merged cleanly can still break the code. " +
+        "Run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.",
+    );
+  });
+
+  it("ends by saying to resolve the conflicts first, and to install when pnpm could not", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    await project.run(["remove", "storage"]);
+    expect(outro).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Resolve the conflicts first, then run `pnpm install`\. Then review the changes with `git diff`, and run `pnpm typecheck`/),
+    );
+
+    // A conflict outside package.json leaves pnpm working, and the install done.
+    const other = await generatedProject();
+    await other.write("apps/web/src/server/auth.ts", "export const provider = 'supabase'; // mine\n");
+    await other.run(["remove", "auth", "storage"]);
+    expect(outro).toHaveBeenLastCalledWith(expect.stringMatching(/^Resolve the conflicts first\. Then review the changes/));
+  });
+
   it("reports a pnpm that is installed but did not run, instead of a missing one", async () => {
     const project = await generatedProject();
     vi.mocked(detectPnpm).mockResolvedValue({ pnpm: null, problem: "`pnpm --version` failed: boom." });
@@ -203,6 +227,28 @@ describe("the exit code of a change", () => {
   it("is 0 for a clean change with --detailed-exit-code", async () => {
     const project = await generatedProject();
     await project.main(["remove", "storage", "--no-install", "--detailed-exit-code"]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("is 2 for a dry run that would leave conflicts, which it counts without writing anything", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    const before = await project.read("apps/web/package.json");
+
+    await project.main(["remove", "storage", "--dry-run", "--detailed-exit-code"]);
+
+    expect(process.exitCode).toBe(2);
+    expect(await project.read("apps/web/package.json")).toBe(before);
+    expect(warnings()).toEqual([expect.stringMatching(/^The change would leave 1 conflict in 1 file to resolve/)]);
+    expect(warnings()[0]).toContain("apps/web/package.json");
+  });
+
+  it("is 0 for a dry run without conflicts, and for one with conflicts without --detailed-exit-code", async () => {
+    const project = await generatedProject();
+    await project.main(["remove", "storage", "--dry-run", "--detailed-exit-code"]);
+    expect(process.exitCode).toBeUndefined();
+    await changeStorageDependency(project);
+    await project.main(["remove", "storage", "--dry-run"]);
     expect(process.exitCode).toBeUndefined();
   });
 });
@@ -286,3 +332,99 @@ describe("early exit on no-op changes", () => {
   });
 });
 
+
+describe("what an upgrade reports", () => {
+  const repository = "Clubedge/clubedge-starter";
+
+  /**
+   * A project on Starter v1.0.0, the modules fixture, and the upgrade to v2.0.0, which adds a
+   * cache module. Both revisions come from the mocked GitHub download.
+   */
+  async function projectOnV1() {
+    const starter = async (ref: string, files: Record<string, string>) => {
+      const folder = await temporaryDirectory();
+      await writeFiles(folder, files);
+      return { ...(await readDirectoryTemplate(folder)), kind: "github" as const, ref, commit: ref.slice(1, 2).repeat(40), repository };
+    };
+    const files = moduleStarterFiles();
+    const manifest = JSON.parse(files["clubedge.template.json"]!);
+    const cache = { name: "Cache", default: "redis", options: { redis: { name: "Redis", files: ["apps/web/src/server/cache.ts"] }, none: { name: "None" } } };
+    const v1 = await starter("v1.0.0", files);
+    const v2 = await starter("v2.0.0", {
+      ...files,
+      "clubedge.template.json": JSON.stringify({ ...manifest, modules: { ...manifest.modules, cache } }),
+      "apps/web/src/server/cache.ts": "export const cache = 'redis';\n",
+      "apps/web/src/server/health.ts": "export const healthy = true;\n",
+    });
+    vi.mocked(downloadGitHubTemplate).mockImplementation(async (ref: string) => (ref === "v2.0.0" ? v2 : v1));
+
+    const root = join(await temporaryDirectory(), "my-product");
+    await executePlan(
+      createPlan({
+        targetDirectory: root,
+        identity: { packageName: "my-product", displayName: "My Product" },
+        source: v1,
+        manifest: await readTemplateManifest(v1.root),
+        stacks: { framework: "next" },
+        modules: {},
+        cliVersion: "1.0.0",
+        git: false,
+        install: false,
+      }),
+      v1,
+    );
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    return {
+      root,
+      upgrade: (...flags: string[]) => changeProject(parseCliArgs(["upgrade", "--ref", "v2.0.0", "--force", "--yes", "--no-install", ...flags])),
+    };
+  }
+
+  const infos = () => vi.mocked(log.info).mock.calls.map(([message]) => message);
+
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json([
+        { tag_name: "v2.0.0", name: "v2.0.0", body: "## Cache\n" },
+        { tag_name: "v1.0.0", name: "v1.0.0", body: "## First\n" },
+      ]),
+    );
+  });
+
+  it("names the project's Starter as the one without a new module, not the target as the one that added it", async () => {
+    const project = await projectOnV1();
+    expect(await project.upgrade()).toBe("changed");
+    expect(infos()).toContainEqual(
+      expect.stringMatching(/^Cache is new since Starter v1\.0\.0; the project uses "none"\. Choose another option with: .+ add cache <option>$/),
+    );
+    expect(infos().join("\n")).not.toContain("adds Cache");
+  });
+
+  it("leaves the CLI's commands until package.json conflicts are resolved, since pnpm cannot run them before", async () => {
+    const project = await projectOnV1();
+    await writeFile(
+      join(project.root, "packages/auth-supabase/package.json"),
+      '{\n<<<<<<< yours\n  "name": "auth"\n=======\n  "name": "@clubedge/auth-supabase"\n>>>>>>> clubedge\n}\n',
+    );
+    await project.upgrade();
+    expect(infos()).toContainEqual(
+      expect.stringMatching(/the project uses "none"\. Once the package\.json conflicts are resolved, choose another option with: .+ add cache <option>$/),
+    );
+    expect(outro).toHaveBeenLastCalledWith(expect.stringMatching(/^Resolve the conflicts first, then run `pnpm install`\./));
+  });
+
+  it("lists the Starter releases the upgrade crosses", async () => {
+    const project = await projectOnV1();
+    await project.upgrade();
+    expect(infos()).toContain("Starter releases in this upgrade:\nv2.0.0  Cache");
+  });
+
+  it("says when GitHub could not list the releases, as past its rate limit, instead of leaving them out", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("API rate limit exceeded", { status: 403 }));
+    const project = await projectOnV1();
+    await project.upgrade();
+    expect(infos()).toContainEqual(
+      expect.stringMatching(/^Could not list the Starter releases in this upgrade: .*rate limit.* https:\/\/github\.com\/Clubedge\/clubedge-starter\/releases\.$/),
+    );
+  });
+});

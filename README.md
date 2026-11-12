@@ -289,11 +289,11 @@ Since CLI 0.46.0, `add` and `remove` also take the apps that run on phones rathe
 - An app implements the modules it uses, such as the native app's sign-in. When the project's option is one it lacks, switch it in the same command: `add mobile expo auth better-auth`.
 - Removing an app deletes the Starter's files and leaves what was never the Starter's, such as its env file, its `node_modules`, and the shell's `android/` and `ios/` projects. The CLI lists them, to delete once you no longer need them.
 
-The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
+The project must be a Git repository without uncommitted changes, so you can review the result with `git diff` and undo it. Pass `--force` to skip this check. Add `--no-install` to skip `pnpm install`. Afterward, run `pnpm typecheck` and your tests, since files that merge without conflicts can still break the code, and `pnpm db:migrate` and `pnpm check:services` if the change added tables or services.
 
 pnpm cannot read a `package.json` with conflict markers, so a change that leaves conflicts in one skips `pnpm install` and says so: resolve them, then run `pnpm install`. Until then, `pnpm clubedge` does not start either, and the CLI's own commands (`pnpm dlx @clubedge/create-clubedge-app status`, for example) stop with a message that names the file and the command that compares it with the Starter's version in `.clubedge/incoming/`. When the install fails for another reason, the CLI still lists what is left to resolve, then exits with an error.
 
-A change that leaves conflicts exits with 0, like a clean one. For scripts that need to tell them apart, add `--detailed-exit-code`: the CLI then exits with 2 when the change was written with conflicts to resolve, 0 when it was clean or there was nothing to change, and 1 when it failed.
+A change that leaves conflicts exits with 0, like a clean one. For scripts that need to tell them apart, add `--detailed-exit-code`: the CLI then exits with 2 when the change was written with conflicts to resolve, 0 when it was clean or there was nothing to change, and 1 when it failed. With `--dry-run`, it counts the conflicts the change would leave, and exits with 2 when there are any, so a script can check before changing anything.
 
 ## A hosted database with Neon
 
@@ -323,11 +323,11 @@ Claiming keeps the data but resets the password: copy the pooled and direct conn
 Two read-only commands help you keep a project healthy:
 
 ```sh
-pnpm clubedge status    # Starter release, modules, Git state, and whether a newer Starter exists
+pnpm clubedge status    # Starter release, modules, Git state, conflicts left, and whether a newer Starter exists
 pnpm clubedge doctor    # Node.js, pnpm, dependencies, lockfile, env file, and pnpm check:services
 ```
 
-`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that each app's local env file has every variable in its example (`apps/web/.env.local` and `.env.example`, and `apps/api/.env.local` and `apps/api/.env.example` with a separate API), then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
+`status` ends with the command to run next, such as `pnpm clubedge upgrade` when a newer Starter release is available; it asks npm for the newest CLI and still works offline. It lists the files an earlier change left with conflict markers, and a `.clubedge/incoming/` left behind, and then says to resolve the conflicts first. `doctor` checks that Node.js and pnpm meet the project's versions, that dependencies are installed, that `pnpm-lock.yaml` matches every `package.json`, and that each app's local env file has every variable in its example (`apps/web/.env.local` and `.env.example`, and `apps/api/.env.local` and `apps/api/.env.example` with a separate API), then runs `pnpm check:services` (skip it with `--no-services`). It exits with an error when a check fails, so it also works in CI.
 
 ## Try it on a Railway VM (experimental)
 

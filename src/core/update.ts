@@ -66,10 +66,13 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
     ...new Set([...baseFiles.keys(), ...targetFiles.keys(), ...special]),
   ]);
 
+  // A README without the "Generated from" section the CLI writes is the project's own, and is left
+  // as it is. Not when the generated one had no such section either: README files with no title
+  // to put it under, such as React + Vite's from v0.26.0 to v0.28.0, merge like any other file.
+  const hasOrigin = (readme: Buffer) => readme.toString("utf8").includes("## Generated from");
   const currentReadme = current.get("README.md");
-  const customReadme = Boolean(
-    currentReadme && !currentReadme.toString("utf8").includes("## Generated from"),
-  );
+  const baseReadme = baseFiles.get("README.md");
+  const customReadme = Boolean(currentReadme && !hasOrigin(currentReadme) && !(baseReadme && !hasOrigin(baseReadme)));
   const targetReadme = targetFiles.get("README.md");
   if (customReadme) {
     baseFiles.delete("README.md");

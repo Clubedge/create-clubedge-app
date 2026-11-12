@@ -425,20 +425,27 @@ function conflictedManifestWarning(paths: string[], install: boolean): string {
   );
 }
 
+/** "3 conflicts in 2 files", and a line per file with its blocks. */
+function describeConflicts(conflicts: Array<Extract<MergeAction, { kind: "conflict" }>>) {
+  const blocks = conflicts.map((action) => countConflicts(action.content));
+  const total = blocks.reduce((sum, count) => sum + count, 0);
+  return {
+    amount: `${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}`,
+    files: conflicts.map((action, i) => `  ${action.path} ${dim(`(${blocks[i]} ${blocks[i] === 1 ? "block" : "blocks"})`)}`).join("\n"),
+  };
+}
+
 function report(plan: UpdatePlan) {
   const conflicts = conflictsOf(plan);
   const kept = plan.actions.filter((action): action is Extract<MergeAction, { kind: "keep" }> => action.kind === "keep");
   const incoming = (path: string) => `${INCOMING_DIR}/${path}`;
   if (conflicts.length) {
-    const blocks = conflicts.map((action) => countConflicts(action.content));
-    const total = blocks.reduce((sum, count) => sum + count, 0);
+    const { amount, files } = describeConflicts(conflicts);
     const first = conflicts[0]!.path;
     log.warn(
-      `Resolve ${total} ${total === 1 ? "conflict" : "conflicts"} in ${conflicts.length} ${conflicts.length === 1 ? "file" : "files"}. ` +
+      `Resolve ${amount}. ` +
         "Each is marked <<<<<<< yours ... ======= ... >>>>>>> clubedge: keep your lines, the Starter's, or a mix, then delete the markers.\n" +
-        conflicts
-          .map((action, i) => `  ${action.path} ${dim(`(${blocks[i]} ${blocks[i] === 1 ? "block" : "blocks"})`)}`)
-          .join("\n") +
+        files +
         `\n\nThe Starter's whole new version of each is in ${INCOMING_DIR}/, to compare with yours:\n` +
         `  git diff --no-index ${first} ${incoming(first)}\n` +
         dim(`Git ignores ${INCOMING_DIR.split("/")[0]}/; delete it when you are done.`),
@@ -472,8 +479,10 @@ interface Change {
   target: UpdateSide;
   /** One line describing the change, such as "Starter v0.6.0 -> v0.7.0". */
   summary: string;
+  /** upgrade: the modules the new Starter has and the project's did not, which the project leaves off. */
+  introduced: string[];
   notes: string[];
-  /** upgrade: one line per Starter release it crosses, when GitHub could be reached. */
+  /** upgrade: the Starter releases it crosses, one line each, or why GitHub could not list them. */
   releases?: string;
   /** add and remove: the app slots the change fills or empties. */
   apps: string[];
@@ -509,6 +518,7 @@ async function planChange(
         ...changedApps.map((id) => `${baseManifest.slots[id]!.name}: ${stackName(stackIn(project, id))} -> ${stackName(stackIn({ stacks }, id))}`),
         ...changed.map((id) => `${baseManifest.modules[id]!.name}: ${project.modules[id]} -> ${modules[id]}`),
       ].join(", "),
+      introduced: [],
       notes: [],
       apps: changedApps,
     };
@@ -521,13 +531,7 @@ async function planChange(
   if (target.commit && target.commit === project.starterCommit) return null;
   const targetManifest = await readTemplateManifest(target.root);
   const { modules, introduced, dropped } = upgradedModules(targetManifest, project, cli);
-  const notes = [
-    ...introduced.map((id) => {
-      const module = targetManifest.modules[id]!;
-      return `Starter ${target.ref} adds ${module.name}; the project uses "${modules[id]}". Choose another option with: ${cli} add ${id} <option>`;
-    }),
-    ...dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`),
-  ];
+  const notes = dropped.map((id) => `Starter ${target.ref} no longer has the ${id} module; its files are merged away like any other change.`);
   if (/^v\d/.test(target.ref)) {
     notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
   }
@@ -535,16 +539,53 @@ async function planChange(
   if (compareVersions(project.starterRef, target.ref) !== null) {
     const published = await fetchReleases(target.repository);
     const crossed = published ? releasesBetween(published, project.starterRef, target.ref) : [];
-    if (crossed.length) releases = describeReleases(crossed);
+    if (crossed.length) releases = `Starter releases in this upgrade:\n${describeReleases(crossed)}`;
+    else if (!published) {
+      releases =
+        "Could not list the Starter releases in this upgrade: GitHub could not be reached, or refused, as it does past its rate limit " +
+        `(GITHUB_TOKEN raises it). They are at https://github.com/${target.repository}/releases.`;
+    }
   }
   return {
     base: baseSide,
     target: { source: target, manifest: targetManifest, stacks: project.stacks, modules, cliVersion },
     summary: `Starter ${project.starterRef} -> ${target.ref}`,
+    introduced,
     notes,
     releases,
     apps: [],
   };
+}
+
+/**
+ * A note for each module the upgrade brings that the project leaves off. It names the project's
+ * own Starter release, which did not have the module: an upgrade can cross several releases, and
+ * the target is not always the one that added it (push notifications came in v0.30.0, and an
+ * upgrade from v0.26.0 to v0.31.0 said v0.31.0 added them).
+ */
+function introducedNotes(project: Project, change: Change, cli: string, pnpmBlocked = false): string[] {
+  const { manifest, modules } = change.target;
+  // While a package.json has conflict markers, pnpm cannot run the CLI's script.
+  const choose = pnpmBlocked ? "Once the package.json conflicts are resolved, choose another option with" : "Choose another option with";
+  return change.introduced.map(
+    (id) =>
+      `${manifest.modules[id]!.name} is new since Starter ${project.starterRef}; the project uses "${modules[id]}". ` +
+      `${choose}: ${cli} add ${id} <option>`,
+  );
+}
+
+/**
+ * What to run after a change. A typecheck always: files that merged without conflicts can still
+ * break the code, as when an upgrade gave Chess two copies of one function, outside any marker.
+ * With conflicts, resolving them comes first, then the install pnpm could not run.
+ */
+function closingLine(upgrading: boolean, conflicts: boolean, installSkipped: boolean): string {
+  const review = "review the changes with `git diff`, and run `pnpm typecheck` and your tests: files that merged cleanly can still break the code";
+  const next = upgrading
+    ? "Run `pnpm db:migrate` for new migrations."
+    : "Run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.";
+  if (!conflicts) return `R${review.slice(1)}. ${next}`;
+  return `Resolve the conflicts first${installSkipped ? ", then run `pnpm install`" : ""}. Then ${review}. ${next}`;
 }
 
 /**
@@ -596,7 +637,10 @@ async function reportApps(project: Project, change: Change) {
   }
 }
 
-/** What add, remove, or upgrade did: "conflicts" when it wrote conflict markers to resolve. */
+/**
+ * What add, remove, or upgrade did: "conflicts" when it wrote conflict markers to resolve, or a
+ * dry run found it would.
+ */
 export type ChangeOutcome = "unchanged" | "changed" | "conflicts";
 
 export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
@@ -663,12 +707,18 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     }
     const plan = await planUpdate(project, change.base, change.target);
 
-    if (change.releases) log.info(`Starter releases in this upgrade:\n${change.releases}`);
+    if (change.releases) log.info(change.releases);
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
     if (args.dryRun) {
-      for (const note of change.notes) log.info(note);
+      for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
+      // Counted as the real run counts them, and reported with the same exit code.
+      const conflicts = conflictsOf(plan);
+      if (conflicts.length) {
+        const { amount, files } = describeConflicts(conflicts);
+        log.warn(`The change would leave ${amount} to resolve, where your lines and the Starter's differ:\n${files}`);
+      }
       outro("Dry run: nothing was changed. Run again without --dry-run to apply.");
-      return "unchanged";
+      return conflicts.length ? "conflicts" : "unchanged";
     }
 
     await applyUpdate(plan);
@@ -699,7 +749,8 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
 
     report(plan);
     await reportApps(project, change);
-    for (const note of change.notes) log.info(note);
+    const pnpmBlocked = manifests.length > 0;
+    for (const note of [...introducedNotes(project, change, cli, pnpmBlocked), ...change.notes]) log.info(note);
     if (installError) {
       const reason = installError instanceof Error ? installError.message : String(installError);
       throw new Error(
@@ -707,11 +758,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
       );
     }
     if (change.target.modules.infra === "neon" && project.modules.infra !== "neon") await addNeonDatabase(project, args, cli);
-    outro(
-      upgrading
-        ? "Review the changes with `git diff`, then run `pnpm db:migrate` for new migrations and your tests."
-        : "Review the changes with `git diff`, then run `pnpm check:services` and `pnpm db:migrate` if the change added services or tables.",
-    );
+    outro(closingLine(upgrading, conflictsOf(plan).length > 0 || pnpmBlocked, pnpmBlocked));
     return conflictsOf(plan).length ? "conflicts" : "changed";
   } catch (error) {
     if (spinning) progress.stop("Could not prepare the Starter");

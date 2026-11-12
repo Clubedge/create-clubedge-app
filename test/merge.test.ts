@@ -34,6 +34,21 @@ describe("planMerge", () => {
     ]);
   });
 
+  it("leaves out a merge that changes nothing: the project already has the target's change", () => {
+    // As in apps built alongside the Starter, which took some of their code: the same line, and more.
+    const base = files({ "env.ts": "a\nb\nc\nd\ne\n", "package.json": '{\n  "name": "web",\n  "dependencies": { "a": "^1.0.0" }\n}\n' });
+    const target = files({ "env.ts": "a\nB\nc\nd\ne\n", "package.json": '{\n  "name": "web",\n  "dependencies": { "a": "^1.1.0" }\n}\n' });
+    const current = files({
+      "env.ts": "a\nB\nc\nd\nmine\n",
+      "package.json": '{\n  "name": "web",\n  "dependencies": {\n    "a": "^1.1.0",\n    "b": "^2.0.0"\n  }\n}\n',
+    });
+
+    expect(planMerge(base, target, current)).toEqual([]);
+    // In CRLF too.
+    const crlf = new Map([...current].map(([path, content]) => [path, Buffer.from(content.toString().replace(/\n/g, "\r\n"))]));
+    expect(planMerge(base, target, crlf)).toEqual([]);
+  });
+
   it("marks lines both sides changed as a conflict", () => {
     const base = files({ "page.tsx": "title\nbody\n" });
     const target = files({ "page.tsx": "new title\nbody\n" });

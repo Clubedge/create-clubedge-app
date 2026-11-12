@@ -119,13 +119,14 @@ export function mergePackageJsonText(
   );
 }
 
-function merged(path: string, current: Buffer, base: Buffer, target: Buffer, binaryReason: string): MergeAction {
+/** The merge of a file both sides changed; null when the project already has the Starter's change. */
+function merged(path: string, current: Buffer, base: Buffer, target: Buffer, binaryReason: string): MergeAction | null {
   const result =
     (/(^|\/)package\.json$/.test(path) ? mergePackageJsonText(current, base, target) : null) ?? mergeText(current, base, target);
   if (!result) return { path, kind: "keep", reason: binaryReason, incoming: target };
   const content = withLineEndings(result.text, current);
   if (result.conflict) return { path, kind: "conflict", content, incoming: withLineEndings(normalize(target), current) };
-  return { path, kind: "merge", content };
+  return sameContent(content, current) ? null : { path, kind: "merge", content };
 }
 
 /**
@@ -145,7 +146,8 @@ export function planMerge(base: FileMap, target: FileMap, current: FileMap): Mer
     if (!before && after) {
       if (!mine) actions.push({ path, kind: "create", content: after });
       else if (!sameContent(mine, after)) {
-        actions.push(merged(path, mine, Buffer.alloc(0), after, "Your file differs from the one the new selection adds."));
+        const action = merged(path, mine, Buffer.alloc(0), after, "Your file differs from the one the new selection adds.");
+        if (action) actions.push(action);
       }
       continue;
     }
@@ -169,7 +171,8 @@ export function planMerge(base: FileMap, target: FileMap, current: FileMap): Mer
         const content = isBinary(after) ? after : withLineEndings(normalize(after), mine);
         actions.push({ path, kind: "update", content });
       } else if (!sameContent(mine, after)) {
-        actions.push(merged(path, mine, before, after, "You changed this file, and the new selection changes it too."));
+        const action = merged(path, mine, before, after, "You changed this file, and the new selection changes it too.");
+        if (action) actions.push(action);
       }
     }
   }

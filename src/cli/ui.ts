@@ -147,7 +147,8 @@ ${selectionHelp(manifest)}
                           (upgrade: the Starter to upgrade to)
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
   --dry-run               Show what would be created or changed without writing anything
-  --force                 add/remove: change a project with uncommitted changes or without Git
+  --force                 add/remove/upgrade: change a project with uncommitted changes,
+                          unresolved conflicts, or without Git
   --detailed-exit-code    add/remove/upgrade: exit with 2 when the change leaves conflicts to
                           resolve, or would with --dry-run (0: changed cleanly or nothing to
                           change, 1: failed)

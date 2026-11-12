@@ -1,12 +1,14 @@
 // Changes an existing project from one generated state (base) to another (target): different
 // modules or apps for add and remove, or a newer Starter for upgrade. The project's own edits
 // survive through a three-way merge, see merge.ts.
-import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { listTemplateFiles } from "../utils/fs.js";
 import { customizeAppManifest } from "./customize.js";
 import { updateEnvFile, type EnvUpdate } from "./env.js";
+import type { ConflictedFile } from "./health.js";
 import type { TemplateManifest } from "./manifest.js";
-import { INCOMING_DIR, planMerge, sameContent, type MergeAction } from "./merge.js";
+import { countConflicts, INCOMING_DIR, planMerge, sameContent, type MergeAction } from "./merge.js";
 import { readProjectFiles, renderProject, type Project } from "./project.js";
 import type { TemplateSource } from "./source.js";
 
@@ -134,6 +136,20 @@ export async function planUpdate(project: Project, base: UpdateSide, target: Upd
   });
 
   return { project, actions, lockfile, envs };
+}
+
+/**
+ * The project's files with conflict markers from an earlier change, and their blocks: what doctor
+ * and status report, and what add, remove, and upgrade refuse to merge into.
+ */
+export async function findConflictedFiles(root: string): Promise<ConflictedFile[]> {
+  const conflicts: ConflictedFile[] = [];
+  for (const file of await listTemplateFiles(root)) {
+    const content = await readFile(join(root, file)).catch(() => null);
+    const blocks = content ? countConflicts(content) : 0;
+    if (blocks > 0) conflicts.push({ path: file, blocks });
+  }
+  return conflicts;
 }
 
 /** Removes empty folders left behind by deleted files, up to the project root. */

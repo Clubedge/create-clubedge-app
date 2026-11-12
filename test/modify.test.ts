@@ -68,12 +68,13 @@ async function generatedProject() {
     }),
     source,
   );
-  const argv = (command: string[]) => [...command, "--template-dir", starter, "--force", "--yes"];
+  // --force by default: the fixture is not a Git repository.
+  const argv = (command: string[], force = true) => [...command, "--template-dir", starter, ...(force ? ["--force"] : []), "--yes"];
   const inProject = () => vi.spyOn(process, "cwd").mockReturnValue(root);
   return {
     root,
     source,
-    run: (command: string[]) => (inProject(), changeProject(parseCliArgs(argv(command)))),
+    run: (command: string[], force = true) => (inProject(), changeProject(parseCliArgs(argv(command, force)))),
     main: (command: string[]) => (inProject(), main(argv(command))),
     read: (path: string) => readFile(join(root, path), "utf8"),
     write: (path: string, content: string) => writeFile(join(root, path), content),
@@ -206,6 +207,42 @@ describe("changeProject after the files are written", () => {
     expect(warnings()).toEqual([
       "pnpm is installed but did not run, so dependencies were not updated. `pnpm --version` failed: boom. Run `pnpm install` once it works.",
     ]);
+  });
+});
+
+describe("a project with conflict markers left by an earlier change", () => {
+  const marked = "export const provider = 'supabase';\n<<<<<<< yours\nexport const mine = 1;\n=======\nexport const theirs = 1;\n>>>>>>> clubedge\n";
+
+  /** The project with these files written, all committed to Git, as a change expects. */
+  async function committed(files: Record<string, string>) {
+    const project = await generatedProject();
+    for (const [path, content] of Object.entries(files)) await project.write(path, content);
+    for (const args of [["init", "-q"], ["config", "user.email", "ci@example.com"], ["config", "user.name", "CI"], ["add", "-A"], ["commit", "-qm", "Committed"]]) {
+      spawnSync("git", args, { cwd: project.root });
+    }
+    return project;
+  }
+
+  it("refuses a change while a file it touches has them, and names the file", async () => {
+    const project = await committed({ "apps/web/src/server/auth.ts": marked });
+    await expect(project.run(["remove", "auth"], false)).rejects.toThrow(
+      /^A file still has conflict markers from an earlier change \(1 block\):\n {2}apps\/web\/src\/server\/auth\.ts \(1 block\)\nThis change would merge into them\./,
+    );
+    expect(await project.read("apps/web/src/server/auth.ts")).toBe(marked);
+  });
+
+  it("refuses it while a file it does not touch has them, as a dry run", async () => {
+    const project = await committed({ "notes.md": `# Notes\n${marked}`, "apps/web/plan.md": marked + marked });
+    await expect(project.run(["remove", "storage", "--dry-run"], false)).rejects.toThrow(
+      "2 files still have conflict markers from an earlier change (3 blocks):\n  apps/web/plan.md (2 blocks)\n  notes.md (1 block)",
+    );
+  });
+
+  it("goes ahead with --force, and once they are resolved", async () => {
+    const project = await committed({ "notes.md": `# Notes\n${marked}` });
+    await expect(project.run(["remove", "storage"])).resolves.toBe("changed");
+    const resolved = await committed({});
+    await expect(resolved.run(["remove", "storage"], false)).resolves.toBe("changed");
   });
 });
 

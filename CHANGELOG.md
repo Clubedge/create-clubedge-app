@@ -2,6 +2,12 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.48.2
+
+- **Starter v0.31.3** by default (#218). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.3) cover:
+  - Expo 58.0.25's patch versions in the native app, so a new project with it passes `expo install --check`, which its CI runs: Expo published more SDK 58 patches after v0.31.2.
+- CI upgrades projects from the oldest Starter release of each template schema and from the release before the pin: with no edits, after `pnpm up`, with a `pnpm patch`, and with feature edits. Its results are on [the site's Upgrades page](https://starter.clubedge.live/upgrades), updated weekly and after each release (#216; issue #215).
+
 ## 0.48.1
 
 - **Starter v0.31.2** by default (#214). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.2) cover:

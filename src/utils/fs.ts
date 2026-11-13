@@ -119,3 +119,11 @@ export async function copyTemplateFiles(
     }
   }
 }
+
+/** Removes everything inside a directory while keeping the directory itself. */
+export async function emptyDirectory(directory: string): Promise<void> {
+  for (const entry of await readdir(directory)) {
+    await rm(join(directory, entry), { recursive: true, force: true });
+  }
+}
+

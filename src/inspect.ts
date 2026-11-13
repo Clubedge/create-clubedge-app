@@ -23,6 +23,7 @@ import {
 import { INCOMING_DIR } from "./core/merge.js";
 import { parseEnvFile } from "./core/deploy.js";
 import { neonDatabaseState } from "./core/neon.js";
+import { formatRecordedPlugin } from "./core/customize.js";
 import { databaseEnvFile, projectEnvFiles, readProject } from "./core/project.js";
 import { findConflictedFiles } from "./core/update.js";
 import { savedDatabaseForUrl } from "./neon.js";
@@ -74,11 +75,15 @@ export async function showStatus(_args: CliArgs): Promise<void> {
       : update.kind === "current"
         ? "on the newest Starter release"
         : "could not check";
+  const formattedPlugins = (project.plugins ?? [])
+    .map(formatRecordedPlugin)
+    .filter((plugin): plugin is string => plugin !== null);
   const rows: Array<[string, string]> = [
     ["Project", project.identity.packageName],
     ["Starter", `${project.starterRef}${commit}, created with create-clubedge-app ${project.cliVersion}`],
     ...Object.entries(project.stacks).map(([slot, stack]): [string, string] => [slot[0]!.toUpperCase() + slot.slice(1), stack]),
     ["Modules", modules],
+    ...(formattedPlugins.length > 0 ? [["Plugins", formattedPlugins.join(", ")] as [string, string]] : []),
     ["Git", describeGit(git)],
     ["Conflicts", describeConflicts(conflicts, incomingLeft)],
     ["Updates", updates],

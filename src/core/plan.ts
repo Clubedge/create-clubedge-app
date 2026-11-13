@@ -53,6 +53,7 @@ export interface ScaffoldPlan {
   databaseEnvFile: string | null;
   /** Apps whose own tools install their dependencies after pnpm install, such as uv. */
   toolchains: Array<{ directory: string; app: string; toolchain: Toolchain }>;
+  plugins?: string[];
   git: boolean;
   install: boolean;
 }
@@ -66,6 +67,8 @@ export interface PlanInput {
   stacks?: Record<string, string>;
   /** Requested module options by module id; unlisted modules use their defaults. */
   modules?: Record<string, string>;
+  /** Pinned third-party plugins to apply via --with. */
+  plugins?: string[];
   cliVersion: string;
   git: boolean;
   install: boolean;
@@ -486,6 +489,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
         }
       : {}),
     ...(Object.keys(services).length ? { services } : {}),
+    ...(input.plugins && input.plugins.length ? { plugins: input.plugins } : {}),
   };
   const place = placement(selected, others);
   const envTargets = Object.values(manifest.slots).map((slot) => slot.env.target);
@@ -631,6 +635,7 @@ export function createPlan(input: PlanInput): ScaffoldPlan {
     toolchains: selected.flatMap(({ slot, stack }) =>
       stack.toolchain ? [{ directory: slot.path, app: stack.name, toolchain: stack.toolchain }] : [],
     ),
+    plugins: input.plugins,
     git: input.git,
     install: input.install,
   };
@@ -653,6 +658,7 @@ export function describePlan(plan: ScaffoldPlan): string[] {
       (plan.provenance.starterCommit ? ` (${plan.provenance.starterCommit.slice(0, 8)})` : ""),
     ...plan.edits.map((edit) => `Edit ${edit.path}: ${edit.description}`),
     ...plan.envFiles.map((file) => `Create ${file.to} from ${file.from}`),
+    ...(plan.plugins?.length ? plan.plugins.map((spec) => `Apply plugin ${spec}`) : []),
     plan.git ? "Initialize a Git repository on main" : "Skip Git initialization",
     plan.install ? "Install dependencies with pnpm" : "Skip dependency installation",
     ...(plan.install

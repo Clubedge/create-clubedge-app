@@ -2,6 +2,21 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.49.0
+
+- **Support levels** (#222; issue #221). The CLI reads the level the Starter gives each option and stack (Stable, Beta, Experimental, or Deprecated) and acts on it. Starter v0.31.3, still the default, grades nothing yet; the next Starter release does.
+  - `create`, `add`, and `upgrade` warn before a choice below Stable, with its note and a link to the Starter's STABILITY.md, and the prompts show each option's level.
+  - An option the Starter no longer offers is refused to new projects, at any level, with its replacement. A project that has it keeps it.
+  - `upgrade` reminds a project of each deprecated option it keeps, with the command that switches, or, for its framework or API, which `add` cannot change, what new projects use.
+  - The MCP server returns each option's level, and refuses the same options.
+- **Reports for tools** (#224; issue #223), such as a service that opens upgrade pull requests:
+  - `--json` on `add`, `remove`, and `upgrade` prints the change's report on stdout as one JSON document (`reportVersion` 1): its outcome, the Starter before and after, each file and its conflicts, the lockfile, the install, the releases it crosses, its warnings, and its notes. The log and pnpm's output go to stderr.
+  - `--lockfile-only` updates `pnpm-lock.yaml` with `pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile`, so no script and no `.pnpmfile.cjs` from the project runs. pnpm still reads the project's `.npmrc`.
+  - The package exports the engine: `upgradeProject`, `addToProject`, `removeFromProject`, `readProjectRecord`, and `parseProjectRecord`, with the report's types.
+- **Templates of your own** (#226; issue #225). `--template owner/name` creates a project from a fork of the Starter, often private, at its newest release or at `--ref`. The project records the template, and `add`, `remove`, and `upgrade` work within it.
+  - `CLUBEDGE_TEMPLATE_TOKEN` reads a private template, else `GITHUB_TOKEN` or `GH_TOKEN`. The CLI passes `CLUBEDGE_TEMPLATE_TOKEN` to no command it runs in the project.
+  - A template's ref is resolved to its commit before the download, so a project records the commit whose files it got.
+
 ## 0.48.2
 
 - **Starter v0.31.3** by default (#218). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.31.3) cover:

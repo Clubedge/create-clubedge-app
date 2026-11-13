@@ -198,17 +198,21 @@ async function payOnStripeCheckout(a) {
   const saveWithLink = await onScreen([
     ...both((root) => root.getByRole("checkbox", { name: /save my information/i })),
     page.locator("#enableStripePass"),
+    form.locator('input[name="linkOptIn"]'),
   ]);
   if (saveWithLink && (await saveWithLink.isChecked())) {
     await a.point(saveWithLink);
     await saveWithLink.uncheck({ force: true });
     await a.pause(700);
   }
+  // The form's own submit button, not "Pay securely with Link" or a wallet's above it, which start
+  // another way to pay.
   const pay = await required(
     "subscribe button",
     [
-      ...both((root) => root.locator('[data-testid="hosted-payment-submit-button"]')),
-      ...both((root) => root.getByRole("button", { name: /^(subscribe|pay|start trial)\b/i })),
+      ...both((root) => root.locator('[data-testid="hosted-payment-submit-button"], [data-testid="payment-form-submit-button"]')),
+      form.locator('button[type="submit"]'),
+      ...both((root) => root.getByRole("button", { name: /^(subscribe|start trial|pay)$/i })),
     ],
     5_000,
   );

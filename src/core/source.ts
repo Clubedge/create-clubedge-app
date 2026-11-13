@@ -155,11 +155,16 @@ export async function downloadGitHubTemplate(
   ref: string,
   { repository = starterPin.starterRepository, expectedCommit }: { repository?: string; expectedCommit?: string } = {},
 ): Promise<TemplateSource> {
+  // The commit first, then its files: a tag or branch that moved in between cannot leave the
+  // project recording one commit over another's files. The ref stays the recorded name.
+  let commit: string | undefined;
   if (expectedCommit) {
-    const commit = await resolveTagCommit(repository, ref);
+    commit = await resolveTagCommit(repository, ref);
     if (commit !== expectedCommit) {
       throw new Error(`Starter tag ${ref} resolved to ${commit ?? "no commit"}, expected ${expectedCommit}.`);
     }
+  } else {
+    commit = await resolveRefCommit(repository, ref).catch(() => undefined);
   }
 
   const temporary = await mkdtemp(join(tmpdir(), "create-clubedge-app-"));
@@ -169,7 +174,7 @@ export async function downloadGitHubTemplate(
     rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   try {
     const root = join(temporary, "starter");
-    await downloadTemplate(`gh:${repository}#${ref}`, { dir: root, force: true, auth: templateToken() });
+    await downloadTemplate(`gh:${repository}#${commit ?? ref}`, { dir: root, force: true, auth: templateToken() });
     const files = await listTemplateFiles(root);
     return {
       kind: "github",
@@ -178,7 +183,7 @@ export async function downloadGitHubTemplate(
       repository,
       ref,
       // Recorded in the project's provenance so later add, remove, and upgrade find this revision.
-      commit: expectedCommit ?? (await resolveRefCommit(repository, ref).catch(() => undefined)),
+      commit,
       cleanup,
     };
   } catch (error) {

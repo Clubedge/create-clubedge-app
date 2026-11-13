@@ -54,6 +54,19 @@ describe("support levels", () => {
     expect(() => parseTemplateManifest(JSON.stringify(graded({ ...magicLink, note: 3 })))).toThrow(ManifestError);
   });
 
+  it("names the framework's replacement without an add, which cannot change it", async () => {
+    const files = appStarterFiles();
+    const next = JSON.parse(files["apps/web/clubedge.stack.json"]!);
+    files["apps/web/clubedge.stack.json"] = JSON.stringify({ ...next, status: "deprecated", since: "v0.40.0", replacement: "vite" });
+    const starter = await temporaryDirectory();
+    await writeFiles(starter, files);
+    const read = await readTemplateManifest(starter);
+    expect(deprecationNotes(read, { framework: "next" }, {}, "pnpm clubedge")).toEqual([
+      "Next.js (framework next) is deprecated since Starter v0.40.0. It keeps working and upgrading for now. " +
+        "New projects use React + Vite (--framework vite): add cannot change what a project was created with.",
+    ]);
+  });
+
   it("reads a stack's level from its pack", async () => {
     const files = appStarterFiles();
     const expo = JSON.parse(files["apps/expo/clubedge.stack.json"]!);

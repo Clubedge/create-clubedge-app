@@ -92,7 +92,8 @@ describe("a template of your own", () => {
     const source = await resolveTemplateSource({ repository: TEMPLATE });
     try {
       expect(source).toMatchObject({ kind: "github", repository: TEMPLATE, ref: "v2.0.0", commit: commitOf("v2.0.0") });
-      expect(downloadTemplate).toHaveBeenCalledWith(`gh:${TEMPLATE}#v2.0.0`, expect.objectContaining({ auth: "template-token" }));
+      // The tag's commit, resolved first, so the files are that commit's.
+      expect(downloadTemplate).toHaveBeenCalledWith(`gh:${TEMPLATE}#${commitOf("v2.0.0")}`, expect.objectContaining({ auth: "template-token" }));
       // Git resolves the ref with the token as a header, written nowhere.
       const gitArgs = vi.mocked(runCapture).mock.calls.find(([, args]) => args.includes("ls-remote"))![1];
       expect(gitArgs.slice(0, 2)).toEqual([
@@ -140,7 +141,7 @@ describe("a template of your own", () => {
     // The project's own release, by commit, and the template's newest, both from the template.
     expect(vi.mocked(downloadTemplate).mock.calls.map(([input]) => input)).toEqual([
       `gh:${TEMPLATE}#${commitOf("v1.0.0")}`,
-      `gh:${TEMPLATE}#v2.0.0`,
+      `gh:${TEMPLATE}#${commitOf("v2.0.0")}`,
     ]);
     const record = JSON.parse(await readFile(join(root, "package.json"), "utf8")).clubedge;
     expect(record).toMatchObject({ starterRepository: TEMPLATE, starterRef: "v2.0.0", starterCommit: commitOf("v2.0.0") });

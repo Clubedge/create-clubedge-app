@@ -4,6 +4,7 @@
 // projects can no longer choose, and reminds an upgraded project of what is deprecated.
 import type { Selection } from "./customize.js";
 import type { Support, TemplateManifest } from "./manifest.js";
+import { runsServer } from "./manifest-fields.js";
 import { ModuleError, NO_STACK } from "./plan.js";
 
 /** A module option or a stack, with its grade. */
@@ -146,8 +147,19 @@ export function belowStableWarning(
 }
 
 /**
+ * Whether add can switch a choice: a module's option, or an app installed on devices. The
+ * framework and the API are chosen when a project is created (appSlots in modify.ts).
+ */
+function switchable(manifest: TemplateManifest, choice: GradedChoice): boolean {
+  if (choice.kind === "module") return true;
+  const roles = manifest.slots[choice.part]?.roles ?? [];
+  return roles.length > 0 && roles.every((role) => !runsServer(role));
+}
+
+/**
  * Upgrade notes for the deprecated options and stacks a project keeps: each one still works and
- * still upgrades, and names the command that switches to its replacement.
+ * still upgrades, and names the command that switches to its replacement, or, for the framework
+ * and the API, which add cannot change, what new projects use.
  */
 export function deprecationNotes(manifest: TemplateManifest, stacks: Selection, modules: Selection, cli: string): string[] {
   return gradedChoices(manifest, stacks, modules)
@@ -157,7 +169,13 @@ export function deprecationNotes(manifest: TemplateManifest, stacks: Selection, 
       const since = choice.support.since ? ` since Starter ${choice.support.since}` : "";
       return [
         `${choice.name} (${choice.part} ${choice.id}) is deprecated${since}. It keeps working and upgrading for now.`,
-        ...(replacement ? [`Switch to ${replacement.name} with: ${cli} add ${choice.part} ${replacement.id}`] : []),
+        ...(replacement
+          ? [
+              switchable(manifest, choice)
+                ? `Switch to ${replacement.name} with: ${cli} add ${choice.part} ${replacement.id}`
+                : `New projects use ${replacement.name} (--${choice.part} ${replacement.id}): add cannot change what a project was created with.`,
+            ]
+          : []),
         ...(choice.support.note ? [choice.support.note] : []),
       ].join(" ");
     });

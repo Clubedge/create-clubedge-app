@@ -8,6 +8,7 @@ import { log, outro } from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCliArgs } from "../src/cli/args.js";
 import { executePlan } from "../src/core/execute.js";
+import { emptyReport } from "../src/core/report.js";
 import { readTemplateManifest } from "../src/core/manifest.js";
 import { createPlan } from "../src/core/plan.js";
 import { downloadGitHubTemplate, readDirectoryTemplate } from "../src/core/source.js";
@@ -302,6 +303,143 @@ describe("the exit code of a change", () => {
   });
 });
 
+describe("the JSON report of a change", () => {
+  /** What the change printed on stdout, which --json keeps for the report alone. */
+  const printed = () => vi.mocked(process.stdout.write).mock.calls.map(([chunk]) => String(chunk)).join("");
+  const printedReport = () => JSON.parse(printed());
+
+  beforeEach(() => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("is the only thing on stdout, and the log and pnpm go to stderr", async () => {
+    const project = await generatedProject();
+    await project.main(["remove", "storage", "--json"]);
+
+    const report = printedReport();
+    expect(report).toMatchObject({
+      reportVersion: 1,
+      command: "remove",
+      outcome: "changed",
+      dryRun: false,
+      summary: "File storage: s3 -> none",
+      from: { ref: "local", modules: { auth: "supabase", storage: "s3" } },
+      to: { ref: "local", modules: { auth: "supabase", storage: "none" } },
+      lockfile: "replace",
+      conflicts: { files: 0, blocks: 0 },
+      install: { mode: "full", status: "done" },
+      releases: [],
+      introduced: [],
+      warnings: [],
+    });
+    expect(report.files).toContainEqual({ path: "apps/web/src/server/storage.ts", action: "delete" });
+    expect(report.files).toContainEqual({ path: "apps/web/package.json", action: "update" });
+    expect(report.next).toMatch(/^Review the changes with `git diff`/);
+    expect(process.exitCode).toBeUndefined();
+
+    for (const call of [...vi.mocked(log.message).mock.calls, ...vi.mocked(log.success).mock.calls, ...vi.mocked(outro).mock.calls]) {
+      expect(call[1]).toEqual({ output: process.stderr });
+    }
+    expect(installDependencies).toHaveBeenCalledWith(project.root, ["pnpm"], [], { output: process.stderr });
+  });
+
+  it("names each conflict, its blocks, and where the Starter's version is, and skips the install pnpm cannot run", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    await project.main(["remove", "storage", "--json", "--detailed-exit-code"]);
+
+    const report = printedReport();
+    expect(report.outcome).toBe("conflicts");
+    expect(report.conflicts).toEqual({ files: 1, blocks: 1 });
+    expect(report.files).toContainEqual({
+      path: "apps/web/package.json",
+      action: "conflict",
+      conflicts: 1,
+      incoming: ".clubedge/incoming/apps/web/package.json",
+    });
+    expect(report.install).toEqual({ mode: "full", status: "skipped", reason: expect.stringMatching(/^Skipped `pnpm install`: apps\/web\/package\.json has conflict markers/) });
+    expect(report.warnings).toEqual([report.install.reason]);
+    expect(report.next).toMatch(/^Resolve the conflicts first, then run `pnpm install`\./);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it("reports what a dry run would do, and writes nothing", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    const before = await project.read("apps/web/package.json");
+    await project.main(["remove", "storage", "--json", "--dry-run"]);
+
+    expect(printedReport()).toMatchObject({ outcome: "conflicts", dryRun: true, conflicts: { files: 1, blocks: 1 }, install: { mode: "none", status: "off" } });
+    expect(await project.read("apps/web/package.json")).toBe(before);
+  });
+
+  it("says what failed, and still lists the files written before the install failed", async () => {
+    const project = await generatedProject();
+    vi.mocked(installDependencies).mockRejectedValue(new Error("pnpm exited with code 1."));
+    await project.main(["remove", "storage", "--json"]);
+
+    const report = printedReport();
+    expect(report.outcome).toBe("failed");
+    expect(report.error.message).toBe("The files were updated, but `pnpm install` did not complete: pnpm exited with code 1. Fix that, then run `pnpm install`.");
+    expect(report.install).toEqual({ mode: "full", status: "failed", reason: "pnpm exited with code 1." });
+    expect(report.files).toContainEqual({ path: "apps/web/src/server/storage.ts", action: "delete" });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("reports a change refused before it starts, and arguments that do not parse", async () => {
+    const project = await generatedProject();
+    await project.main(["add", "storage", "dropbox", "--json"]);
+    expect(printedReport()).toMatchObject({
+      command: "add",
+      outcome: "failed",
+      from: { modules: { storage: "s3" } },
+      files: [],
+      error: { message: expect.stringContaining('Unknown storage option "dropbox"') },
+    });
+
+    vi.mocked(process.stdout.write).mockClear();
+    await main(["upgrade", "--json", "--lockfile-only", "--no-install"]);
+    expect(printedReport()).toMatchObject({ command: "upgrade", outcome: "failed", error: { message: "Use either --lockfile-only or --no-install, not both." } });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("reports an unchanged project, without asking anything", async () => {
+    const project = await generatedProject();
+    await project.main(["add", "storage", "s3", "--json"]);
+    expect(printedReport()).toMatchObject({ outcome: "unchanged", files: [], notes: ["The project already uses that selection; nothing to change."] });
+  });
+});
+
+describe("--lockfile-only", () => {
+  it("updates the lockfile with pnpm install, running nothing from the project", async () => {
+    const project = await generatedProject();
+    await project.run(["remove", "storage", "--lockfile-only"]);
+    expect(installDependencies).toHaveBeenCalledWith(project.root, ["pnpm"], [
+      "--lockfile-only",
+      "--ignore-scripts",
+      "--ignore-pnpmfile",
+      "--no-frozen-lockfile",
+    ]);
+    expect(log.success).toHaveBeenCalledWith("pnpm-lock.yaml updated, without installing");
+  });
+
+  it("names the command that failed", async () => {
+    const project = await generatedProject();
+    vi.mocked(installDependencies).mockRejectedValue(new Error("pnpm exited with code 1."));
+    await expect(project.run(["remove", "storage", "--lockfile-only"])).rejects.toThrow(
+      "The files were updated, but `pnpm install --lockfile-only` did not complete: pnpm exited with code 1.",
+    );
+  });
+
+  it("is skipped like an install while pnpm cannot read a package.json", async () => {
+    const project = await generatedProject();
+    await changeStorageDependency(project);
+    await project.run(["remove", "storage", "--lockfile-only"]);
+    expect(installDependencies).not.toHaveBeenCalled();
+  });
+});
+
 describe("early exit on no-op changes", () => {
   it("exits early without preparing templates when adding an already-configured module option", async () => {
     const project = await generatedProject();
@@ -466,6 +604,34 @@ describe("what an upgrade reports", () => {
     const project = await projectOnV1();
     await project.upgrade();
     expect(infos()).toContain("Starter releases in this upgrade:\nv2.0.0  Cache");
+  });
+
+  it("reports the releases it crosses, the modules it introduces, and both Starters", async () => {
+    const project = await projectOnV1();
+    const report = emptyReport("upgrade", "test", false);
+    vi.mocked(process.cwd).mockReturnValue(project.root);
+    await changeProject(parseCliArgs(["upgrade", "--ref", "v2.0.0", "--force", "--json", "--no-install"]), { report, output: process.stderr });
+
+    expect(report).toMatchObject({
+      outcome: "changed",
+      summary: "Starter v1.0.0 -> v2.0.0",
+      from: { repository, ref: "v1.0.0", commit: "1".repeat(40) },
+      to: { repository, ref: "v2.0.0", commit: "2".repeat(40), modules: { cache: "none" } },
+      releases: [{ tag: "v2.0.0", name: "v2.0.0", url: `https://github.com/${repository}/releases/tag/v2.0.0`, headings: ["Cache"] }],
+      introduced: [{ module: "cache", option: "none" }],
+      install: { mode: "none", status: "off" },
+    });
+    expect(report.files).toContainEqual({ path: "apps/web/src/server/health.ts", action: "add" });
+    expect(report.notes).toContainEqual(expect.stringMatching(/^Cache is new since Starter v1\.0\.0/));
+    expect(report.notes).toContain(`Release notes: https://github.com/${repository}/releases/tag/v2.0.0`);
+  });
+
+  it("reports the releases as unknown when GitHub could not list them", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("API rate limit exceeded", { status: 403 }));
+    const project = await projectOnV1();
+    const report = emptyReport("upgrade", "test", false);
+    await changeProject(parseCliArgs(["upgrade", "--ref", "v2.0.0", "--force", "--json", "--no-install"]), { root: project.root, report });
+    expect(report.releases).toBeNull();
   });
 
   it("says when GitHub could not list the releases, as past its rate limit, instead of leaving them out", async () => {

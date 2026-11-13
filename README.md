@@ -300,6 +300,32 @@ pnpm cannot read a `package.json` with conflict markers, so a change that leaves
 
 A change that leaves conflicts exits with 0, like a clean one. For scripts that need to tell them apart, add `--detailed-exit-code`: the CLI then exits with 2 when the change was written with conflicts to resolve, 0 when it was clean or there was nothing to change, and 1 when it failed. With `--dry-run`, it counts the conflicts the change would leave, and exits with 2 when there are any, so a script can check before changing anything.
 
+### Reports for tools
+
+For tools that maintain projects, such as a service that opens upgrade pull requests, `add`, `remove`, and `upgrade` take two more options:
+
+- `--json` prints the change's report on stdout as one JSON document, and sends the log and pnpm's output to stderr. It asks nothing, as with `--yes`, and works with `--dry-run` and `--detailed-exit-code`.
+- `--lockfile-only` updates `pnpm-lock.yaml` without installing anything: it runs `pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile`, so no script and no `.pnpmfile.cjs` from the project runs. A service can update the lockfile of code it does not trust, and leave the build and the tests to the project's CI.
+
+```sh
+pnpm dlx @clubedge/create-clubedge-app@latest upgrade --json --lockfile-only > upgrade.json
+```
+
+The report says what happened (`outcome`: `unchanged`, `changed`, `conflicts`, or `failed` with an `error`), the Starter before and after (`from` and `to`), each file the change wrote, deleted, or left for you to check (`files`, with the number of conflict blocks and where the Starter's version is saved), the env files, the lockfile and how it was installed (`install`), the Starter releases an upgrade crosses (`releases`, or `null` when GitHub could not list them), the modules it introduces, and its warnings and notes. A failure after the files are written, such as an install that did not complete, still lists them. `reportVersion` is 1: fields are only added within a version, and a change to what one means takes a new version.
+
+The same engine is a library, with the report's types:
+
+```ts
+import { upgradeProject } from "@clubedge/create-clubedge-app";
+
+const report = await upgradeProject("/path/to/project", { install: "lockfile-only" });
+if (report.outcome === "conflicts") {
+  for (const file of report.files.filter((file) => file.action === "conflict")) console.log(file.path, file.conflicts);
+}
+```
+
+`upgradeProject`, `addToProject`, and `removeFromProject` change a project as the commands do, ask nothing, never write to stdout (pass a stream as `log` to keep the log), and resolve the report, failures included. They install with `lockfile-only` unless `install` says `full` or `none`. `parseProjectRecord` reads the Starter release, apps, and modules a `package.json` records, from its text, such as one fetched from GitHub without cloning, and `starter` is the Starter release this CLI upgrades to.
+
 ## A hosted database with Neon
 
 `--infra neon` gives the project a [Neon](https://neon.com) PostgreSQL database with nothing to install and no account:

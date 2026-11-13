@@ -7,6 +7,7 @@ import { dim, helpText, showBanner } from "./cli/ui.js";
 import { assertTargetIsUsable, executePlan } from "./core/execute.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { createPlan, describePlan, listNames, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
+import { emptyReport, type ChangeReport } from "./core/report.js";
 import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
 import { belowStableWarning, choicesBelowStable, levelHint, planChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
@@ -321,14 +322,27 @@ async function bundledManifest(): Promise<TemplateManifest | null> {
   }
 }
 
+/**
+ * The report a change asked for with --json, when its arguments did not parse: a program still
+ * gets a report, with the error.
+ */
+function unparsedReport(argv: string[]): ChangeReport | undefined {
+  const [name] = argv;
+  if (!argv.includes("--json") || (name !== "add" && name !== "remove" && name !== "upgrade")) return undefined;
+  return emptyReport(name, cliVersion, argv.includes("--dry-run"));
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<void> {
+  // add, remove, and upgrade with --json: the report, on stdout once the change ends or fails.
+  let report: ChangeReport | undefined;
   try {
     const args = parseCliArgs(argv);
     if (args.version) {
       console.log(cliVersion);
       return;
     }
-    showBanner();
+    // With --json, stdout holds the report alone.
+    if (!args.json) showBanner();
     if (args.help) {
       console.log(helpText(await bundledManifest()));
       return;
@@ -358,13 +372,24 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         remove: "Remove a module or an app from this project",
         upgrade: "Upgrade this project to a newer Starter",
       };
-      intro(intros[args.command.name]);
+      // With --json, the log and pnpm's output go to stderr, and stdout gets the report.
+      const output = args.json ? process.stderr : undefined;
+      if (args.json) report = emptyReport(args.command.name, cliVersion, args.dryRun);
+      if (output) intro(intros[args.command.name], { output });
+      else intro(intros[args.command.name]);
       // Conflicts exit with 0 unless asked: the Starter's upgrade workflow in existing projects
       // runs the newest CLI under `set -o pipefail`, and would stop before opening its pull request.
-      if ((await changeProject(args)) === "conflicts" && args.detailedExitCode) process.exitCode = 2;
+      if ((await changeProject(args, { output, report })) === "conflicts" && args.detailedExitCode) process.exitCode = 2;
     }
   } catch (error) {
-    console.error(`\n${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\n${message}`);
     process.exitCode = 1;
+    report ??= unparsedReport(argv);
+    if (report) {
+      report.outcome = "failed";
+      report.error = { message };
+    }
   }
+  if (report) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }

@@ -789,7 +789,10 @@ describe("Vercel", () => {
     expect(ignoresEnvFiles(ignore)).toBe(true);
     expect(vercelIgnoreSource("node_modules/\n")).toContain(".env*\n!.env.example\n");
     expect(ignoresEnvFiles("node_modules\n")).toBe(false);
+    expect(ignoresEnvFiles(".env\n")).toBe(false);
+    expect(ignoresEnvFiles("/.env\n")).toBe(false);
     expect(ignoresEnvFiles("/.env.*\n")).toBe(true);
+    expect(ignoresEnvFiles(".env*\n")).toBe(true);
   });
 
   it("never takes a localhost public URL from the env file", () => {

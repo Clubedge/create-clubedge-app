@@ -9,7 +9,7 @@ import { executePlan } from "./core/execute.js";
 import { isOptionalSlot, readTemplateManifest } from "./core/manifest.js";
 import { neonSetupStep } from "./core/neon.js";
 import { createPlan, describePlan } from "./core/plan.js";
-import { choicesBelowStable, describeBelowStable, planChoices, refuseUnoffered, type GradedChoice } from "./core/support.js";
+import { choicesBelowStable, describeBelowStable, newChoices, planChoices, refuseUnoffered, type GradedChoice } from "./core/support.js";
 import { resolveTemplateSource } from "./core/source.js";
 import { stepProgress } from "./mcp-progress.js";
 import { cliVersion, cliUrl, siteUrl } from "./package-info.js";
@@ -107,8 +107,8 @@ async function planProject(
   });
   // An option deprecated past its window is refused; one below stable is allowed, and reported.
   const chosen = planChoices(plan);
+  refuseUnoffered(manifest, newChoices(manifest, chosen.stacks, chosen.modules), "flag");
   const belowStable = choicesBelowStable(manifest, chosen.stacks, chosen.modules);
-  refuseUnoffered(manifest, belowStable, "flag");
   return { plan, belowStable: describeChoices(belowStable), levelWarnings: describeBelowStable(manifest, belowStable, "flag") };
 }
 

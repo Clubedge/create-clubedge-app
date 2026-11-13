@@ -248,7 +248,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app --yes --no-git --framework tanstac
 pnpm dlx @clubedge/create-clubedge-app my-app --ref main
 
 # Reproduce a specific Starter release or commit
-pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.31.3
+pnpm dlx @clubedge/create-clubedge-app my-app --ref v0.32.0
 pnpm dlx @clubedge/create-clubedge-app my-app --ref <commit-sha>
 
 # Test local Starter changes before releasing them
@@ -269,7 +269,7 @@ pnpm clubedge add mobile expo                               # the native app; ad
 pnpm clubedge remove mobile
 pnpm dlx @clubedge/create-clubedge-app add infra local --dry-run
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade        # to the newest CLI's Starter release
-pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.31.3 # or a specific tag, branch, or commit
+pnpm dlx @clubedge/create-clubedge-app upgrade --ref v0.32.0 # or a specific tag, branch, or commit
 ```
 
 The CLI renders the project twice, from the Starter commit and modules recorded in your `package.json` and from the new state, and merges the difference into your project. The new state has other modules for `add` and `remove`, and the newer Starter with the same modules for `upgrade`. Modules a newer Starter introduces start as `none` where possible, so an upgrade never adds a service on its own.
@@ -459,27 +459,27 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.49.0
+create-clubedge-app v0.49.1
         |
         v
-Clubedge Starter v0.31.3
-commit 80ba67bb09a468ef49b8ba907e93239e2e04b6c4
+Clubedge Starter v0.32.0
+commit ff2f60ac8ae2812f2df7001afc7eae0bb53324f6
 ```
 
 The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.49.0` | `clubedge-starter@v0.31.3` | The CLI's required, tested default |
+| `create-clubedge-app@0.49.1` | `clubedge-starter@v0.32.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
-The `v0.31.3` tag is expected to resolve to commit
-`80ba67bb09a468ef49b8ba907e93239e2e04b6c4`. The CLI verifies this before
+The `v0.32.0` tag is expected to resolve to commit
+`ff2f60ac8ae2812f2df7001afc7eae0bb53324f6`. The CLI verifies this before
 scaffolding with the default reference and fails rather than silently using a
 moved tag.
 
-When the Starter changes, its maintainers first publish a new versioned release, such as `v0.31.3`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
+When the Starter changes, its maintainers first publish a new versioned release, such as `v0.32.0`. The CLI is then updated to use that release, all generated-project checks must pass, and a new CLI version is published. This keeps Starter and CLI releases independently versioned while preserving a tested compatibility relationship.
 
 Every generated project records its CLI version, Starter repository, Starter ref, Starter commit, framework, and modules in `package.json` and `README.md`.
 
@@ -536,7 +536,7 @@ The upgrade matrix (`.github/workflows/upgrade-matrix.yml`, `scripts/upgrade-mat
 1. Make and validate changes in `clubedge-starter`.
 2. Run lint, typecheck, unit tests, browser tests, and production build.
 3. Update the Starter package versions.
-4. Commit `main`, create a release tag such as `v0.31.3`, and publish the Starter release.
+4. Commit `main`, create a release tag such as `v0.32.0`, and publish the Starter release.
 
 ### CLI maintainers
 
@@ -598,6 +598,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.48.1 | v0.31.2 | Starter v0.31.2: a new user's first requests at once get one users row; upgrades from the first Starter releases, after `pnpm up`, and with a `pnpm patch` |
 | 0.48.2 | v0.31.3 | Starter v0.31.3: Expo 58.0.25's patch versions; an upgrade matrix in CI, whose results the site's Upgrades page shows |
 | 0.49.0 | v0.31.3 | Support levels, with warnings and the deprecation stages; `--json` reports, `--lockfile-only`, and the engine as a library; templates of your own (`--template`) |
+| 0.49.1 | v0.32.0 | Starter v0.32.0: support levels for every option and stack, which the CLI now warns about; upgrade pull requests built from the CLI's report |
 
 ## Sponsors
 

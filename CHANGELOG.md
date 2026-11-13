@@ -2,6 +2,13 @@
 
 All notable changes to `create-clubedge-app` are documented here.
 
+## 0.49.1
+
+- **Starter v0.32.0** by default (#231). Its template schema is still 6. The [Starter's release notes](https://github.com/Clubedge/clubedge-starter/releases/tag/v0.32.0) cover:
+  - A support level for every option and stack, so `create`, `add`, and `upgrade` now warn before a choice below Stable, such as Stripe (Beta) or Cloudflare (Experimental), and the prompts and the MCP server show each option's level.
+  - The `Starter upgrade` workflow a new project gets, which runs the newest CLI with `--json --lockfile-only` and builds its pull request from the report.
+  - `pnpm dev` with a Hono API and no `.env.local` on Node 22.23.4, and a Vite + Better Auth project's own `e2e` job, which both work again.
+
 ## 0.49.0
 
 - **Support levels** (#222; issue #221). The CLI reads the level the Starter gives each option and stack (Stable, Beta, Experimental, or Deprecated) and acts on it. Starter v0.31.3, still the default, grades nothing yet; the next Starter release does.

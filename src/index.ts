@@ -8,7 +8,7 @@ import { assertTargetIsUsable, executePlan } from "./core/execute.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { createPlan, describePlan, listNames, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
 import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
-import { belowStableWarning, choicesBelowStable, levelHint, planChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
+import { belowStableWarning, choicesBelowStable, levelHint, newChoices, planChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
 import { runDoctor, showStatus } from "./inspect.js";
 import { changeProject } from "./modify.js";
@@ -219,8 +219,8 @@ async function createProject(args: CliArgs): Promise<void> {
 
     // An option deprecated past its window is refused; one below stable is chosen with a warning.
     const chosen = planChoices(plan);
+    refuseUnoffered(manifest, newChoices(manifest, chosen.stacks, chosen.modules), "flag");
     const belowStable = choicesBelowStable(manifest, chosen.stacks, chosen.modules);
-    refuseUnoffered(manifest, belowStable, "flag");
     const levels = belowStableWarning(manifest, belowStable, "flag", stabilityUrl(source));
     if (levels) log.warn(levels);
 

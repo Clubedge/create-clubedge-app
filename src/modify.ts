@@ -16,7 +16,7 @@ import { unusedPatches, unusedPatchWarning } from "./core/patches.js";
 import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
 import { moduleChoices, NO_STACK, selectModules, selectStacks, slotChoices, stacksIn } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
-import { belowStableWarning, choicesBelowStable, deprecationNotes, refuseUnoffered, stabilityUrl } from "./core/support.js";
+import { belowStableWarning, choicesBelowStable, deprecationNotes, newChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import {
   downloadGitHubTemplate,
   readDirectoryTemplate,
@@ -565,8 +565,9 @@ async function planChange(
     const changed = Object.keys(modules).filter((id) => modules[id] !== project.modules[id]);
     if (!changed.length && !changedApps.length) return null;
     // Only the choices this command makes: an option the project already has is not new to it.
-    const belowStable = choicesBelowStable(baseManifest, stacks, modules, { stacks: project.stacks, modules: project.modules });
-    refuseUnoffered(baseManifest, belowStable, "argument");
+    const before = { stacks: project.stacks, modules: project.modules };
+    refuseUnoffered(baseManifest, newChoices(baseManifest, stacks, modules, before), "argument");
+    const belowStable = choicesBelowStable(baseManifest, stacks, modules, before);
     const levels = belowStableWarning(baseManifest, belowStable, "argument", stabilityUrl({ kind: base.kind, repository: base.repository, ref: project.starterRef }));
     const stackName = (id: string) => baseManifest.stacks[id]?.name ?? NO_STACK;
     return {

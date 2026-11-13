@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ManifestError, parseTemplateManifest, readTemplateManifest } from "../src/core/manifest.js";
 import { ModuleError } from "../src/core/plan.js";
-import { belowStableWarning, choicesBelowStable, deprecationNotes, refuseUnoffered } from "../src/core/support.js";
+import { belowStableWarning, choicesBelowStable, deprecationNotes, newChoices, refuseUnoffered } from "../src/core/support.js";
 import { upgradedModules } from "../src/modify.js";
 import { appStarterFiles, modulesManifest, temporaryDirectory, writeFiles } from "./helpers.js";
 
@@ -91,6 +91,21 @@ describe("support levels", () => {
     expect(() => refuseUnoffered(retired, choices, "flag")).toThrow(
       "Magic Link (--auth magic-link) is no longer offered to new projects. It was deprecated in v0.40.0. Choose Supabase Auth (--auth supabase) instead.",
     );
+  });
+
+  it("refuses an option no longer offered at any level, and only as a new choice", () => {
+    // A stable option a Starter stopped offering, without deprecating it first.
+    const stableRetired = graded();
+    stableRetired.modules.storage.options.s3 = { ...stableRetired.modules.storage.options.s3, offered: false } as never;
+    const retired = parseTemplateManifest(JSON.stringify(stableRetired));
+    const chosen = { auth: "supabase", storage: "s3" };
+    expect(choicesBelowStable(retired, {}, chosen)).toEqual([]);
+    expect(() => refuseUnoffered(retired, newChoices(retired, {}, chosen), "argument")).toThrow(
+      "S3-compatible (storage s3) is no longer offered to new projects.",
+    );
+    // A project that has it already keeps it while it changes something else.
+    const before = { stacks: {}, modules: { auth: "none", storage: "s3" } };
+    expect(newChoices(retired, {}, chosen, before).map((choice) => choice.id)).toEqual(["supabase"]);
   });
 
   it("reminds an upgraded project of a deprecated option, with the command that switches", () => {

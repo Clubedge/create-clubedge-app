@@ -147,7 +147,10 @@ export interface ChangeReport {
   error?: { message: string };
 }
 
-/** A report before anything is known, which the change fills in as it goes. */
+/**
+ * A report before anything is known, which the change fills in as it goes. The fields it learns
+ * later are declared here, unset, so the JSON keeps them in reading order.
+ */
 export function emptyReport(command: ChangeCommandName, cli: string, dryRun: boolean): ChangeReport {
   return {
     reportVersion: REPORT_VERSION,
@@ -155,6 +158,9 @@ export function emptyReport(command: ChangeCommandName, cli: string, dryRun: boo
     command,
     outcome: "unchanged",
     dryRun,
+    summary: undefined,
+    from: undefined,
+    to: undefined,
     files: [],
     lockfile: "unchanged",
     envFiles: [],

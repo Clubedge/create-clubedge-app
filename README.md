@@ -29,7 +29,7 @@ pnpm dlx @clubedge/create-clubedge-app my-app
 
 ## MCP server
 
-Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested, and makes no network calls of its own: with `infra: neon`, `plan_project` lists `pnpm clubedge neon create` as a next step and `create_project` returns it as a warning, since the database is left for you to create.
+Coding agents can connect to a local MCP server to inspect the capabilities of this CLI's pinned Starter release, validate stack and module choices, preview a complete scaffold plan, and generate a project in the server's working directory. The server exposes `get_starter_capabilities`, `validate_project_config`, `plan_project`, and `create_project`. Each option and stack in `get_starter_capabilities` carries its support `level` and `note`, and `validate_project_config` and `plan_project` list the choices below Stable as `belowStable`. Planning and validation do not write files. Project creation does not initialize Git or install dependencies unless those options are requested, and makes no network calls of its own: with `infra: neon`, `plan_project` lists `pnpm clubedge neon create` as a next step and `create_project` returns it as a warning, since the database is left for you to create.
 
 Run it from the workspace where projects should be created:
 
@@ -204,6 +204,8 @@ pnpm dlx @clubedge/create-clubedge-app my-app --auth better-auth --payments stri
 ```
 
 Interactive runs ask whether to customize these after the framework question.
+
+Each option, and each framework, API, and app, has a support level that the Starter grades from what its CI runs: Stable, Beta, Experimental, or Deprecated ([STABILITY.md](https://github.com/Clubedge/clubedge-starter/blob/main/STABILITY.md) lists them, with the evidence). Prompts show the level next to a choice below Stable, and `create` and `add` warn before writing anything, with what is missing; an option no longer offered to new projects is refused, with its replacement. `upgrade` names each deprecated option the project keeps and the command that switches it.
 
 ## Options
 

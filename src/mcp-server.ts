@@ -9,6 +9,7 @@ import { executePlan } from "./core/execute.js";
 import { isOptionalSlot, readTemplateManifest } from "./core/manifest.js";
 import { neonSetupStep } from "./core/neon.js";
 import { createPlan, describePlan } from "./core/plan.js";
+import { choicesBelowStable, describeBelowStable, newChoices, planChoices, refuseUnoffered, type GradedChoice } from "./core/support.js";
 import { resolveTemplateSource } from "./core/source.js";
 import { stepProgress } from "./mcp-progress.js";
 import { cliVersion, cliUrl, siteUrl } from "./package-info.js";
@@ -90,7 +91,7 @@ async function planProject(
   sideEffects: { git?: boolean; install?: boolean } = {},
 ) {
   const manifest = await readTemplateManifest(source.root);
-  return createPlan({
+  const plan = createPlan({
     targetDirectory: directory,
     identity: {
       packageName: packageNameFromDirectory(directory),
@@ -104,6 +105,36 @@ async function planProject(
     git: sideEffects.git ?? false,
     install: sideEffects.install ?? false,
   });
+  // An option deprecated past its window is refused; one below stable is allowed, and reported.
+  const chosen = planChoices(plan);
+  refuseUnoffered(manifest, newChoices(manifest, chosen.stacks, chosen.modules), "flag");
+  const belowStable = choicesBelowStable(manifest, chosen.stacks, chosen.modules);
+  return { plan, belowStable: describeChoices(belowStable), levelWarnings: describeBelowStable(manifest, belowStable, "flag") };
+}
+
+/** Choices below stable, for an agent: what each is, its level, and what is missing. */
+function describeChoices(choices: GradedChoice[]) {
+  return choices.map(({ kind, part, id, name, support }) => ({
+    [kind === "app" ? "slot" : "module"]: part,
+    id,
+    name,
+    level: support.level,
+    ...(support.note ? { note: support.note } : {}),
+    ...(support.since ? { since: support.since } : {}),
+    ...(support.replacement ? { replacement: support.replacement } : {}),
+  }));
+}
+
+/** An option's or a stack's level, as get_starter_capabilities reports it. */
+function supportOf(support: GradedChoice["support"] | undefined) {
+  if (!support) return {};
+  return {
+    level: support.level,
+    ...(support.note ? { note: support.note } : {}),
+    ...(support.since ? { since: support.since } : {}),
+    ...(support.replacement ? { replacement: support.replacement } : {}),
+    ...(support.offered ? {} : { offered: false }),
+  };
 }
 
 function capabilities(
@@ -128,7 +159,7 @@ function capabilities(
       optional: isOptionalSlot(slot),
       choices: Object.entries(manifest.stacks)
         .filter(([, stack]) => stack.slot === id)
-        .map(([stackId, stack]) => ({ id: stackId, name: stack.name, role: stack.role, modules: stack.modules })),
+        .map(([stackId, stack]) => ({ id: stackId, name: stack.name, role: stack.role, modules: stack.modules, ...supportOf(stack.support) })),
     })),
     modules: Object.entries(manifest.modules).map(([id, module]) => ({
       id,
@@ -139,6 +170,7 @@ function capabilities(
         id: optionId,
         name: option.name,
         requires: option.requires,
+        ...supportOf(option.support),
       })),
     })),
   };
@@ -170,11 +202,12 @@ function createServer() {
     },
     async (options) => withTemplate(async (source) => {
       try {
-        const plan = await planProject(source, options, resolve(process.cwd(), ".clubedge-validation"));
+        const { plan, belowStable } = await planProject(source, options, resolve(process.cwd(), ".clubedge-validation"));
         return result({
           valid: true,
           stacks: plan.apps.map(({ slot, id, name }) => ({ slot, id, name })),
           modules: plan.modules.map(({ id, option, optionName }) => ({ id, option, name: optionName })),
+          ...(belowStable.length ? { belowStable } : {}),
         });
       } catch (error) {
         return result({ valid: false, error: error instanceof Error ? error.message : String(error) });
@@ -197,7 +230,7 @@ function createServer() {
     async ({ directory, initialize_git, install_dependencies, ...options }) => withTemplate(async (source) => {
       try {
         const target = await workspaceDestination(directory);
-        const plan = await planProject(source, options, target, {
+        const { plan, belowStable } = await planProject(source, options, target, {
           git: initialize_git,
           install: install_dependencies,
         });
@@ -220,6 +253,7 @@ function createServer() {
           })),
           actions: describePlan(plan),
           nextSteps: [neonSetupStep(plan)].filter(Boolean),
+          ...(belowStable.length ? { belowStable } : {}),
         });
       } catch (error) {
         return result({ valid: false, error: error instanceof Error ? error.message : String(error) });
@@ -240,10 +274,11 @@ function createServer() {
     },
     async ({ directory, initialize_git, install_dependencies, ...options }, ctx) => withTemplate(async (source) => {
       const target = await workspaceDestination(directory);
-      const plan = await planProject(source, options, target, { git: initialize_git, install: install_dependencies });
+      const { plan, levelWarnings } = await planProject(source, options, target, { git: initialize_git, install: install_dependencies });
       await executePlan(plan, source);
 
-      const warnings: string[] = [];
+      // Choices below stable come first: they matter longest.
+      const warnings: string[] = [...levelWarnings];
       // The CLI creates the free Neon database itself; MCP makes no network calls, so it is left to the user.
       const neon = neonSetupStep(plan);
       if (neon) warnings.push(neon);

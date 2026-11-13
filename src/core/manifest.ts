@@ -113,6 +113,32 @@ export interface ProjectService extends StackDeployment {
   dockerfile: string;
 }
 
+/**
+ * How ready a module option or a stack is, as the Starter grades it from what its CI runs. Its
+ * STABILITY.md defines the levels. Older Starters grade nothing, so their options have no
+ * support.
+ */
+export type SupportLevel = "stable" | "beta" | "experimental" | "deprecated";
+
+export interface Support {
+  level: SupportLevel;
+  /** What is missing below stable, or why it was deprecated. */
+  note?: string;
+  /** Deprecated: the Starter release that deprecated it. */
+  since?: string;
+  /** Deprecated: the option to switch to, in the same module. */
+  replacement?: string;
+  /** False once new projects can no longer choose it; projects that have it keep upgrading. */
+  offered: boolean;
+}
+
+/** An option a Starter release removed, kept so an upgrade can name what replaces it. */
+export interface RemovedOption {
+  since?: string;
+  replacement?: string;
+  note?: string;
+}
+
 /** One app implementation in the Starter (a stack pack), such as Next.js in apps/web. */
 export interface TemplateStack {
   /** Display name, such as "TanStack Start". */
@@ -135,6 +161,8 @@ export interface TemplateStack {
    * lists under `pnpm.auditConfig.ignoreGhsas`. Projects without the stack stop skipping them.
    */
   auditIgnores?: string[];
+  /** How ready it is; undefined when the Starter grades nothing. */
+  support?: Support;
 }
 
 /** One choice within a module, such as `storage: s3`. Paths use the Starter's layout. */
@@ -156,6 +184,8 @@ export interface ModuleOption {
   requires: Record<string, string[]>;
   /** Root package.json scripts this option sets; left-out options' scripts are removed. */
   scripts: Record<string, string>;
+  /** How ready it is; undefined when the Starter grades nothing. */
+  support?: Support;
 }
 
 /** A replaceable part of the app, such as authentication or storage. */
@@ -168,6 +198,8 @@ export interface TemplateModule {
    * "project": it is about the project as a whole (local infrastructure, deployment).
    */
   scope: "app" | "project";
+  /** Options a Starter release removed, by id, with what replaces them. */
+  removed?: Record<string, RemovedOption>;
 }
 
 export interface TemplateManifest {

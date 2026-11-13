@@ -121,48 +121,98 @@ async function payOnStripeCheckout(a) {
   // Checkout also loads behind a spinner: start once its form is on screen.
   await waitForPainted(page, /pay with card|card information|contact information|payment method/i, 20_000).catch(() => {});
   await a.pause(1500);
-  const visible = async (locator) => (await locator.count()) > 0 && (await locator.first().isVisible());
-  // The app passes the signed-in user's email, which Checkout then shows read-only.
-  const email = page.locator("#email");
-  if ((await visible(email)) && (await email.isEditable())) await a.type(email, "ada@example.com");
-  // With several payment methods, Checkout lists them as radio buttons or an accordion: pick the card.
-  // The card row is opened by a transparent "Pay with card" button laid over it, which Playwright
-  // counts as invisible: the pointer goes to the row's label, and the button is clicked by name.
-  // A real mouse click on the row's "Card" label opens it, as it does for a person; the button
-  // itself is the fallback. Each attempt runs only if the card form is still closed.
-  const cardNumber = page.locator("#cardNumber");
-  const label = page.locator("#payment-method-label-card");
-  const cardButton = page.locator('[data-testid="card-accordion-item-button"]');
-  const attempts = [
-    async () => {
-      await a.point(label);
-      const box = await label.boundingBox();
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    },
-    () => cardButton.dispatchEvent("click"),
-    () => cardButton.click({ force: true, timeout: 5_000 }),
+  // Checkout draws its form on its own page or, in its newer layout, inside Stripe's "Secure
+  // embedded form frame", which holds the email, the payment methods, the card's fields, and the
+  // button. So everything is looked for in both, by role, label, or the autocomplete a card field
+  // has in either layout, rather than by ids only the older layout has.
+  const form = page.frameLocator('iframe[title="Secure embedded form frame"]');
+  const both = (find) => [find(page), find(form)];
+  /** The first locator with an element on screen, polling for up to `timeout` ms, or null. */
+  const onScreen = async (locators, timeout = 0) => {
+    const until = Date.now() + timeout;
+    for (;;) {
+      for (const locator of locators) {
+        const shown = locator.filter({ visible: true }).first();
+        if (await shown.count().catch(() => 0)) return shown;
+      }
+      if (Date.now() >= until) return null;
+      await page.waitForTimeout(250);
+    }
+  };
+  const required = async (what, locators, timeout) => {
+    const found = await onScreen(locators, timeout);
+    if (!found) throw new Error(`Stripe Checkout showed no ${what}, on its page or in its embedded form.`);
+    return found;
+  };
+  const cardNumberField = [
+    ...both((root) => root.locator('input[autocomplete~="cc-number"], input[name="cardnumber"], #cardNumber')),
+    form.getByLabel(/card number/i),
   ];
-  for (const attempt of attempts) {
-    if (await visible(cardNumber)) break;
-    await attempt().catch((error) => console.error(`Opening the card form: ${error.message.split("\n")[0]}`));
-    await cardNumber.waitFor({ state: "visible", timeout: 4_000 }).catch(() => {});
+  // The app passes the signed-in user's email, which Checkout then shows read-only.
+  const email = await onScreen(both((root) => root.locator('#email, input[type="email"]')));
+  if (email && (await email.isEditable())) await a.type(email, "ada@example.com");
+  // With several payment methods, Checkout lists them as radio buttons or an accordion: pick the
+  // card with a real mouse click on its row's label, as a person would. The older layout lays a
+  // transparent "Pay with card" button over that row, which Playwright counts as invisible: it is
+  // clicked by name if the row's click left the card's fields closed.
+  let cardNumber = await onScreen(cardNumberField);
+  if (!cardNumber) {
+    const row = await onScreen(
+      [
+        page.locator("#payment-method-label-card"),
+        form.getByRole("radio", { name: /^card$/i }),
+        form.getByText("Card", { exact: true }),
+        form.getByRole("button", { name: /^card$/i }),
+      ],
+      10_000,
+    );
+    if (row) {
+      await a.point(row);
+      const box = await row.boundingBox();
+      if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    cardNumber = await onScreen(cardNumberField, 4_000);
+    for (const button of both((root) => root.locator('[data-testid="card-accordion-item-button"]'))) {
+      if (cardNumber) break;
+      await button.first().dispatchEvent("click").catch(() => {});
+      cardNumber = await onScreen(cardNumberField, 4_000);
+    }
   }
-  await cardNumber.waitFor({ state: "visible", timeout: 20_000 });
+  cardNumber ??= await required("card number field", cardNumberField, 20_000);
   await a.type(cardNumber, "4242424242424242");
-  await a.type(page.locator("#cardExpiry"), "1234");
-  await a.type(page.locator("#cardCvc"), "123");
-  const name = page.locator("#billingName");
-  if (await visible(name)) await a.type(name, "Ada Lovelace");
-  const postal = page.locator("#billingPostalCode");
-  if (await visible(postal)) await a.type(postal, "10001");
+  const expiry = [
+    ...both((root) => root.locator('input[autocomplete~="cc-exp"], input[name="exp-date"], #cardExpiry')),
+    form.getByLabel(/expiration|expiry/i),
+  ];
+  await a.type(await required("expiry field", expiry, 5_000), "1234");
+  const cvc = [
+    ...both((root) => root.locator('input[autocomplete~="cc-csc"], input[name="cvc"], #cardCvc')),
+    form.getByLabel(/security code|cvc/i),
+  ];
+  await a.type(await required("security code field", cvc, 5_000), "123");
+  const name = await onScreen(both((root) => root.locator('#billingName, input[autocomplete~="cc-name"]')));
+  if (name) await a.type(name, "Ada Lovelace");
+  const postal = await onScreen(both((root) => root.locator('#billingPostalCode, input[autocomplete~="postal-code"]')));
+  if (postal) await a.type(postal, "10001");
   // "Save my information with Link" starts ticked and then asks for a phone number: untick it.
-  const saveWithLink = page.getByRole("checkbox", { name: /save my information/i }).or(page.locator("#enableStripePass"));
-  if ((await visible(saveWithLink)) && (await saveWithLink.first().isChecked())) {
-    await a.point(saveWithLink.first());
-    await saveWithLink.first().uncheck({ force: true });
+  const saveWithLink = await onScreen([
+    ...both((root) => root.getByRole("checkbox", { name: /save my information/i })),
+    page.locator("#enableStripePass"),
+  ]);
+  if (saveWithLink && (await saveWithLink.isChecked())) {
+    await a.point(saveWithLink);
+    await saveWithLink.uncheck({ force: true });
     await a.pause(700);
   }
-  await a.click(page.locator('[data-testid="hosted-payment-submit-button"]'), 0);
+  const pay = await required(
+    "subscribe button",
+    [
+      ...both((root) => root.locator('[data-testid="hosted-payment-submit-button"]')),
+      ...both((root) => root.getByRole("button", { name: /^(subscribe|pay|start trial)\b/i })),
+    ],
+    5_000,
+  );
+  await a.click(pay, 0);
   await page.waitForURL(/localhost:3000\/dashboard/, { timeout: 90_000 });
 }
 

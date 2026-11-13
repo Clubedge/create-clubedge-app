@@ -34,6 +34,12 @@ export interface CliArgs {
   modules: Record<string, string>;
   ref?: string;
   templateDir?: string;
+  /**
+   * create: a template of your own (owner/name), a fork of the Starter, instead of the pinned
+   * Starter; its newest release unless --ref names another. CLUBEDGE_TEMPLATE_TOKEN reads a
+   * private one.
+   */
+  template?: string;
   install: boolean;
   git: boolean;
   yes: boolean;
@@ -82,6 +88,7 @@ const OPTIONS = {
   framework: { type: "string" },
   ref: { type: "string" },
   "template-dir": { type: "string" },
+  template: { type: "string" },
   install: { type: "boolean", default: true },
   git: { type: "boolean", default: true },
   yes: { type: "boolean", short: "y", default: false },
@@ -203,6 +210,17 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (values.ref && values["template-dir"]) {
     throw new UsageError("Use either --ref or --template-dir, not both.");
   }
+  if (values.template !== undefined) {
+    if (command.name !== "create") {
+      throw new UsageError(
+        "--template only applies when creating a project: later changes use the template the project records.",
+      );
+    }
+    if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(values.template.trim())) {
+      throw new UsageError("--template requires a GitHub repository, such as acme/acme-starter.");
+    }
+    if (values["template-dir"]) throw new UsageError("Use either --template or --template-dir, not both.");
+  }
 
   return {
     command,
@@ -211,6 +229,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     modules,
     ref: values.ref,
     templateDir: values["template-dir"],
+    template: values.template?.trim(),
     install: values.install,
     git: values.git,
     yes: values.yes,

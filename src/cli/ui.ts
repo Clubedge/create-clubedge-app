@@ -146,6 +146,8 @@ ${selectionHelp(manifest)}
   --ref <ref>             Download this Starter tag, branch, or commit from GitHub instead
                           (upgrade: the Starter to upgrade to)
   --template-dir <path>   Scaffold from a local Starter checkout (for Starter development)
+  --template <owner/name> Create from a template of your own on GitHub, a fork of the Starter
+                          (its newest release, or --ref); CLUBEDGE_TEMPLATE_TOKEN reads a private one
   --dry-run               Show what would be created or changed without writing anything
   --force                 add/remove/upgrade: change a project with uncommitted changes,
                           unresolved conflicts, or without Git

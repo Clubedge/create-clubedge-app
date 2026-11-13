@@ -49,6 +49,16 @@ export function detectLauncher(userAgent = process.env.npm_config_user_agent): s
 }
 
 /**
+ * The environment for commands that run in a project, such as pnpm: the CLI's own, without the
+ * token for a private template, which a project's .npmrc could otherwise send to its registry.
+ */
+export function projectEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const { CLUBEDGE_TEMPLATE_TOKEN: _token, ...rest } = env;
+  void _token;
+  return rest;
+}
+
+/**
  * Runs `pnpm install` in a folder. Its output goes to the terminal, to `stdio`, or, with
  * `{ output }`, to a stream such as a change's log (see runInto).
  */
@@ -60,8 +70,8 @@ export async function installDependencies(
 ): Promise<void> {
   const [command, ...prefix] = pnpm;
   if (stdio && !Array.isArray(stdio) && typeof stdio === "object" && "output" in stdio) {
-    await runInto(command!, [...prefix, "install", ...args], directory, stdio.output);
+    await runInto(command!, [...prefix, "install", ...args], directory, stdio.output, projectEnv());
     return;
   }
-  await run(command!, [...prefix, "install", ...args], directory, stdio);
+  await run(command!, [...prefix, "install", ...args], directory, stdio, projectEnv());
 }

@@ -104,9 +104,15 @@ export function spawnCommand(command: string, args: string[], options: SpawnOpti
 }
 
 /** Runs a command with inherited output. Rejects on a non-zero exit. */
-export async function run(command: string, args: string[], cwd: string, stdio: StdioOptions = "inherit"): Promise<void> {
+export async function run(
+  command: string,
+  args: string[],
+  cwd: string,
+  stdio: StdioOptions = "inherit",
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawnCommand(command, args, { cwd, stdio });
+    const child = spawnCommand(command, args, { cwd, stdio, env });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();
@@ -120,9 +126,15 @@ export async function run(command: string, args: string[], cwd: string, stdio: S
  * reads, or a stream that is not a file, which a child process cannot inherit. Rejects on a
  * non-zero exit.
  */
-export async function runInto(command: string, args: string[], cwd: string, output: Writable): Promise<void> {
+export async function runInto(
+  command: string,
+  args: string[],
+  cwd: string,
+  output: Writable,
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawnCommand(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawnCommand(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"], env });
     child.stdout?.on("data", (chunk: Buffer) => output.write(chunk));
     child.stderr?.on("data", (chunk: Buffer) => output.write(chunk));
     child.once("error", reject);

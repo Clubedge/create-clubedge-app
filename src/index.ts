@@ -179,7 +179,11 @@ async function createProject(args: CliArgs): Promise<void> {
 
   const progress = spinner();
   progress.start("Preparing the Starter");
-  const source = await resolveTemplateSource({ ref: args.ref, templateDir: args.templateDir }).catch(
+  const source = await resolveTemplateSource({
+    ref: args.ref,
+    templateDir: args.templateDir,
+    repository: args.template,
+  }).catch(
     (error: unknown) => {
       progress.stop("Could not prepare the Starter");
       throw error;

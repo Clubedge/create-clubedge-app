@@ -78,8 +78,53 @@ export async function readDirectoryTemplate(directory: string): Promise<Template
 export async function resolveTagCommit(repository: string, tag: string): Promise<string | undefined> {
   // List every tag rather than passing a `refs/tags/<tag>^{}` pattern: on Windows the command
   // runs through cmd.exe, which strips `^`, so the peeled ref would never match.
-  const output = await runCapture("git", ["ls-remote", "--tags", `https://github.com/${repository}.git`]);
+  const output = await runCapture("git", [...gitAuthArgs(), "ls-remote", "--tags", `https://github.com/${repository}.git`]);
   return pickTagCommit(output, tag);
+}
+
+/**
+ * The token for reading a Starter on GitHub: CLUBEDGE_TEMPLATE_TOKEN for a private template
+ * (a fork of the Starter your organization keeps), else GITHUB_TOKEN or GH_TOKEN. The CLI passes
+ * CLUBEDGE_TEMPLATE_TOKEN to no command it runs in the project, such as pnpm.
+ */
+export function templateToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.CLUBEDGE_TEMPLATE_TOKEN || env.GITHUB_TOKEN || env.GH_TOKEN || undefined;
+}
+
+/** Git's arguments that send the token to github.com for one command, written nowhere. */
+function gitAuthArgs(token = templateToken()): string[] {
+  if (!token) return [];
+  const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+  return ["-c", `http.extraHeader=Authorization: Basic ${basic}`];
+}
+
+/** Whether a repository is the Starter this CLI is pinned to, rather than a template of your own. */
+export function isPinnedStarter(repository: string | undefined): boolean {
+  return !repository || repository.toLowerCase() === starterPin.starterRepository.toLowerCase();
+}
+
+/**
+ * The newest published release of a template repository, the default for creating and
+ * upgrading from it: the CLI's pin names only its own Starter's release.
+ */
+export async function latestReleaseTag(repository: string, fetcher: typeof fetch = fetch): Promise<string> {
+  const token = templateToken();
+  const response = await fetcher(`https://api.github.com/repos/${repository}/releases/latest`, {
+    headers: {
+      accept: "application/vnd.github+json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 404) {
+    throw new Error(
+      `${repository} has no published release, or this token cannot read it: pass --ref with one of its tags or branches${token ? "" : ", and CLUBEDGE_TEMPLATE_TOKEN for a private repository"}.`,
+    );
+  }
+  if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${repository}'s newest release.`);
+  const { tag_name: tag } = (await response.json()) as { tag_name?: unknown };
+  if (typeof tag !== "string" || !tag) throw new Error(`GitHub named no tag for ${repository}'s newest release.`);
+  return tag;
 }
 
 /** Picks a tag's commit from `git ls-remote` output, preferring the peeled ref of an annotated tag. */
@@ -96,7 +141,7 @@ export function pickTagCommit(output: string, tag: string): string | undefined {
 /** Resolves a tag, branch, or full commit SHA to a commit with `git ls-remote`. */
 export async function resolveRefCommit(repository: string, ref: string): Promise<string | undefined> {
   if (/^[0-9a-f]{40}$/i.test(ref)) return ref.toLowerCase();
-  const output = await runCapture("git", ["ls-remote", `https://github.com/${repository}.git`]);
+  const output = await runCapture("git", [...gitAuthArgs(), "ls-remote", `https://github.com/${repository}.git`]);
   return pickTagCommit(output, ref) ?? pickBranchCommit(output, ref);
 }
 
@@ -124,7 +169,7 @@ export async function downloadGitHubTemplate(
     rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   try {
     const root = join(temporary, "starter");
-    await downloadTemplate(`gh:${repository}#${ref}`, { dir: root, force: true });
+    await downloadTemplate(`gh:${repository}#${ref}`, { dir: root, force: true, auth: templateToken() });
     const files = await listTemplateFiles(root);
     return {
       kind: "github",
@@ -145,6 +190,8 @@ export async function downloadGitHubTemplate(
 export interface SourceOptions {
   ref?: string;
   templateDir?: string;
+  /** A template of your own (owner/name), a fork of the Starter, instead of the pinned Starter. */
+  repository?: string;
 }
 
 /**
@@ -152,8 +199,12 @@ export interface SourceOptions {
  * the Starter bundled into this package. Without a bundle (a CLI checkout that has not run
  * bundle-template), the pinned release is downloaded and its commit verified.
  */
-export async function resolveTemplateSource({ ref, templateDir }: SourceOptions): Promise<TemplateSource> {
+export async function resolveTemplateSource({ ref, templateDir, repository }: SourceOptions): Promise<TemplateSource> {
   if (templateDir) return readDirectoryTemplate(templateDir);
+  // A template of your own has no pin: its newest release, unless a ref is given.
+  if (!isPinnedStarter(repository)) {
+    return downloadGitHubTemplate(ref ?? (await latestReleaseTag(repository!)), { repository });
+  }
 
   const pinned = !ref || ref === starterPin.starterRef;
   if (!pinned) return downloadGitHubTemplate(ref);

@@ -326,6 +326,19 @@ if (report.outcome === "conflicts") {
 
 `upgradeProject`, `addToProject`, and `removeFromProject` change a project as the commands do, ask nothing, never write to stdout (pass a stream as `log` to keep the log), and resolve the report, failures included. They install with `lockfile-only` unless `install` says `full` or `none`. `parseProjectRecord` reads the Starter release, apps, and modules a `package.json` records, from its text, such as one fetched from GitHub without cloning, and `starter` is the Starter release this CLI upgrades to.
 
+## A template of your own
+
+An organization can keep its own Starter. That is a fork of `Clubedge/clubedge-starter`, often private, with its own defaults, modules, and code, and its own releases. Projects made from it record it, and upgrade within it:
+
+```sh
+CLUBEDGE_TEMPLATE_TOKEN=<token> pnpm dlx @clubedge/create-clubedge-app my-app --template acme/acme-starter
+```
+
+- `--template <owner/name>` creates from the template's newest release on GitHub, or from `--ref`.
+- `upgrade` in such a project moves to the template's newest release, or to `--ref`. It never moves to the public Starter, whose release the CLI is pinned to.
+- `CLUBEDGE_TEMPLATE_TOKEN` reads a private template: a fine-grained token with read access to its contents. Without it, the CLI uses `GITHUB_TOKEN` or `GH_TOKEN`. The CLI downloads the template and resolves its tags with it, and passes it to no command it runs in the project, such as pnpm, whose `.npmrc` could otherwise send it to a registry.
+- The template keeps the Starter's descriptors (`clubedge.template.json`, its modules, and its stack packs) in a template schema this CLI reads. Merge the Starter's releases into the template to keep up with them.
+
 ## A hosted database with Neon
 
 `--infra neon` gives the project a [Neon](https://neon.com) PostgreSQL database with nothing to install and no account:

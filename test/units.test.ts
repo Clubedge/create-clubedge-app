@@ -32,6 +32,7 @@ describe("parseCliArgs", () => {
       modules: {},
       ref: undefined,
       templateDir: undefined,
+      template: undefined,
       install: true,
       git: true,
       yes: false,
@@ -110,6 +111,20 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["remove", "storage", "--detailed-exit-code"])).toMatchObject({ detailedExitCode: true });
     expect(() => parseCliArgs(["status", "--detailed-exit-code"])).toThrow("only applies to add, remove, and upgrade");
     expect(() => parseCliArgs(["my-app", "--detailed-exit-code"])).toThrow("only applies to add, remove, and upgrade");
+  });
+
+  it("reads --template, a template of your own, when creating a project", () => {
+    expect(parseCliArgs(["my-app", "--template", "acme/acme-starter", "--ref", "v2.0.0"])).toMatchObject({
+      template: "acme/acme-starter",
+      ref: "v2.0.0",
+    });
+    expect(() => parseCliArgs(["upgrade", "--template", "acme/acme-starter"])).toThrow(
+      "--template only applies when creating a project",
+    );
+    expect(() => parseCliArgs(["my-app", "--template", "acme"])).toThrow("--template requires a GitHub repository");
+    expect(() => parseCliArgs(["my-app", "--template", "acme/x", "--template-dir", "../starter"])).toThrow(
+      "Use either --template or --template-dir, not both.",
+    );
   });
 
   it("reads --json and --lockfile-only for add, remove, and upgrade only", () => {

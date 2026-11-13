@@ -55,20 +55,28 @@ function gradedChoices(manifest: TemplateManifest, stacks: Selection, modules: S
 }
 
 /**
- * The choices below stable that the selection makes, or, with `before`, only those it changes:
- * add warns about the option it switches to, not about the ones the project already had.
+ * The graded choices the selection makes, or, with `before`, only those it changes: add checks
+ * and warns about the option it switches to, not about the ones the project already had.
  */
-export function choicesBelowStable(
+export function newChoices(
   manifest: TemplateManifest,
   stacks: Selection,
   modules: Selection,
   before?: { stacks: Selection; modules: Selection },
 ): GradedChoice[] {
   return gradedChoices(manifest, stacks, modules).filter(
-    (choice) =>
-      choice.support.level !== "stable" &&
-      (!before || (choice.kind === "app" ? before.stacks : before.modules)[choice.part] !== choice.id),
+    (choice) => !before || (choice.kind === "app" ? before.stacks : before.modules)[choice.part] !== choice.id,
   );
+}
+
+/** The new choices below stable, which create and add warn about. */
+export function choicesBelowStable(
+  manifest: TemplateManifest,
+  stacks: Selection,
+  modules: Selection,
+  before?: { stacks: Selection; modules: Selection },
+): GradedChoice[] {
+  return newChoices(manifest, stacks, modules, before).filter((choice) => choice.support.level !== "stable");
 }
 
 /** How a choice is written on the command line: `--auth appwrite` for create, `auth appwrite` for add. */
@@ -86,8 +94,9 @@ function replacementOf(manifest: TemplateManifest, choice: GradedChoice) {
 }
 
 /**
- * Refuses a choice new projects can no longer make: a deprecated option whose descriptor says
- * `"offered": false`. Projects that already have it keep it, so callers pass only new choices.
+ * Refuses a choice new projects can no longer make: an option whose descriptor says
+ * `"offered": false`, at whatever level. Projects that already have it keep it, so callers pass
+ * only new choices (newChoices).
  */
 export function refuseUnoffered(manifest: TemplateManifest, choices: GradedChoice[], syntax: ChoiceSyntax): void {
   const refused = choices.find((choice) => !choice.support.offered);

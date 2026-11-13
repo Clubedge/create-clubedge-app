@@ -53,9 +53,9 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 44 | 0.46.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
 | 45 | 0.47.0 | Starter v0.31.0: deploying to Cloudflare (`--deploy cloudflare`), downloads by byte range, and browser tests in three engines; on Windows, arguments that can't start a second command and device names refused as project directories; install progress over MCP |
 | 46 | 0.48.0 | Starter v0.31.1: Expo SDK 58's latest patch versions; `add`, `remove`, and `upgrade` refuse to merge into unresolved conflicts, conflict blocks hold only the lines that differ, a dependency both sides raised merges to the higher version, and reports say what to run next |
+| 46 | 0.48.1 | Starter v0.31.2: a new user's first requests at once get one users row; projects from Starter releases before v0.5.0 upgrade, a dependency only raised within its range, as `pnpm up` does, takes the Starter's new major or its removal, and a `pnpm patch` the change leaves unused is named before it stops `pnpm install` |
+| 46 | 0.48.2 | Starter v0.31.3: Expo 58.0.25's patch versions; an upgrade matrix in CI, from the oldest Starter release of each template schema to the pinned one, whose results the site's Upgrades page shows |
 
 ## CLI improvements
 
-These are independent of the Starter's modules and can land in any order.
-
-- **MCP progress during installs:** `create_project` with `install_dependencies` runs `pnpm install` and toolchains such as `uv sync`, which can outlast an MCP client's request timeout. Send progress notifications while they run.
+These are independent of the Starter's modules and can land in any order. None is planned right now: the last one, progress notifications over MCP while `create_project` installs dependencies, shipped in 0.47.0.

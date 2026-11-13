@@ -554,6 +554,8 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.46.0 | v0.30.0 | Add and remove the mobile apps in an existing project; Starter v0.30.0: store releases, push notifications, and over-the-air updates; module options' `dependencies` |
 | 0.47.0 | v0.31.0 | Starter v0.31.0: deploying to Cloudflare (`--deploy cloudflare`), downloads by byte range, and browser tests in three engines; on Windows, arguments that can't start a second command and device names refused as project directories; install progress over MCP |
 | 0.48.0 | v0.31.1 | Starter v0.31.1: Expo SDK 58's latest patch versions; `add`, `remove`, and `upgrade` refuse to merge into unresolved conflicts, conflict blocks hold only the lines that differ, a dependency both sides raised merges to the higher version, and reports say what to run next |
+| 0.48.1 | v0.31.2 | Starter v0.31.2: a new user's first requests at once get one users row; upgrades from the first Starter releases, after `pnpm up`, and with a `pnpm patch` |
+| 0.48.2 | v0.31.3 | Starter v0.31.3: Expo 58.0.25's patch versions; an upgrade matrix in CI, whose results the site's Upgrades page shows |
 
 ## Sponsors
 

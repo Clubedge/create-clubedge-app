@@ -459,7 +459,7 @@ Projects created with `--infra neon` also have `.github/workflows/preview.yml`, 
 Each CLI release is tested against one specific Starter release:
 
 ```text
-create-clubedge-app v0.49.0
+create-clubedge-app v0.49.1
         |
         v
 Clubedge Starter v0.32.0
@@ -470,7 +470,7 @@ The current relationship is:
 
 | CLI release | Default Starter release | Meaning |
 | --- | --- | --- |
-| `create-clubedge-app@0.49.0` | `clubedge-starter@v0.32.0` | The CLI's required, tested default |
+| `create-clubedge-app@0.49.1` | `clubedge-starter@v0.32.0` | The CLI's required, tested default |
 
 This means the same CLI version always scaffolds the same Starter revision by default. The CLI does not silently follow Starter `main`.
 
@@ -598,6 +598,7 @@ Each phase ends with a Starter release and a CLI release pinned to it. The full 
 | 0.48.1 | v0.31.2 | Starter v0.31.2: a new user's first requests at once get one users row; upgrades from the first Starter releases, after `pnpm up`, and with a `pnpm patch` |
 | 0.48.2 | v0.31.3 | Starter v0.31.3: Expo 58.0.25's patch versions; an upgrade matrix in CI, whose results the site's Upgrades page shows |
 | 0.49.0 | v0.31.3 | Support levels, with warnings and the deprecation stages; `--json` reports, `--lockfile-only`, and the engine as a library; templates of your own (`--template`) |
+| 0.49.1 | v0.32.0 | Starter v0.32.0: support levels for every option and stack, which the CLI now warns about; upgrade pull requests built from the CLI's report |
 
 ## Sponsors
 

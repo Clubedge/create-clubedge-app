@@ -56,6 +56,7 @@ This roadmap describes the CLI's releases since 0.5.0 and the work planned next.
 | 46 | 0.48.1 | Starter v0.31.2: a new user's first requests at once get one users row; projects from Starter releases before v0.5.0 upgrade, a dependency only raised within its range, as `pnpm up` does, takes the Starter's new major or its removal, and a `pnpm patch` the change leaves unused is named before it stops `pnpm install` |
 | 46 | 0.48.2 | Starter v0.31.3: Expo 58.0.25's patch versions; an upgrade matrix in CI, from the oldest Starter release of each template schema to the pinned one, whose results the site's Upgrades page shows |
 | 47 | 0.49.0 | Support levels, with warnings before a choice below Stable and the deprecation stages; `--json` reports, `--lockfile-only`, and the engine as a library, for services such as Clubedge Cloud; templates of your own (`--template`), private ones included |
+| 47 | 0.49.1 | Starter v0.32.0: a support level for every option and stack, so the warnings 0.49.0 added take effect; the Starter upgrade workflow builds its pull request from the CLI's `--json` report, with `--lockfile-only` |
 
 ## CLI improvements
 

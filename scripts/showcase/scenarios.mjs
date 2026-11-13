@@ -97,6 +97,27 @@ async function waitForPainted(page, pattern, timeout = 60_000) {
   );
 }
 
+/**
+ * waitForPainted for what a frame shows, once the frame itself is on screen in its page: opaque,
+ * unhidden, and not under anything, such as the skeleton a page draws until the frame is ready.
+ * Inside the frame, nothing tells whether the page shows it.
+ */
+async function waitForPaintedIn(iframe, pattern, timeout) {
+  const until = Date.now() + timeout;
+  const left = () => Math.max(1, until - Date.now());
+  const element = await iframe.elementHandle({ timeout });
+  await iframe.page().waitForFunction(
+    (frame) => {
+      if (!frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+      const box = frame.getBoundingClientRect();
+      return document.elementFromPoint(box.left + box.width / 2, box.top + Math.min(box.height / 2, 100)) === frame;
+    },
+    element,
+    { timeout: left(), polling: 250 },
+  );
+  await waitForPainted(await element.contentFrame(), pattern, left());
+}
+
 async function mailpitMessage(to) {
   for (let i = 0; i < 30; i++) {
     const search = await fetch(`http://localhost:8025/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`)
@@ -117,15 +138,25 @@ async function mailpitMessage(to) {
 async function payOnStripeCheckout(a) {
   const { page } = a;
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 60_000 });
-  await page.waitForLoadState("networkidle").catch(() => {});
-  // Checkout also loads behind a spinner: start once its form is on screen.
-  await waitForPainted(page, /pay with card|card information|contact information|payment method/i, 20_000).catch(() => {});
-  await a.pause(1500);
   // Checkout draws its form on its own page or, in its newer layout, inside Stripe's "Secure
   // embedded form frame", which holds the email, the payment methods, the card's fields, and the
   // button. So everything is looked for in both, by role, label, or the autocomplete a card field
   // has in either layout, rather than by ids only the older layout has.
-  const form = page.frameLocator('iframe[title="Secure embedded form frame"]');
+  const frame = 'iframe[title="Secure embedded form frame"]';
+  const form = page.frameLocator(frame);
+  // Checkout loads behind a spinner or a skeleton: start once its form is on screen, on its page or
+  // in that frame. Not once the network is idle, which the newer layout's page never is: waiting
+  // for that, and then for the form's text on the page, where that layout has none, held the
+  // recording on a still page for 50 seconds.
+  const loading = Date.now();
+  const ready = /pay with card|card information|contact information|payment method/i;
+  const where = await Promise.any([
+    waitForPainted(page, ready, 20_000).then(() => "on its page"),
+    waitForPaintedIn(page.locator(frame), ready, 20_000).then(() => "in its embedded form"),
+  ]).catch(() => null);
+  const after = `${((Date.now() - loading) / 1000).toFixed(1)} s`;
+  console.log(where ? `Stripe Checkout showed its form ${where} after ${after}.` : `Stripe Checkout showed no form in ${after}: going on.`);
+  await a.pause(1500);
   const both = (find) => [find(page), find(form)];
   /** The first locator with an element on screen, polling for up to `timeout` ms, or null. */
   const onScreen = async (locators, timeout = 0) => {

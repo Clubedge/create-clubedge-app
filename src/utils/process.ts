@@ -3,6 +3,7 @@ import { statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
+import type { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 // Package manager shims on Windows are .cmd files, which need a shell to start.
@@ -108,6 +109,25 @@ export async function run(command: string, args: string[], cwd: string, stdio: S
     const child = spawnCommand(command, args, { cwd, stdio });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}.`));
+    });
+  });
+}
+
+/**
+ * Runs a command with its output, stdout and stderr alike, written to `output`: a log a program
+ * reads, or a stream that is not a file, which a child process cannot inherit. Rejects on a
+ * non-zero exit.
+ */
+export async function runInto(command: string, args: string[], cwd: string, output: Writable): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawnCommand(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    child.stdout?.on("data", (chunk: Buffer) => output.write(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => output.write(chunk));
+    child.once("error", reject);
+    // close, not exit: it fires once stdout and stderr are fully read.
+    child.once("close", (code, signal) => {
       if (code === 0) resolve();
       else reject(new Error(`${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}.`));
     });

@@ -6,6 +6,7 @@ import { confirm, isCancel, log, multiselect, outro, select, spinner } from "@cl
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
+import type { Writable } from "node:stream";
 import { UsageError, type CliArgs } from "./cli/args.js";
 import { dim } from "./cli/ui.js";
 import { runsServer } from "./core/manifest-fields.js";
@@ -13,7 +14,8 @@ import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js"
 import { compareVersions, type ConflictedFile } from "./core/health.js";
 import { countConflicts, type MergeAction } from "./core/merge.js";
 import { unusedPatches, unusedPatchWarning } from "./core/patches.js";
-import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
+import { describeReleases, fetchReleases, releasesBetween, type Release } from "./core/releases.js";
+import { emptyReport, planReport, releaseReports, type ChangeReport, type InstallReport, type ProjectState } from "./core/report.js";
 import { moduleChoices, NO_STACK, selectModules, selectStacks, slotChoices, stacksIn } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
 import { belowStableWarning, choicesBelowStable, deprecationNotes, newChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
@@ -48,6 +50,41 @@ type ModuleCommand =
 export function appSlots(manifest: TemplateManifest): string[] {
   return Object.keys(manifest.slots).filter((id) => manifest.slots[id]!.roles.every((role) => !runsServer(role)));
 }
+
+/**
+ * Where a change runs and what it reports to: the CLI runs it in the current folder and prints to
+ * the terminal; --json and the engine (engine.ts) send the log elsewhere and read the report.
+ */
+export interface ChangeContext {
+  /** A folder inside the project; the current folder when unset. */
+  root?: string;
+  /** Where the log and pnpm's output go, such as process.stderr; the terminal when unset. */
+  output?: Writable;
+  /** Filled in as the change goes, even when it fails. */
+  report?: ChangeReport;
+}
+
+/**
+ * The log of a change: clack's, written to `output` when there is one. Without one, each call
+ * passes the message alone, as the terminal's always did.
+ */
+function changeUi(output?: Writable) {
+  const options = output ? { output } : undefined;
+  const say =
+    (write: (message: string, options?: { output: Writable }) => void) =>
+    (message: string) =>
+      options ? write(message, options) : write(message);
+  return {
+    info: say(log.info),
+    warn: say(log.warn),
+    success: say(log.success),
+    message: say(log.message),
+    outro: say(outro),
+    spinner: () => (options ? spinner(options) : spinner()),
+  };
+}
+
+type ChangeUi = ReturnType<typeof changeUi>;
 
 /** Choices in a sentence: "a", "a or b", or "a, b, or c". */
 const orList = (names: string[]) => (names.length > 2 ? `${names.slice(0, -1).join(", ")}, or ${names.at(-1)}` : names.join(" or "));
@@ -487,14 +524,14 @@ function describeConflicts(conflicts: Array<Extract<MergeAction, { kind: "confli
   };
 }
 
-function report(plan: UpdatePlan) {
+function reportPlan(plan: UpdatePlan, ui: ChangeUi) {
   const conflicts = conflictsOf(plan);
   const kept = plan.actions.filter((action): action is Extract<MergeAction, { kind: "keep" }> => action.kind === "keep");
   const incoming = (path: string) => `${INCOMING_DIR}/${path}`;
   if (conflicts.length) {
     const { amount, files } = describeConflicts(conflicts);
     const first = conflicts[0]!.path;
-    log.warn(
+    ui.warn(
       `Resolve ${amount}. ` +
         "Each is marked <<<<<<< yours ... ======= ... >>>>>>> clubedge: keep your lines, the Starter's, or a mix, then delete the markers.\n" +
         files +
@@ -504,7 +541,7 @@ function report(plan: UpdatePlan) {
     );
   }
   if (kept.length) {
-    log.info(
+    ui.info(
       `Check these files by hand:\n${kept
         .map((action) => `  ${action.path}: ${action.reason}${action.incoming ? dim(` The Starter's version: ${incoming(action.path)}`) : ""}`)
         .join("\n")}`,
@@ -512,16 +549,16 @@ function report(plan: UpdatePlan) {
   }
   for (const { path, update: env, create } of plan.envs) {
     if (!env) {
-      if (!create) log.info(`${path} does not exist yet; create it from the example file.`);
+      if (!create) ui.info(`${path} does not exist yet; create it from the example file.`);
       continue;
     }
     if (env.customized.length) {
-      log.info(
+      ui.info(
         `You set your own ${env.customized.join(", ")} in ${path}; the example's value changed, so check whether yours still fits.`,
       );
     }
     if (env.unused.length) {
-      log.info(`The project no longer uses ${env.unused.join(", ")}, which you set in ${path}. Remove them when you no longer need them.`);
+      ui.info(`The project no longer uses ${env.unused.join(", ")}, which you set in ${path}. Remove them when you no longer need them.`);
     }
   }
 }
@@ -538,6 +575,8 @@ interface Change {
   warnings: string[];
   /** upgrade: the Starter releases it crosses, one line each, or why GitHub could not list them. */
   releases?: string;
+  /** upgrade: the same releases, oldest first, or null when GitHub could not list them. */
+  crossed: Release[] | null;
   /** add and remove: the app slots the change fills or empties. */
   apps: string[];
 }
@@ -580,6 +619,7 @@ async function planChange(
       introduced: [],
       notes: [],
       warnings: levels ? [levels] : [],
+      crossed: [],
       apps: changedApps,
     };
   }
@@ -609,10 +649,11 @@ async function planChange(
     notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
   }
   let releases: string | undefined;
+  let crossed: Release[] | null = [];
   if (compareVersions(project.starterRef, target.ref) !== null) {
     const published = await fetchReleases(target.repository);
-    const crossed = published ? releasesBetween(published, project.starterRef, target.ref) : [];
-    if (crossed.length) releases = `Starter releases in this upgrade:\n${describeReleases(crossed)}`;
+    crossed = published ? releasesBetween(published, project.starterRef, target.ref) : null;
+    if (crossed?.length) releases = `Starter releases in this upgrade:\n${describeReleases(crossed)}`;
     else if (!published) {
       releases =
         "Could not list the Starter releases in this upgrade: GitHub could not be reached, or refused, as it does past its rate limit " +
@@ -627,6 +668,7 @@ async function planChange(
     notes,
     warnings: [],
     releases,
+    crossed,
     apps: [],
   };
 }
@@ -666,25 +708,33 @@ function closingLine(upgrading: boolean, conflicts: boolean, installSkipped: boo
  * After `add infra neon`: a free Neon database when the env file's DATABASE_URL is empty, which it
  * is when it still held the old infra's example value. A URL the developer set stays.
  */
-async function addNeonDatabase(project: Project, args: CliArgs, cli: string) {
+async function addNeonDatabase(project: Project, args: CliArgs, cli: string, ui: ChangeUi, report: ChangeReport) {
   const { envPath, shared } = projectDatabaseEnv(project);
   const env = parseEnvFile(await readFile(join(project.root, envPath), "utf8").catch(() => ""));
+  const note = (message: string) => {
+    ui.info(message);
+    report.notes.push(message);
+  };
   if (env.DATABASE_URL) {
-    log.info(`DATABASE_URL in ${envPath} is yours, so it stays. Run \`${cli} neon create\` for a free Neon database instead.`);
+    note(`DATABASE_URL in ${envPath} is yours, so it stays. Run \`${cli} neon create\` for a free Neon database instead.`);
     return;
   }
   if (!args.neon) {
-    log.info(`Set DATABASE_URL in ${envPath}, or run \`${cli} neon create\` for a free Neon database.`);
+    note(`Set DATABASE_URL in ${envPath}, or run \`${cli} neon create\` for a free Neon database.`);
     return;
   }
-  const progress = spinner();
+  const progress = ui.spinner();
   progress.start("Creating a free Neon database");
   try {
     const created = await provisionNeonDatabase(project.root, envPath, shared);
-    progress.stop(describeNewDatabase(created, cli));
+    const described = describeNewDatabase(created, cli);
+    progress.stop(described);
+    report.notes.push(described);
   } catch (error) {
     progress.stop("Neon created no database");
-    log.warn(`${error instanceof Error ? error.message : String(error)} Run \`${cli} neon create\` to try again.`);
+    const warning = `${error instanceof Error ? error.message : String(error)} Run \`${cli} neon create\` to try again.`;
+    ui.warn(warning);
+    report.warnings.push(warning);
   }
 }
 
@@ -692,22 +742,24 @@ async function addNeonDatabase(project: Project, args: CliArgs, cli: string) {
  * Where an app the change adds is, and what is left of one it removes: the files that were never
  * the Starter's, such as its env file, its dependencies, or native projects, stay.
  */
-async function reportApps(project: Project, change: Change) {
+async function reportApps(project: Project, change: Change, ui: ChangeUi, report: ChangeReport) {
   const { manifest } = change.target;
   for (const slotId of change.apps) {
     const slot = manifest.slots[slotId]!;
     const stack = manifest.stacks[stackIn(change.target, slotId)];
     if (stack) {
-      log.info(`${stack.name} is in ${slot.path}, with its settings in ${slot.env.target}. SETUP.md now has the steps to run and build it.`);
+      const note = `${stack.name} is in ${slot.path}, with its settings in ${slot.env.target}. SETUP.md now has the steps to run and build it.`;
+      ui.info(note);
+      report.notes.push(note);
       continue;
     }
     const folder = join(project.root, slot.path);
     const left = (await pathExists(folder)) ? (await readdir(folder)).sort() : [];
     if (!left.length) continue;
     const shown = `${left.slice(0, 4).join(", ")}${left.length > 4 ? ", ..." : ""}`;
-    log.info(
-      `${slot.path} still holds what was never the Starter's (${shown}): its settings, dependencies, or native projects. Delete the folder once you no longer need them.`,
-    );
+    const note = `${slot.path} still holds what was never the Starter's (${shown}): its settings, dependencies, or native projects. Delete the folder once you no longer need them.`;
+    ui.info(note);
+    report.notes.push(note);
   }
 }
 
@@ -717,11 +769,44 @@ async function reportApps(project: Project, change: Change) {
  */
 export type ChangeOutcome = "unchanged" | "changed" | "conflicts";
 
-export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
+/** A Starter and a selection, as the project's package.json records them, for the report. */
+function projectState(
+  source: { repository: string; ref: string; commit?: string },
+  stacks: Record<string, string>,
+  modules: Record<string, string>,
+): ProjectState {
+  return { repository: source.repository, ref: source.ref, ...(source.commit ? { commit: source.commit } : {}), stacks, modules };
+}
+
+/**
+ * pnpm install's arguments for a change. --lockfile-only writes pnpm-lock.yaml and nothing else,
+ * and runs nothing from the project, neither lifecycle scripts nor a .pnpmfile.cjs, so a service
+ * can update the lockfile of code it does not trust. It always reconciles: that is its purpose,
+ * and CI, where pnpm freezes the lockfile by default, is where it runs.
+ */
+export function installArguments(mode: Exclude<InstallReport["mode"], "none">, lockfile: UpdatePlan["lockfile"]["kind"]): string[] {
+  if (mode === "lockfile-only") return ["--lockfile-only", "--ignore-scripts", "--ignore-pnpmfile", "--no-frozen-lockfile"];
+  return lockfile === "install" ? ["--no-frozen-lockfile"] : [];
+}
+
+export async function changeProject(args: CliArgs, context: ChangeContext = {}): Promise<ChangeOutcome> {
   const command = args.command;
   if (command.name !== "add" && command.name !== "remove" && command.name !== "upgrade") throw new Error("Not a project change.");
-  const interactive = Boolean(process.stdin.isTTY) && !args.yes;
-  const project = await readProject(process.cwd());
+  const ui = changeUi(context.output);
+  const report = context.report ?? emptyReport(command.name, cliVersion, args.dryRun);
+  // A report is read by a program, which cannot answer a prompt.
+  const interactive = Boolean(process.stdin.isTTY) && !args.yes && !args.json;
+  const project = await readProject(context.root ?? process.cwd());
+  report.from = projectState(
+    { repository: project.starterRepository, ref: project.starterRef, commit: project.starterCommit },
+    project.stacks,
+    project.modules,
+  );
+  const unchanged = (message: string): ChangeOutcome => {
+    ui.outro(message);
+    report.notes.push(message);
+    return "unchanged";
+  };
   const upgrading = command.name === "upgrade";
   if (
     upgrading &&
@@ -729,8 +814,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     project.starterCommit &&
     (args.ref ? args.ref === project.starterCommit : project.starterCommit === starterPin.starterCommit)
   ) {
-    outro(`The project is already on Starter ${project.starterRef}.`);
-    return "unchanged";
+    return unchanged(`The project is already on Starter ${project.starterRef}.`);
   }
 
   if (
@@ -738,8 +822,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     command.changes.length > 0 &&
     command.changes.every((c) => c.option && (project.modules[c.module] ?? project.stacks[c.module]) === c.option)
   ) {
-    outro("The project already uses that selection; nothing to change.");
-    return "unchanged";
+    return unchanged("The project already uses that selection; nothing to change.");
   }
 
   if (
@@ -747,13 +830,12 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     command.modules.length > 0 &&
     command.modules.every((m) => project.modules[m] === "none")
   ) {
-    outro("The project already uses that selection; nothing to change.");
-    return "unchanged";
+    return unchanged("The project already uses that selection; nothing to change.");
   }
 
   await assertSafeToChange(project, args, interactive);
 
-  const progress = spinner();
+  const progress = ui.spinner();
   progress.start(upgrading ? "Preparing both Starter revisions" : `Preparing Starter ${project.starterRef}`);
   const sources: TemplateSource[] = [];
   let spinning = true;
@@ -786,75 +868,97 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
     }
     const complete =
       command.name === "upgrade" ? command : await completeCommand(baseManifest, project, command, interactive);
-    if (!complete) {
-      outro("Cancelled; nothing was changed.");
-      return "unchanged";
-    }
+    if (!complete) return unchanged("Cancelled; nothing was changed.");
     const change = await planChange(project, complete, base, baseManifest, target, cli);
     if (!change) {
-      outro(upgrading ? `The project is already on Starter ${project.starterRef}.` : "The project already uses that selection; nothing to change.");
-      return "unchanged";
+      return unchanged(upgrading ? `The project is already on Starter ${project.starterRef}.` : "The project already uses that selection; nothing to change.");
     }
     const plan = await planUpdate(project, change.base, change.target);
+    Object.assign(report, planReport(plan), {
+      summary: change.summary,
+      to: projectState(change.target.source, change.target.stacks ?? project.stacks, change.target.modules),
+      releases: change.crossed && releaseReports(change.target.source.repository, change.crossed),
+      introduced: change.introduced.map((module) => ({ module, option: change.target.modules[module]! })),
+    });
+    report.warnings.push(...change.warnings);
 
-    if (change.releases) log.info(change.releases);
-    log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
-    for (const warning of change.warnings) log.warn(warning);
+    if (change.releases) ui.info(change.releases);
+    ui.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
+    for (const warning of change.warnings) ui.warn(warning);
     if (args.dryRun) {
-      for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
+      const notes = [...introducedNotes(project, change, cli), ...change.notes];
+      for (const note of notes) ui.info(note);
+      report.notes.push(...notes);
       // Counted as the real run counts them, and reported with the same exit code.
       const conflicts = conflictsOf(plan);
       if (conflicts.length) {
         const { amount, files } = describeConflicts(conflicts);
-        log.warn(`The change would leave ${amount} to resolve, where your lines and the Starter's differ:\n${files}`);
+        ui.warn(`The change would leave ${amount} to resolve, where your lines and the Starter's differ:\n${files}`);
       }
-      outro("Dry run: nothing was changed. Run again without --dry-run to apply.");
+      report.next = "Dry run: nothing was changed. Run again without --dry-run to apply.";
+      ui.outro(report.next);
+      report.outcome = conflicts.length ? "conflicts" : "changed";
       return conflicts.length ? "conflicts" : "unchanged";
     }
 
     await applyUpdate(plan);
     const written = writtenFiles(plan);
-    log.success(`Updated ${written} ${written === 1 ? "file" : "files"}`);
+    ui.success(`Updated ${written} ${written === 1 ? "file" : "files"}`);
+    report.outcome = conflictsOf(plan).length ? "conflicts" : "changed";
 
     // The files are written now, so what is left to resolve is reported even when the install fails.
     let installError: unknown;
+    const mode: InstallReport["mode"] = !args.install ? "none" : args.lockfileOnly ? "lockfile-only" : "full";
+    report.install = { mode, status: "off" };
     const manifests = await conflictedManifests(project.root);
     // A patch pnpm would not use stops the install, so it is reported, and the install left until it is fixed.
     const unused = manifests.length ? [] : await unusedPatches(project.root);
+    const skip = (warning: string) => {
+      ui.warn(warning);
+      report.warnings.push(warning);
+      if (mode !== "none") report.install = { mode, status: "skipped", reason: warning };
+    };
     if (manifests.length) {
-      log.warn(conflictedManifestWarning(manifests, args.install));
+      skip(conflictedManifestWarning(manifests, mode !== "none"));
     } else if (unused.length) {
-      log.warn(unusedPatchWarning(unused, args.install));
-    } else if (args.install) {
+      skip(unusedPatchWarning(unused, mode !== "none"));
+    } else if (mode !== "none") {
       const { pnpm, problem } = await detectPnpm();
       if (pnpm) {
         try {
-          await installDependencies(project.root, pnpm, plan.lockfile.kind === "install" ? ["--no-frozen-lockfile"] : []);
-          log.success("Dependencies updated");
+          // pnpm's own output goes where the log does, so --json keeps stdout for the report.
+          await installDependencies(project.root, pnpm, installArguments(mode, plan.lockfile.kind), ...(context.output ? [{ output: context.output }] : []));
+          ui.success(mode === "lockfile-only" ? "pnpm-lock.yaml updated, without installing" : "Dependencies updated");
+          report.install = { mode, status: "done" };
         } catch (error) {
           installError = error;
+          report.install = { mode, status: "failed", reason: error instanceof Error ? error.message : String(error) };
         }
       } else if (problem) {
-        log.warn(`pnpm is installed but did not run, so dependencies were not updated. ${problem} Run \`pnpm install\` once it works.`);
+        skip(`pnpm is installed but did not run, so dependencies were not updated. ${problem} Run \`pnpm install\` once it works.`);
       } else {
-        log.warn("pnpm was not found. Run `pnpm install` to update dependencies.");
+        skip("pnpm was not found. Run `pnpm install` to update dependencies.");
       }
     } else if (plan.lockfile.kind !== "unchanged") {
-      log.info("Run `pnpm install` to update dependencies.");
+      ui.info("Run `pnpm install` to update dependencies.");
     }
 
-    report(plan);
-    await reportApps(project, change);
+    reportPlan(plan, ui);
+    await reportApps(project, change, ui, report);
     const pnpmBlocked = manifests.length > 0;
-    for (const note of [...introducedNotes(project, change, cli, pnpmBlocked), ...change.notes]) log.info(note);
+    const notes = [...introducedNotes(project, change, cli, pnpmBlocked), ...change.notes];
+    for (const note of notes) ui.info(note);
+    report.notes.push(...notes);
     if (installError) {
       const reason = installError instanceof Error ? installError.message : String(installError);
+      const command = mode === "lockfile-only" ? "`pnpm install --lockfile-only`" : "`pnpm install`";
       throw new Error(
-        `The files were updated, but \`pnpm install\` did not complete: ${reason}${reason.endsWith(".") ? "" : "."} Fix that, then run \`pnpm install\`.`,
+        `The files were updated, but ${command} did not complete: ${reason}${reason.endsWith(".") ? "" : "."} Fix that, then run \`pnpm install\`.`,
       );
     }
-    if (change.target.modules.infra === "neon" && project.modules.infra !== "neon") await addNeonDatabase(project, args, cli);
-    outro(closingLine(upgrading, conflictsOf(plan).length > 0 || pnpmBlocked, pnpmBlocked));
+    if (change.target.modules.infra === "neon" && project.modules.infra !== "neon") await addNeonDatabase(project, args, cli, ui, report);
+    report.next = closingLine(upgrading, conflictsOf(plan).length > 0 || pnpmBlocked, pnpmBlocked);
+    ui.outro(report.next);
     return conflictsOf(plan).length ? "conflicts" : "changed";
   } catch (error) {
     if (spinning) progress.stop("Could not prepare the Starter");

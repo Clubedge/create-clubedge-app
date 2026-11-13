@@ -152,6 +152,10 @@ ${selectionHelp(manifest)}
   --detailed-exit-code    add/remove/upgrade: exit with 2 when the change leaves conflicts to
                           resolve, or would with --dry-run (0: changed cleanly or nothing to
                           change, 1: failed)
+  --json                  add/remove/upgrade: print a JSON report of the change on stdout, and
+                          the rest on stderr; never asks
+  --lockfile-only         add/remove/upgrade: update pnpm-lock.yaml without installing, running
+                          nothing from the project (no scripts, no .pnpmfile.cjs)
   --no-services           doctor: skip pnpm check:services
   --no-open               try, deploy (Vercel, Netlify, Render): do not open the URL in the browser
   --claim                 try: open the page that claims the VM, to share the preview

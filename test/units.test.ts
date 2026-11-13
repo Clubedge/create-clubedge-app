@@ -38,6 +38,8 @@ describe("parseCliArgs", () => {
       dryRun: false,
       force: false,
       detailedExitCode: false,
+      json: false,
+      lockfileOnly: false,
       services: true,
       open: true,
       claim: false,
@@ -108,6 +110,15 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["remove", "storage", "--detailed-exit-code"])).toMatchObject({ detailedExitCode: true });
     expect(() => parseCliArgs(["status", "--detailed-exit-code"])).toThrow("only applies to add, remove, and upgrade");
     expect(() => parseCliArgs(["my-app", "--detailed-exit-code"])).toThrow("only applies to add, remove, and upgrade");
+  });
+
+  it("reads --json and --lockfile-only for add, remove, and upgrade only", () => {
+    expect(parseCliArgs(["upgrade", "--json", "--lockfile-only"])).toMatchObject({ json: true, lockfileOnly: true, install: true });
+    expect(parseCliArgs(["add", "cache", "redis", "--json"])).toMatchObject({ json: true, lockfileOnly: false });
+    expect(parseCliArgs(["remove", "storage", "--lockfile-only"])).toMatchObject({ json: false, lockfileOnly: true });
+    expect(() => parseCliArgs(["status", "--json"])).toThrow("--json and --lockfile-only only apply to add, remove, and upgrade.");
+    expect(() => parseCliArgs(["my-app", "--lockfile-only"])).toThrow("--json and --lockfile-only only apply to add, remove, and upgrade.");
+    expect(() => parseCliArgs(["upgrade", "--lockfile-only", "--no-install"])).toThrow("Use either --lockfile-only or --no-install, not both.");
   });
 
   it("reads status and doctor, with doctor's --no-services", () => {

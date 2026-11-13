@@ -1,7 +1,8 @@
 import { tmpdir } from "node:os";
 import process from "node:process";
 import type { StdioOptions } from "node:child_process";
-import { onPath, run, runCapture, withAbsolutePath } from "../utils/process.js";
+import type { Writable } from "node:stream";
+import { onPath, run, runCapture, runInto, withAbsolutePath } from "../utils/process.js";
 
 export interface PnpmDetection {
   /** The command that runs pnpm, or null when neither pnpm nor corepack runs. */
@@ -47,12 +48,20 @@ export function detectLauncher(userAgent = process.env.npm_config_user_agent): s
   return name && ["npm", "pnpm", "yarn", "bun"].includes(name) ? name : null;
 }
 
+/**
+ * Runs `pnpm install` in a folder. Its output goes to the terminal, to `stdio`, or, with
+ * `{ output }`, to a stream such as a change's log (see runInto).
+ */
 export async function installDependencies(
   directory: string,
   pnpm: string[],
   args: string[] = [],
-  stdio?: StdioOptions,
+  stdio?: StdioOptions | { output: Writable },
 ): Promise<void> {
   const [command, ...prefix] = pnpm;
+  if (stdio && !Array.isArray(stdio) && typeof stdio === "object" && "output" in stdio) {
+    await runInto(command!, [...prefix, "install", ...args], directory, stdio.output);
+    return;
+  }
   await run(command!, [...prefix, "install", ...args], directory, stdio);
 }

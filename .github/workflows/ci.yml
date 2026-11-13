@@ -52,6 +52,8 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/packed-cli/package" --omit=dev --ignore-scripts
       - name: Exercise the packed MCP server and skill
         run: node scripts/smoke-mcp-package.mjs "$RUNNER_TEMP/packed-cli/package"
+      - name: Import the packed engine by its package name
+        run: node scripts/smoke-engine-package.mjs "$RUNNER_TEMP/packed-cli/package"
 
   # Windows runs commands through cmd.exe and has drive roots and CRLF checkouts, which have
   # broken the CLI before; these jobs keep it working there.

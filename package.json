@@ -4,6 +4,14 @@
   "description": "Create React apps from Clubedge Starter with a CLI or local MCP server.",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
+  "exports": {
+    ".": {
+      "types": "./dist/engine.d.ts",
+      "default": "./dist/engine.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/engine.d.ts",
   "bin": {
     "create-clubedge-app": "./bin/create.mjs",
     "create-clubedge-app-mcp": "./bin/mcp.mjs"

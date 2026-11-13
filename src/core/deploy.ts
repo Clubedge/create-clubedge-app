@@ -582,7 +582,7 @@ export function vercelIgnoreSource(gitignore: string): string {
 
 /** Whether a .vercelignore keeps .env files out of the upload. */
 export function ignoresEnvFiles(vercelignore: string): boolean {
-  return vercelignore.split(/\r?\n/).some((line) => /^\/?(\*\*\/)?\.env(\*|\.\*)?\/?$/.test(line.trim()));
+  return vercelignore.split(/\r?\n/).some((line) => /^\/?(\*\*\/)?\.env(\*|\.\*)\/?$/.test(line.trim()));
 }
 
 /* ------------------------------------ Netlify ------------------------------------ */

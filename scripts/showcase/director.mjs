@@ -151,9 +151,15 @@ async function browser(label, steps, options = {}) {
     await page.waitForTimeout(1200);
     storageState = await context.storageState();
   } catch (error) {
-    // Keep what the page looked like, for the failure artifact.
+    // Keep what the page looked like, for the failure artifact, with each frame's HTML: a hosted
+    // page, such as Stripe Checkout, can draw its whole form inside one.
     await page.screenshot({ path: join(state, `scene-${index}-failure.png`) }).catch(() => {});
     writeFileSync(join(state, `scene-${index}-failure.html`), await page.content().catch(() => ""));
+    for (const [n, frame] of page.frames().entries()) {
+      if (frame === page.mainFrame()) continue;
+      const html = await frame.content().catch(() => "");
+      if (html) writeFileSync(join(state, `scene-${index}-failure-frame-${n}.html`), `<!-- ${frame.url()} -->\n${html}`);
+    }
     console.error(`Browser scene "${label}" failed at ${page.url()}`);
     throw error;
   } finally {

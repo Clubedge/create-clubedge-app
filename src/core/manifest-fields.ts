@@ -1,3 +1,5 @@
+import type { RemovedOption, Support, SupportLevel } from "./manifest.js";
+
 // Field readers shared by the manifest schemas. Each one names the file and the field in its
 // error, so a Starter maintainer sees exactly what to fix.
 
@@ -106,6 +108,7 @@ export interface ParsedOption {
   replace: Record<string, string>;
   requires: Record<string, string[]>;
   scripts: Record<string, string>;
+  support?: Support;
 }
 
 /** An npm package name, scoped or not, such as expo-notifications or @capacitor/push-notifications. */
@@ -118,6 +121,47 @@ function parseDependencies(file: string, value: unknown, prefix: string): string
     throw new ManifestError(`${file}: ${prefix}dependencies must be an array of package names.`);
   }
   return value;
+}
+
+export const supportLevels: readonly SupportLevel[] = ["stable", "beta", "experimental", "deprecated"];
+
+/**
+ * An option's or a stack's support level, from its `status`, with the `note`, and for a
+ * deprecated one its `since`, `replacement`, and `offered`. Undefined when the Starter grades
+ * nothing. A level this CLI does not know, from a newer Starter, reads as experimental.
+ */
+export function parseSupport(file: string, record: Record<string, unknown>, prefix: string): Support | undefined {
+  if (record.status === undefined) return undefined;
+  const read = fields(file, prefix);
+  const status = read.requireString(record, "status");
+  const level = (supportLevels as readonly string[]).includes(status) ? (status as SupportLevel) : "experimental";
+  if (record.offered !== undefined && typeof record.offered !== "boolean") read.fail(`${prefix}offered must be true or false.`);
+  const note = read.optionalString(record, "note");
+  const since = read.optionalString(record, "since");
+  const replacement = read.optionalString(record, "replacement");
+  return {
+    level,
+    ...(note ? { note } : {}),
+    ...(since ? { since } : {}),
+    ...(replacement ? { replacement } : {}),
+    offered: record.offered !== false,
+  };
+}
+
+/** `removed`: options a Starter release took out, by id, with what replaces them. */
+function parseRemoved(file: string, value: unknown, prefix: string): Record<string, RemovedOption> | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new ManifestError(`${file}: ${prefix}removed must be an object.`);
+  const removed: Record<string, RemovedOption> = {};
+  for (const [optionId, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) throw new ManifestError(`${file}: ${prefix}removed.${optionId} must be an object.`);
+    const read = fields(file, `${prefix}removed.${optionId}.`);
+    const since = read.optionalString(entry, "since");
+    const replacement = read.optionalString(entry, "replacement");
+    const note = read.optionalString(entry, "note");
+    removed[optionId] = { ...(since ? { since } : {}), ...(replacement ? { replacement } : {}), ...(note ? { note } : {}) };
+  }
+  return removed;
 }
 
 /** A module's name, default, and options; `prefix` locates it in its file. */
@@ -146,9 +190,12 @@ export function parseModule(file: string, entry: unknown, prefix: string) {
       requires: parseRequires(file, values.requires, optionPrefix),
       scripts: read.optionalStringRecord(values, "scripts"),
     };
+    const support = parseSupport(file, values, optionPrefix);
+    if (support) options[optionId]!.support = support;
   }
 
   const defaultOption = requireString(record, "default");
   if (!options[defaultOption]) fail(`${prefix}default "${defaultOption}" is not in its options.`);
-  return { name: requireString(record, "name"), default: defaultOption, options };
+  const removed = parseRemoved(file, record.removed, prefix);
+  return { name: requireString(record, "name"), default: defaultOption, options, ...(removed ? { removed } : {}) };
 }

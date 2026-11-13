@@ -8,6 +8,7 @@ import { assertTargetIsUsable, executePlan } from "./core/execute.js";
 import { readTemplateManifest, type TemplateManifest } from "./core/manifest.js";
 import { createPlan, describePlan, listNames, moduleChoices, type ScaffoldPlan, NO_STACK, selectStacks, slotChoices, splitSelection } from "./core/plan.js";
 import { readBundledTemplate, resolveTemplateSource } from "./core/source.js";
+import { belowStableWarning, choicesBelowStable, levelHint, planChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import { cliUrl, cliVersion, siteUrl, starterPin } from "./package-info.js";
 import { runDoctor, showStatus } from "./inspect.js";
 import { changeProject } from "./modify.js";
@@ -64,7 +65,8 @@ async function chooseStacks(
   const chosen = { ...requested };
   for (const [slotId, slot] of Object.entries(manifest.slots)) {
     if (chosen[slotId] !== undefined) continue;
-    const choices = slotChoices(manifest, slotId, chosen);
+    // A stack no longer offered to new projects is left out of the list.
+    const choices = slotChoices(manifest, slotId, chosen).filter((id) => manifest.stacks[id]?.support?.offered !== false);
     if (choices.length < 2) {
       if (choices[0] !== undefined) chosen[slotId] = choices[0];
       continue;
@@ -73,11 +75,10 @@ async function chooseStacks(
     const value = await select({
       message: slot.question,
       initialValue: choices.includes(preferred) ? preferred : choices[0]!,
-      options: choices.map((id) => ({
-        value: id,
-        label: manifest.stacks[id]?.name ?? "None",
-        ...(id === preferred ? { hint: "default" } : {}),
-      })),
+      options: choices.map((id) => {
+        const hint = [id === preferred ? "default" : undefined, levelHint(manifest.stacks[id]?.support)].filter(Boolean).join(", ");
+        return { value: id, label: manifest.stacks[id]?.name ?? "None", ...(hint ? { hint } : {}) };
+      }),
     });
     if (isCancel(value)) return null;
     chosen[slotId] = value;
@@ -115,6 +116,7 @@ async function chooseModules(
     const implemented = moduleChoices(manifest, stacks, id, chosen);
     const available = Object.entries(module.options).filter(([optionId, option]) =>
       implemented.includes(optionId) &&
+      option.support?.offered !== false &&
       Object.entries(option.requires).every(([other, allowed]) => {
         const value = chosen[other] ?? requested[other];
         // Modules answered later are checked when the plan is created.
@@ -132,11 +134,10 @@ async function chooseModules(
       initialValue: available.some(([optionId]) => optionId === module.default)
         ? module.default
         : available[0]![0],
-      options: available.map(([optionId, option]) => ({
-        value: optionId,
-        label: option.name,
-        ...(optionId === module.default ? { hint: "default" } : {}),
-      })),
+      options: available.map(([optionId, option]) => {
+        const hint = [optionId === module.default ? "default" : undefined, levelHint(option.support)].filter(Boolean).join(", ");
+        return { value: optionId, label: option.name, ...(hint ? { hint } : {}) };
+      }),
     });
     if (isCancel(value)) return null;
     chosen[id] = value;
@@ -215,6 +216,13 @@ async function createProject(args: CliArgs): Promise<void> {
       git: args.git,
       install: args.install,
     });
+
+    // An option deprecated past its window is refused; one below stable is chosen with a warning.
+    const chosen = planChoices(plan);
+    const belowStable = choicesBelowStable(manifest, chosen.stacks, chosen.modules);
+    refuseUnoffered(manifest, belowStable, "flag");
+    const levels = belowStableWarning(manifest, belowStable, "flag", stabilityUrl(source));
+    if (levels) log.warn(levels);
 
     // --infra neon: a free Neon database, its URLs written into the env file of the app that owns
     // the database (the API, when the project has one).

@@ -16,6 +16,7 @@ import { unusedPatches, unusedPatchWarning } from "./core/patches.js";
 import { describeReleases, fetchReleases, releasesBetween } from "./core/releases.js";
 import { moduleChoices, NO_STACK, selectModules, selectStacks, slotChoices, stacksIn } from "./core/plan.js";
 import { readProject, type Project } from "./core/project.js";
+import { belowStableWarning, choicesBelowStable, deprecationNotes, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import {
   downloadGitHubTemplate,
   readDirectoryTemplate,
@@ -393,8 +394,15 @@ export function upgradedModules(manifest: TemplateManifest, project: Project, cl
       requested[id] = module.options.none ? "none" : module.default;
       introduced.push(id);
     } else if (!module.options[recorded]) {
+      // A Starter that removed an option keeps a record of it, naming what replaces it.
+      const removed = module.removed?.[recorded];
+      const replacement = removed?.replacement && module.options[removed.replacement] ? removed.replacement : undefined;
+      const switchTo = replacement
+        ? `Switch to ${module.options[replacement]!.name} with ${cli} add ${id} ${replacement} before upgrading: it changes the project on its own Starter release.`
+        : `Switch to one of ${Object.keys(module.options).join(", ")} with ${cli} add ${id} <option> before upgrading.`;
       throw new UsageError(
-        `The new Starter no longer offers ${module.name} "${recorded}". Switch to one of ${Object.keys(module.options).join(", ")} with ${cli} add ${id} <option> before upgrading.`,
+        `The new Starter no longer offers ${module.name} "${recorded}"${removed?.since ? ` (removed in ${removed.since})` : ""}. ${switchTo}` +
+          (removed?.note ? ` ${removed.note}` : ""),
       );
     } else {
       requested[id] = recorded;
@@ -526,6 +534,8 @@ interface Change {
   /** upgrade: the modules the new Starter has and the project's did not, which the project leaves off. */
   introduced: string[];
   notes: string[];
+  /** add: the new choices below stable, which still work; see the Starter's STABILITY.md. */
+  warnings: string[];
   /** upgrade: the Starter releases it crosses, one line each, or why GitHub could not list them. */
   releases?: string;
   /** add and remove: the app slots the change fills or empties. */
@@ -554,6 +564,10 @@ async function planChange(
     const changedApps = apps.filter((id) => stackIn({ stacks }, id) !== stackIn(project, id));
     const changed = Object.keys(modules).filter((id) => modules[id] !== project.modules[id]);
     if (!changed.length && !changedApps.length) return null;
+    // Only the choices this command makes: an option the project already has is not new to it.
+    const belowStable = choicesBelowStable(baseManifest, stacks, modules, { stacks: project.stacks, modules: project.modules });
+    refuseUnoffered(baseManifest, belowStable, "argument");
+    const levels = belowStableWarning(baseManifest, belowStable, "argument", stabilityUrl({ kind: base.kind, repository: base.repository, ref: project.starterRef }));
     const stackName = (id: string) => baseManifest.stacks[id]?.name ?? NO_STACK;
     return {
       base: baseSide,
@@ -564,6 +578,7 @@ async function planChange(
       ].join(", "),
       introduced: [],
       notes: [],
+      warnings: levels ? [levels] : [],
       apps: changedApps,
     };
   }
@@ -588,6 +603,7 @@ async function planChange(
       `Starter ${project.starterRef} had no modules yet, but built in what became the first ones, so the project keeps them: ${kept.join(", ")}. Switch one with: ${cli} add <module> <option>`,
     );
   }
+  notes.push(...deprecationNotes(targetManifest, project.stacks, modules, cli));
   if (/^v\d/.test(target.ref)) {
     notes.push(`Release notes: https://github.com/${target.repository}/releases/tag/${target.ref}`);
   }
@@ -608,6 +624,7 @@ async function planChange(
     summary: `Starter ${project.starterRef} -> ${target.ref}`,
     introduced,
     notes,
+    warnings: [],
     releases,
     apps: [],
   };
@@ -781,6 +798,7 @@ export async function changeProject(args: CliArgs): Promise<ChangeOutcome> {
 
     if (change.releases) log.info(change.releases);
     log.message(`${change.summary}\n\n${describe(plan) || "No file changes."}`);
+    for (const warning of change.warnings) log.warn(warning);
     if (args.dryRun) {
       for (const note of [...introducedNotes(project, change, cli), ...change.notes]) log.info(note);
       // Counted as the real run counts them, and reported with the same exit code.

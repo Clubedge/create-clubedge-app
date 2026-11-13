@@ -23,6 +23,7 @@ import {
   MANIFEST_FILE,
   ManifestError,
   parseModule,
+  parseSupport,
   roleSchema,
   runsServer,
   stackRoles,
@@ -288,6 +289,7 @@ function parseStack(
   const auditIgnores = read.optionalStringArray(data, "auditIgnores");
   const advisory = auditIgnores.find((id) => !ADVISORY.test(id));
   if (advisory !== undefined) read.fail(`auditIgnores: "${advisory}" is not a GitHub advisory id, such as GHSA-xxxx-xxxx-xxxx.`);
+  const support = parseSupport(file, data, "");
   return {
     id,
     stack: {
@@ -301,6 +303,7 @@ function parseStack(
       ...(toolchain ? { toolchain } : {}),
       ...(deployment ? { deployment } : {}),
       ...(auditIgnores.length ? { auditIgnores } : {}),
+      ...(support ? { support } : {}),
     },
     files,
   };

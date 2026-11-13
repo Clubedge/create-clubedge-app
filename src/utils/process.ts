@@ -104,9 +104,15 @@ export function spawnCommand(command: string, args: string[], options: SpawnOpti
 }
 
 /** Runs a command with inherited output. Rejects on a non-zero exit. */
-export async function run(command: string, args: string[], cwd: string, stdio: StdioOptions = "inherit"): Promise<void> {
+export async function run(
+  command: string,
+  args: string[],
+  cwd: string,
+  stdio: StdioOptions = "inherit",
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawnCommand(command, args, { cwd, stdio });
+    const child = spawnCommand(command, args, { cwd, stdio, env });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();
@@ -120,15 +126,37 @@ export async function run(command: string, args: string[], cwd: string, stdio: S
  * reads, or a stream that is not a file, which a child process cannot inherit. Rejects on a
  * non-zero exit.
  */
-export async function runInto(command: string, args: string[], cwd: string, output: Writable): Promise<void> {
+export async function runInto(
+  command: string,
+  args: string[],
+  cwd: string,
+  output: Writable,
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawnCommand(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-    child.stdout?.on("data", (chunk: Buffer) => output.write(chunk));
-    child.stderr?.on("data", (chunk: Buffer) => output.write(chunk));
-    child.once("error", reject);
+    const child = spawnCommand(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"], env });
+    // The output is the caller's: when writing to it fails, the command stops and the call fails,
+    // instead of an unhandled error ending the process. The stream itself is left open.
+    let writeError: Error | undefined;
+    const forward = (chunk: Buffer) => {
+      if (!writeError) output.write(chunk);
+    };
+    const onOutputError = (error: Error) => {
+      writeError ??= error;
+      child.kill();
+    };
+    output.on("error", onOutputError);
+    child.stdout?.on("data", forward);
+    child.stderr?.on("data", forward);
+    child.once("error", (error) => {
+      output.removeListener("error", onOutputError);
+      reject(error);
+    });
     // close, not exit: it fires once stdout and stderr are fully read.
     child.once("close", (code, signal) => {
-      if (code === 0) resolve();
+      output.removeListener("error", onOutputError);
+      if (writeError) reject(new Error(`${command}'s output could not be written: ${writeError.message}`));
+      else if (code === 0) resolve();
       else reject(new Error(`${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}.`));
     });
   });

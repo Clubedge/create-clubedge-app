@@ -21,6 +21,7 @@ import { readProject, type Project } from "./core/project.js";
 import { belowStableWarning, choicesBelowStable, deprecationNotes, newChoices, refuseUnoffered, stabilityUrl } from "./core/support.js";
 import {
   downloadGitHubTemplate,
+  isPinnedStarter,
   readDirectoryTemplate,
   resolveTemplateSource,
   type TemplateSource,
@@ -125,9 +126,17 @@ async function projectSource(project: Project, templateDir: string | undefined):
 }
 
 /** The Starter to upgrade to: --template-dir, --ref, or the release this CLI is pinned to. */
-async function upgradeSource(args: CliArgs): Promise<TemplateSource> {
+/**
+ * The Starter to upgrade to: --template-dir, --ref, or the release this CLI is pinned to. A
+ * project made from a template of your own (a fork of the Starter) upgrades within it: to --ref,
+ * or its newest release.
+ */
+async function upgradeSource(args: CliArgs, project: Project): Promise<TemplateSource> {
   if (args.templateDir) return readDirectoryTemplate(args.templateDir);
-  return resolveTemplateSource({ ref: args.ref });
+  return resolveTemplateSource({
+    ref: args.ref,
+    ...(isPinnedStarter(project.starterRepository) ? {} : { repository: project.starterRepository }),
+  });
 }
 
 /**
@@ -812,7 +821,9 @@ export async function changeProject(args: CliArgs, context: ChangeContext = {}):
     upgrading &&
     !args.templateDir &&
     project.starterCommit &&
-    (args.ref ? args.ref === project.starterCommit : project.starterCommit === starterPin.starterCommit)
+    (args.ref
+      ? args.ref === project.starterCommit
+      : isPinnedStarter(project.starterRepository) && project.starterCommit === starterPin.starterCommit)
   ) {
     return unchanged(`The project is already on Starter ${project.starterRef}.`);
   }
@@ -843,7 +854,7 @@ export async function changeProject(args: CliArgs, context: ChangeContext = {}):
     // For upgrade, --template-dir names the new Starter; the project's own comes from GitHub.
     const base = await projectSource(project, upgrading ? undefined : args.templateDir);
     sources.push(base);
-    const target = upgrading ? await upgradeSource(args) : null;
+    const target = upgrading ? await upgradeSource(args, project) : null;
     if (target) sources.push(target);
     const baseManifest = await readTemplateManifest(base.root);
     progress.stop("Starter ready");

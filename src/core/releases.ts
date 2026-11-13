@@ -1,6 +1,7 @@
 // The Starter releases an upgrade crosses, from GitHub, so `upgrade` can say what changed before
 // the developer reviews `git diff`.
 import { compareVersions } from "./health.js";
+import { templateToken } from "./source.js";
 
 export interface Release {
   tag: string;
@@ -18,7 +19,7 @@ export async function fetchReleases(
   timeoutMs = 5_000,
 ): Promise<Release[] | null> {
   try {
-    const token = process.env.GITHUB_TOKEN;
+    const token = templateToken();
     const response = await fetcher(`https://api.github.com/repos/${repository}/releases?per_page=100`, {
       headers: {
         accept: "application/vnd.github+json",

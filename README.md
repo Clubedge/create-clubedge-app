@@ -305,7 +305,7 @@ A change that leaves conflicts exits with 0, like a clean one. For scripts that 
 For tools that maintain projects, such as a service that opens upgrade pull requests, `add`, `remove`, and `upgrade` take two more options:
 
 - `--json` prints the change's report on stdout as one JSON document, and sends the log and pnpm's output to stderr. It asks nothing, as with `--yes`, and works with `--dry-run` and `--detailed-exit-code`.
-- `--lockfile-only` updates `pnpm-lock.yaml` without installing anything: it runs `pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile`, so no script and no `.pnpmfile.cjs` from the project runs. A service can update the lockfile of code it does not trust, and leave the build and the tests to the project's CI.
+- `--lockfile-only` updates `pnpm-lock.yaml` without installing anything: it runs `pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile`, so no script and no `.pnpmfile.cjs` from the project runs, and the build and the tests are left to the project's CI. pnpm still reads the project's `.npmrc`, which chooses the registries it asks and can send them environment variables. A service that runs it on code it does not trust gives the CLI's process no credentials but the ones the project may have, and limits where it can connect.
 
 ```sh
 pnpm dlx @clubedge/create-clubedge-app@latest upgrade --json --lockfile-only > upgrade.json
@@ -325,6 +325,19 @@ if (report.outcome === "conflicts") {
 ```
 
 `upgradeProject`, `addToProject`, and `removeFromProject` change a project as the commands do, ask nothing, never write to stdout (pass a stream as `log` to keep the log), and resolve the report, failures included. They install with `lockfile-only` unless `install` says `full` or `none`. `parseProjectRecord` reads the Starter release, apps, and modules a `package.json` records, from its text, such as one fetched from GitHub without cloning, and `starter` is the Starter release this CLI upgrades to.
+
+## A template of your own
+
+An organization can keep its own Starter. That is a fork of `Clubedge/clubedge-starter`, often private, with its own defaults, modules, and code, and its own releases. Projects made from it record it, and upgrade within it:
+
+```sh
+CLUBEDGE_TEMPLATE_TOKEN=<token> pnpm dlx @clubedge/create-clubedge-app my-app --template acme/acme-starter
+```
+
+- `--template <owner/name>` creates from the template's newest release on GitHub, or from `--ref`.
+- `upgrade` in such a project moves to the template's newest release, or to `--ref`. It never moves to the public Starter, whose release the CLI is pinned to.
+- `CLUBEDGE_TEMPLATE_TOKEN` reads a private template: a fine-grained token with read access to its contents. The CLI downloads the template and resolves its tags with it, and passes it to no command it runs in the project, such as pnpm, whose `.npmrc` could otherwise send it to a registry. Without it, the CLI reads the template with `GITHUB_TOKEN` or `GH_TOKEN`. Those stay in pnpm's environment, as in any command you run, since a project's `.npmrc` may use them for GitHub Packages: set `CLUBEDGE_TEMPLATE_TOKEN` to keep the template's token from the project.
+- The template keeps the Starter's descriptors (`clubedge.template.json`, its modules, and its stack packs) in a template schema this CLI reads. Merge the Starter's releases into the template to keep up with them.
 
 ## A hosted database with Neon
 

@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
+import { Writable } from "node:stream";
 import { delimiter, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cmdLine, quoteForCmd, resolveForCmd, runCapture, spawnCommand } from "../src/utils/process.js";
+import { cmdLine, quoteForCmd, resolveForCmd, runCapture, runInto, spawnCommand } from "../src/utils/process.js";
 import { temporaryDirectory, writeFiles } from "./helpers.js";
 
 describe("quoteForCmd", () => {
@@ -173,5 +174,35 @@ describe.runIf(process.platform === "win32")("commands on Windows", () => {
     const cwd = await temporaryDirectory();
     expect(() => spawnCommand("echo-arguments", ["one\ntwo"], { cwd, env: environment(folder) })).toThrow(/line break/);
     await expect(runCapture("clubedge-no-such-command", ["--version"], cwd, environment(folder))).rejects.toThrow(/exited with code 1/);
+  });
+});
+
+describe("runInto", () => {
+  it("writes a command's output to the stream it is given", async () => {
+    let written = "";
+    const output = new Writable({
+      write(chunk, _encoding, done) {
+        written += String(chunk);
+        done();
+      },
+    });
+    await runInto(process.execPath, ["-e", "console.log('out'); console.error('err')"], process.cwd(), output);
+    expect(written).toContain("out");
+    expect(written).toContain("err");
+  });
+
+  it("stops the command and fails when the stream cannot be written, without ending the process", async () => {
+    const output = new Writable({
+      write(_chunk, _encoding, done) {
+        done(new Error("disk full"));
+      },
+    });
+    const run = runInto(
+      process.execPath,
+      ["-e", "setInterval(() => console.log('still running'), 20)"],
+      process.cwd(),
+      output,
+    );
+    await expect(run).rejects.toThrow("output could not be written: disk full");
   });
 });

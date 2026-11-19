@@ -31,6 +31,11 @@ describe("what try uploads", () => {
     expect(isUploadable("apps/web/.env.local")).toBe(false);
     expect(isUploadable(".env")).toBe(false);
     expect(isUploadable(".env.production")).toBe(false);
+    expect(isUploadable(".env-production")).toBe(false);
+    expect(isUploadable(".env_local")).toBe(false);
+    expect(isUploadable(".envrc")).toBe(false);
+    expect(isUploadable("apps\\web\\.env.local")).toBe(false);
+    expect(isUploadable("apps\\web\\node_modules\\x.js")).toBe(false);
     expect(isUploadable("node_modules/x/index.js")).toBe(false);
     expect(isUploadable("apps/web/.next/server.js")).toBe(false);
     expect(isUploadable(".data/pglite/base")).toBe(false);

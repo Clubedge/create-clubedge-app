@@ -34,6 +34,8 @@ describe("what try uploads", () => {
     expect(isUploadable(".env-production")).toBe(false);
     expect(isUploadable(".env_local")).toBe(false);
     expect(isUploadable(".envrc")).toBe(false);
+    expect(isUploadable(".env.production\\backup")).toBe(false);
+    expect(isUploadable("apps/web/.env.production\\backup")).toBe(false);
     expect(isUploadable("apps\\web\\.env.local")).toBe(false);
     expect(isUploadable("apps\\web\\node_modules\\x.js")).toBe(false);
     expect(isUploadable("node_modules/x/index.js")).toBe(false);

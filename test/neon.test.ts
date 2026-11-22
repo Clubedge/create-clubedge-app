@@ -338,7 +338,9 @@ describe("neon on the command line", () => {
     expect(script).toContain("db:migrate");
     expect(script).not.toContain("Starting the local database");
 
-    // Run the script's node command on a copy of an env file.
+    // Run the script's node command on a copy of an env file when a POSIX shell is available.
+    const shell = process.platform === "win32" ? "bash" : "sh";
+    if (spawnSync(shell, ["-c", "exit 0"]).status !== 0) return;
     const line = script
       .split("\n")
       .find((entry) => entry.startsWith("node -e "))!
@@ -347,7 +349,6 @@ describe("neon on the command line", () => {
     try {
       mkdirSync(join(dir, "apps", "web"), { recursive: true });
       writeFileSync(join(dir, "apps", "web", ".env.local"), "DATABASE_URL=\nREDIS_URL=\n");
-      const shell = process.platform === "win32" ? "bash" : "sh";
       const result = spawnSync(shell, ["-c", line.replace(" apps/*/.env.local", " apps/web/.env.local")], { cwd: dir, encoding: "utf8" });
       expect(result.stderr).toBe("");
       expect(readFileSync(join(dir, "apps", "web", ".env.local"), "utf8")).toBe(`DATABASE_URL=${tricky.url}\nREDIS_URL=\nDATABASE_URL_DIRECT=${direct}\n`);

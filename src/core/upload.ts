@@ -25,14 +25,18 @@ const skippedDirectories = new Set([
   "test-results",
 ]);
 
-/** Whether a project-relative path (forward slashes) may be uploaded. */
+/** Whether a project-relative path may be uploaded. */
 export function isUploadable(path: string): boolean {
-  const segments = path.split("/");
+  const segments = path.split(/[/\\]/);
   if (segments.some((segment) => skippedDirectories.has(segment))) return false;
+  const posixName = path.split("/").at(-1) ?? "";
   const name = segments.at(-1) ?? "";
   // .env, .env.local, .env.production... hold secrets; .env.example only names the variables.
-  if (/^\.env(\.|$)/.test(name) && !name.endsWith(".example")) return false;
-  return name !== ".DS_Store";
+  for (const candidate of [posixName, name]) {
+    if (/^\.env(rc)?($|[._-])/.test(candidate) && !candidate.endsWith(".example")) return false;
+    if (candidate === ".DS_Store") return false;
+  }
+  return true;
 }
 
 async function walk(root: string, directory = ""): Promise<string[]> {

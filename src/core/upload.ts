@@ -33,7 +33,7 @@ export function isUploadable(path: string): boolean {
   const name = segments.at(-1) ?? "";
   // .env, .env.local, .env.production... hold secrets; .env.example only names the variables.
   for (const candidate of [posixName, name]) {
-    if (/^\.env($|[._-]|rc$)/.test(candidate) && !candidate.endsWith(".example")) return false;
+    if (/^\.env(rc)?($|[._-])/.test(candidate) && !candidate.endsWith(".example")) return false;
     if (candidate === ".DS_Store") return false;
   }
   return true;

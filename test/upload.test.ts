@@ -34,6 +34,9 @@ describe("what try uploads", () => {
     expect(isUploadable(".env-production")).toBe(false);
     expect(isUploadable(".env_local")).toBe(false);
     expect(isUploadable(".envrc")).toBe(false);
+    expect(isUploadable(".envrc.local")).toBe(false);
+    expect(isUploadable(".envrc_local")).toBe(false);
+    expect(isUploadable(".envrc-private")).toBe(false);
     expect(isUploadable(".env.production\\backup")).toBe(false);
     expect(isUploadable("apps/web/.env.production\\backup")).toBe(false);
     expect(isUploadable("apps\\web\\.env.local")).toBe(false);
